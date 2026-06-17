@@ -543,6 +543,7 @@ function login(){
   CU=u;
   document.getElementById("login-screen").style.display="none";
   document.getElementById("app").classList.add("on");
+  document.getElementById("app").style.display="flex";
   document.getElementById("sb-av").textContent=CU.ini;
   document.getElementById("sb-nm").textContent=CU.nom;
   document.getElementById("sb-rl").textContent={superadmin:"👑 Super Admin",admin:"🔴 Admin",member:"👤 Membre"}[CU.role];
@@ -558,6 +559,7 @@ function logout(){
   CU=null;
   document.getElementById("login-screen").style.display="flex";
   document.getElementById("app").classList.remove("on");
+  document.getElementById("app").style.display="none";
   document.getElementById("lu").value="";
   document.getElementById("lp").value="";
   document.getElementById("lerr").style.display="none";
