@@ -584,6 +584,8 @@ function td(d){
   return d.toLocaleDateString("fr-FR")+" "+d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
 }
 
+function typeTag(t){return t==="B2B"?'<span class="tag tbl">B2B</span>':'<span class="tag tg">B2C</span>';}
+function teamTag(eq){return eq==="Commercial"?'<span class="tag tr">'+eq+'</span>':eq==="Marketing"?'<span class="tag tbl">'+eq+'</span>':'<span class="tag tg">'+eq+'</span>';}
 function stg(s){
   const m={
     "Client actif":"tg","Prospect chaud":"tgo","Démonstration faite":"tbl","Offre envoyée":"tp",
@@ -671,7 +673,7 @@ function rCli(){
 function rTask(){
   let data=DB.tasks;
   if(!isAdm())data=data.filter(t=>t.asg.includes(CU.nom.split(" ")[0])||t.asg==="Toute l'équipe");
-  const mk=d=>`<thead><tr><th>Tâche</th><th>Assignée à</th><th>Équipe</th><th>Priorité</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>`+d.map(t=>`<tr><td class="tb">${t.titre}</td><td class="tm">${t.asg}</td><td>${t.eq==="Commercial"?"<span class="tag tr">"+t.eq+"</span>":t.eq==="Marketing"?"<span class="tag tbl">"+t.eq+"</span>":"<span class="tag tg">"+t.eq+"</span>"}</td><td>${stg(t.pri)}</td><td class="tm">${t.date}</td><td>${stg(t.statut)}</td><td><button class="btn bg bsm" onclick="done(${t.id})">✓</button></td></tr>`).join("")+"</tbody>";
+  const mk=d=>`<thead><tr><th>Tâche</th><th>Assignée à</th><th>Équipe</th><th>Priorité</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>`+d.map(t=>`<tr><td class="tb">${t.titre}</td><td class="tm">${t.asg}</td><td>${teamTag(t.eq)}</td><td>${stg(t.pri)}</td><td class="tm">${t.date}</td><td>${stg(t.statut)}</td><td><button class="btn bg bsm" onclick="done(${t.id})">✓</button></td></tr>`).join("")+"</tbody>";
   document.getElementById("tbl-tsk").innerHTML=mk(data);
   document.getElementById("tbl-urg").innerHTML=mk(data.filter(t=>t.pri==="Haute"));
   document.getElementById("nb-t").textContent=data.filter(t=>t.statut!=="Terminée").length;
