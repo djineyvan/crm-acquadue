@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CRM Acqua Due — Lorenzetti Niger</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --red:#C8102E;--red2:#a00c23;--red-light:#fde8ec;
+  --blue:#1a6eb5;--blue-light:#e8f2fd;
+  --green:#16a34a;--green-light:#dcfce7;
+  --gold:#d97706;--gold-light:#fef3c7;
+  --purple:#7c3aed;--purple-light:#ede9fe;
+  --bg:#f5f7fa;--surface:#fff;--card:#fff;--card2:#f0f4f8;
+  --border:#e0e8f0;--border2:#c8d8e8;
+  --text:#1a2535;--muted:#6b7e90;--muted2:#4a5e70;
+  --r:12px;--r2:8px;--r3:6px;
+}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-size:13px}
+#login-screen{position:fixed;inset:0;background:linear-gradient(135deg,var(--red2),var(--red));display:flex;align-items:center;justify-content:center;z-index:999}
+.login-box{background:#fff;border-radius:16px;padding:36px;width:370px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.login-logo{text-align:center;margin-bottom:24px}
+.login-logo h1{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--red)}
+.login-logo p{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-top:2px}
+.login-input{width:100%;border:1.5px solid var(--border);border-radius:var(--r2);padding:10px 13px;font-size:13px;font-family:'Inter',sans-serif;outline:none;margin-bottom:10px;transition:border-color .2s}
+.login-input:focus{border-color:var(--red)}
+.login-btn{width:100%;background:var(--red);color:#fff;border:none;border-radius:var(--r2);padding:11px;font-size:14px;font-weight:700;font-family:'Inter',sans-serif;cursor:pointer;transition:all .2s}
+.login-btn:hover{background:var(--red2)}
+.login-error{color:var(--red);font-size:12px;text-align:center;margin-top:6px;display:none}
+.login-hints{margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
+.login-hints p{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px}
+.hint{font-size:11px;color:var(--muted2);padding:3px 0;cursor:pointer}
+.hint:hover{color:var(--red)}
+#app{height:100vh;display:none;flex-direction:row}
+#app.on{display:flex}
+.sidebar{width:218px;min-width:218px;background:var(--red);display:flex;flex-direction:column;height:100vh}
+.logo-area{padding:14px 12px 10px;border-bottom:1px solid rgba(255,255,255,.15)}
+.logo-name{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#fff;margin-top:4px}
+.logo-sub{font-size:9px;color:rgba(255,255,255,.65);text-transform:uppercase;letter-spacing:.1em}
+.nav{flex:1;padding:8px 6px;overflow-y:auto}
+.nsec{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.4);padding:10px 8px 3px}
+.ni{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--r3);cursor:pointer;color:rgba(255,255,255,.72);font-size:12px;transition:all .15s;margin-bottom:1px;border:none;background:none;width:100%;text-align:left;font-family:'Inter',sans-serif}
+.ni:hover{background:rgba(255,255,255,.12);color:#fff}
+.ni.active{background:rgba(255,255,255,.22);color:#fff;font-weight:600}
+.ni.adm{display:none}
+.nb{margin-left:auto;background:rgba(255,255,255,.25);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px}
+.sf{padding:8px 10px;border-top:1px solid rgba(255,255,255,.15)}
+.uc{display:flex;align-items:center;gap:8px}
+.uav{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:700;flex-shrink:0}
+.unm{font-size:11px;font-weight:600;color:#fff}
+.url{font-size:9px;color:rgba(255,255,255,.6)}
+.lob{background:none;border:none;color:rgba(255,255,255,.5);cursor:pointer;font-size:10px;padding:2px;font-family:'Inter',sans-serif}
+.lob:hover{color:#fff}
+.main{flex:1;display:flex;flex-direction:column;height:100vh;overflow:hidden}
+.topbar{height:50px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 18px;gap:10px;flex-shrink:0;background:var(--surface)}
+.tbt{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-right:auto}
+.btn{padding:6px 13px;border-radius:var(--r2);border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:12px;font-weight:600;transition:all .15s;display:inline-flex;align-items:center;gap:4px}
+.br{background:var(--red);color:#fff}.br:hover{background:var(--red2)}
+.bg{background:var(--card2);color:var(--muted2);border:1px solid var(--border)}.bg:hover{color:var(--text)}
+.bsm{padding:4px 10px;font-size:11px}
+.content{flex:1;overflow-y:auto;padding:16px}
+.view{display:none}.view.active{display:block}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.ct{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;position:relative;overflow:hidden}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.kred::before{background:var(--red)}.kblue::before{background:var(--blue)}.kgreen::before{background:var(--green)}.kgold::before{background:var(--gold)}
+.kl{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:5px;font-weight:600}
+.kv{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;line-height:1}
+.kd{font-size:10px;margin-top:3px;font-weight:500}
+.kd.up{color:var(--green)}.kd.dn{color:var(--red)}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:7px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);border-bottom:2px solid var(--border);background:var(--card2)}
+td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:hover td{background:#fafbfc}
+tr:last-child td{border-bottom:none}
+.tb{font-weight:600}.tm{color:var(--muted);font-size:11px}
+.tag{display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600}
+.tr{background:var(--red-light);color:var(--red)}.tbl{background:var(--blue-light);color:var(--blue)}
+.tg{background:var(--green-light);color:var(--green)}.tgo{background:var(--gold-light);color:var(--gold)}
+.tp{background:var(--purple-light);color:var(--purple)}
+.pb{height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+.pf{height:100%;border-radius:3px}
+.pfr{background:var(--red)}.pfb{background:var(--blue)}.pfg{background:var(--green)}.pfo{background:var(--gold)}
+.av{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0}
+.ar{background:var(--red)}.ab{background:var(--blue)}.ag{background:var(--green)}.ao{background:var(--gold)}.ap{background:var(--purple)}
+.tl{position:relative;padding-left:18px}
+.tl::before{content:'';position:absolute;left:5px;top:0;bottom:0;width:2px;background:var(--border)}
+.tli{position:relative;padding-bottom:12px;padding-left:14px}
+.tld{position:absolute;left:-13px;top:3px;width:9px;height:9px;border-radius:50%;border:2px solid #fff}
+.tld.r{background:var(--red)}.tld.b{background:var(--blue)}.tld.g{background:var(--green)}.tld.o{background:var(--gold)}
+.tabs{display:flex;gap:3px;margin-bottom:12px;background:var(--card2);padding:3px;border-radius:var(--r2);width:fit-content}
+.tab{padding:5px 11px;border-radius:var(--r3);cursor:pointer;font-size:11px;font-weight:500;color:var(--muted2);border:none;background:none;font-family:'Inter',sans-serif;transition:all .15s}
+.tab.active{background:#fff;color:var(--red);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.pipe{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.pc{background:var(--card2);border-radius:var(--r);padding:8px}
+.pch{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:7px;display:flex;justify-content:space-between}
+.pcard{background:#fff;border:1px solid var(--border);border-radius:var(--r2);padding:9px;margin-bottom:5px;cursor:pointer;transition:all .15s}
+.pcard:hover{border-color:var(--red)}
+.pcn{font-size:11px;font-weight:600;margin-bottom:2px}
+.pcs{font-size:10px;color:var(--muted)}
+.pcv{font-size:11px;font-weight:700;color:var(--red);margin-top:4px}
+.mo{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:center;justify-content:center}
+.mo.open{display:flex}
+.md{background:#fff;border-radius:var(--r);width:500px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.mh{padding:13px 17px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.mh h3{font-family:'Syne',sans-serif;font-size:14px;font-weight:700}
+.mc{background:none;border:none;font-size:16px;cursor:pointer;color:var(--muted);padding:2px 5px;border-radius:4px}
+.mb{padding:16px}
+.mf{padding:9px 17px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+.fg{margin-bottom:9px}
+.fl{font-size:10px;font-weight:600;color:var(--muted2);margin-bottom:4px;display:block;text-transform:uppercase;letter-spacing:.07em}
+.fi,.fs,.ft{width:100%;background:#f8fafc;border:1px solid var(--border);border-radius:var(--r2);padding:7px 10px;color:var(--text);font-size:12px;font-family:'Inter',sans-serif;outline:none;transition:all .2s}
+.fi:focus,.fs:focus,.ft:focus{border-color:var(--red);background:#fff}
+.ft{min-height:60px;resize:vertical}
+.fr{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.sb{display:flex;align-items:center;gap:6px;background:var(--card2);border:1px solid var(--border);border-radius:var(--r2);padding:6px 10px;flex:1;max-width:230px}
+.sb input{background:none;border:none;outline:none;font-family:'Inter',sans-serif;font-size:12px;color:var(--text);width:100%}
+.ai{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.ai:last-child{border-bottom:none}
+.aav{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;flex-shrink:0;margin-top:2px}
+.uc2{display:flex;align-items:center;gap:9px;padding:9px;background:var(--card2);border-radius:var(--r2);margin-bottom:7px}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+</style>
+</head>
+<body>
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div style="font-size:32px;margin-bottom:6px">💧</div>
+      <h1>Acqua Due CRM</h1>
+      <p>Lorenzetti Niger — Espace sécurisé</p>
+    </div>
+    <input class="login-input" id="lu" placeholder="Email / Identifiant" autocomplete="off"/>
+    <input class="login-input" id="lp" type="password" placeholder="Mot de passe" onkeydown="if(event.key==='Enter')login()"/>
+    <button class="login-btn" onclick="login()">Se connecter</button>
+    <div class="login-error" id="lerr">Identifiant ou mot de passe incorrect.</div>
+    <div class="login-hints">
+      <p>Comptes de démonstration</p>
+      <div class="hint" onclick="fl('yvan@acquadue.ne','admin2026')">👑 yvan@acquadue.ne — Super Admin</div>
+      <div class="hint" onclick="fl('moussa@acquadue.ne','comm2026')">🤝 moussa@acquadue.ne — Commercial</div>
+      <div class="hint" onclick="fl('salimata@acquadue.ne','mkt2026')">📣 salimata@acquadue.ne — Marketing Admin</div>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+<aside class="sidebar">
+  <div class="logo-area">
+    <div style="display:flex;align-items:center;gap:7px">
+      <div style="width:28px;height:28px;background:rgba(255,255,255,.2);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px">💧</div>
+      <div><div class="logo-name">Acqua Due</div><div class="logo-sub">CRM Lorenzetti Niger</div></div>
+    </div>
+  </div>
+  <nav class="nav">
+    <div class="nsec">Vue générale</div>
+    <button class="ni active" onclick="go('dash')">📊 Tableau de bord</button>
+    <button class="ni" onclick="go('pipe')">🔄 Pipeline <span class="nb" id="nb-p">8</span></button>
+    <div class="nsec">Équipes</div>
+    <button class="ni" onclick="go('comm')">🤝 Commerciaux <span class="nb" id="nb-c">4</span></button>
+    <button class="ni" onclick="go('mkt')">📣 Marketing <span class="nb" id="nb-m">3</span></button>
+    <button class="ni" onclick="go('com')">💬 Communication <span class="nb" id="nb-k">2</span></button>
+    <div class="nsec">Données</div>
+    <button class="ni" onclick="go('clients')">👥 Clients <span class="nb" id="nb-cl">8</span></button>
+    <button class="ni" onclick="go('taches')">✅ Tâches <span class="nb" id="nb-t">7</span></button>
+    <button class="ni" onclick="go('rapports')">📈 Rapports</button>
+    <div class="nsec adm">Administration</div>
+    <button class="ni adm" onclick="go('users')">👤 Utilisateurs</button>
+    <button class="ni adm" onclick="go('journal')">🔍 Journal d'activité</button>
+  </nav>
+  <div class="sf">
+    <div class="uc">
+      <div class="uav" id="sb-av">YL</div>
+      <div style="flex:1;min-width:0"><div class="unm" id="sb-nm">Yvan</div><div class="url" id="sb-rl">Super Admin</div></div>
+      <button class="lob" onclick="logout()">⏻</button>
+    </div>
+  </div>
+</aside>
+
+<div class="main">
+  <div class="topbar">
+    <div class="tbt" id="ptitle">Tableau de bord</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div class="sb">🔍 <input placeholder="Rechercher..."/></div>
+      <button class="btn br" onclick="om('m-add')">+ Ajouter</button>
+    </div>
+  </div>
+  <div class="content">
+
+    <div class="view active" id="v-dash">
+      <div class="g4" style="margin-bottom:13px">
+        <div class="kpi kred"><div class="kl">Ventes ce mois</div><div class="kv">2.04M</div><div class="kd up">↑ +18%</div></div>
+        <div class="kpi kblue"><div class="kl">Prospects actifs</div><div class="kv" id="kpi-p">8</div><div class="kd up">↑ +5 cette semaine</div></div>
+        <div class="kpi kgreen"><div class="kl">Taux conversion</div><div class="kv">34%</div><div class="kd up">↑ +4pts</div></div>
+        <div class="kpi kgold"><div class="kl">Objectif mensuel</div><div class="kv">68%</div><div class="kd dn">↓ 32 ventes restantes</div></div>
+      </div>
+      <div class="g2" style="margin-bottom:12px">
+        <div class="card"><div class="ct">Performance Équipes</div><div id="d-perf"></div></div>
+        <div class="card"><div class="ct">Activité récente</div><div class="tl" id="d-act"></div></div>
+      </div>
+      <div class="g3">
+        <div class="card"><div class="ct">Top Commerciaux</div><div id="d-top"></div></div>
+        <div class="card"><div class="ct">Campagnes actives</div><div id="d-camp"></div></div>
+        <div class="card"><div class="ct">Tâches urgentes</div><div id="d-task"></div></div>
+      </div>
+    </div>
+
+    <div class="view" id="v-pipe">
+      <div style="margin-bottom:11px;display:flex;gap:8px;align-items:center">
+        <div class="tabs"><button class="tab active">Tous</button><button class="tab">B2C</button><button class="tab">B2B</button></div>
+        <button class="btn br bsm" onclick="om('m-pros')">+ Nouveau prospect</button>
+      </div>
+      <div class="pipe" id="pb"></div>
+    </div>
+
+    <div class="view" id="v-comm">
+      <div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">
+        <div class="tabs">
+          <button class="tab active" onclick="st(this,'tc','l')">Liste</button>
+          <button class="tab" onclick="st(this,'tc','o')">Objectifs</button>
+          <button class="tab" onclick="st(this,'tc','k')">Commissions</button>
+        </div>
+        <button class="btn br bsm adm" onclick="om('m-mem')">+ Membre</button>
+      </div>
+      <div id="tc-l"><div class="card"><div class="tw"><table id="tbl-comm"></table></div></div></div>
+      <div id="tc-o" style="display:none"><div class="card"><div id="obj-v"></div></div></div>
+      <div id="tc-k" style="display:none"><div class="card"><div id="com-v"></div></div></div>
+    </div>
+
+    <div class="view" id="v-mkt">
+      <div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">
+        <div class="tabs">
+          <button class="tab active" onclick="st(this,'tm','e')">Équipe</button>
+          <button class="tab" onclick="st(this,'tm','c')">Campagnes</button>
+          <button class="tab" onclick="st(this,'tm','n')">Contenu</button>
+        </div>
+        <button class="btn br bsm" onclick="om('m-camp')">+ Campagne</button>
+      </div>
+      <div id="tm-e"><div class="card"><div class="tw"><table id="tbl-mkt"></table></div></div></div>
+      <div id="tm-c" style="display:none"><div id="camp-v"></div></div>
+      <div id="tm-n" style="display:none"><div id="cnt-v"></div></div>
+    </div>
+
+    <div class="view" id="v-com">
+      <div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">
+        <div class="tabs">
+          <button class="tab active" onclick="st(this,'tk','e')">Équipe</button>
+          <button class="tab" onclick="st(this,'tk','p')">Publications</button>
+        </div>
+        <button class="btn br bsm" onclick="om('m-pub')">+ Publication</button>
+      </div>
+      <div id="tk-e"><div class="card"><div class="tw"><table id="tbl-com"></table></div></div></div>
+      <div id="tk-p" style="display:none"><div id="pub-v"></div></div>
+    </div>
+
+    <div class="view" id="v-clients">
+      <div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">
+        <div class="tabs">
+          <button class="tab active" onclick="st(this,'tl','a')">Tous</button>
+          <button class="tab" onclick="st(this,'tl','b')">B2C</button>
+          <button class="tab" onclick="st(this,'tl','c')">B2B</button>
+        </div>
+        <button class="btn br bsm" onclick="om('m-cli')">+ Client</button>
+      </div>
+      <div id="tl-a"><div class="card"><div class="tw"><table id="tbl-cli"></table></div></div></div>
+      <div id="tl-b" style="display:none"><div class="card"><div class="tw"><table id="tbl-b2c"></table></div></div></div>
+      <div id="tl-c" style="display:none"><div class="card"><div class="tw"><table id="tbl-b2b"></table></div></div></div>
+    </div>
+
+    <div class="view" id="v-taches">
+      <div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">
+        <div class="tabs">
+          <button class="tab active" onclick="st(this,'tt','a')">Toutes</button>
+          <button class="tab" onclick="st(this,'tt','u')">Urgentes</button>
+        </div>
+        <button class="btn br bsm" onclick="om('m-task')">+ Tâche</button>
+      </div>
+      <div id="tt-a"><div class="card"><div class="tw"><table id="tbl-tsk"></table></div></div></div>
+      <div id="tt-u" style="display:none"><div class="card"><div class="tw"><table id="tbl-urg"></table></div></div></div>
+    </div>
+
+    <div class="view" id="v-rapports">
+      <div class="g2" style="margin-bottom:12px">
+        <div class="card"><div class="ct">Rapport Commercial — Juin 2026</div><div id="rpt-c"></div></div>
+        <div class="card"><div class="ct">Rapport Marketing</div><div id="rpt-m"></div></div>
+      </div>
+      <div class="card"><div class="ct">ROI — Acqua Due vs Bouteilles Niger</div><div id="rpt-a"></div></div>
+    </div>
+
+    <div class="view" id="v-users">
+      <div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:12px;color:var(--muted)">Gérez les accès et rôles de votre équipe sur tout le Niger</div>
+        <button class="btn br bsm" onclick="om('m-user')">+ Créer un accès</button>
+      </div>
+      <div class="g2">
+        <div class="card"><div class="ct">Utilisateurs actifs</div><div id="ul"></div></div>
+        <div class="card">
+          <div class="ct">Niveaux d'accès</div>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div style="background:rgba(255,215,0,.1);border:1px solid rgba(255,215,0,.3);border-radius:var(--r2);padding:11px">
+              <div style="font-weight:700;font-size:12px;margin-bottom:3px">👑 Super Admin</div>
+              <div style="font-size:11px;color:var(--muted)">Accès total — toutes données, toutes modifications, journal complet, gestion des utilisateurs. Réservé au Directeur Général.</div>
+            </div>
+            <div style="background:var(--red-light);border:1px solid #f5c0cb;border-radius:var(--r2);padding:11px">
+              <div style="font-weight:700;font-size:12px;margin-bottom:3px">🔴 Admin</div>
+              <div style="font-size:11px;color:var(--muted)">Gère son équipe — données de son équipe, créer des membres, accès au journal de son équipe.</div>
+            </div>
+            <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--r2);padding:11px">
+              <div style="font-weight:700;font-size:12px;margin-bottom:3px">👤 Membre</div>
+              <div style="font-size:11px;color:var(--muted)">Accès personnel — uniquement ses propres clients et tâches. Ne voit pas les données des autres membres.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="view" id="v-journal">
+      <div style="margin-bottom:11px">
+        <div class="tabs">
+          <button class="tab active" onclick="st(this,'jl','a')">Toutes</button>
+          <button class="tab" onclick="st(this,'jl','c')">Commercial</button>
+          <button class="tab" onclick="st(this,'jl','m')">Marketing</button>
+          <button class="tab" onclick="st(this,'jl','k')">Communication</button>
+        </div>
+      </div>
+      <div id="jl-a"><div class="card"><div id="jla"></div></div></div>
+      <div id="jl-c" style="display:none"><div class="card"><div id="jlc"></div></div></div>
+      <div id="jl-m" style="display:none"><div class="card"><div id="jlm"></div></div></div>
+      <div id="jl-k" style="display:none"><div class="card"><div id="jlk"></div></div></div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<!-- MODALS -->
+<div class="mo" id="m-add" onclick="cm('m-add')"><div class="md" onclick="event.stopPropagation()">
+  <div class="mh"><h3>Ajouter</h3><button class="mc" onclick="cm('m-add')">✕</button></div>
+  <div class="mb"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <button class="btn bg" style="padding:16px;flex-direction:column;gap:3px;height:auto" onclick="cm('m-add');om('m-cli')">👥<br>Client</button>
+    <button class="btn bg adm" style="padding:16px;flex-direction:column;gap:3px;height:auto" onclick="cm('m-add');om('m-mem')">👤<br>Membre</button>
+    <button class="btn bg" style="padding:16px;flex-direction:column;gap:3px;height:auto" onclick="cm('m-add');om('m-task')">✅<br>Tâche</button>
+    <button class="btn bg" style="padding:16px;flex-direction:column;gap:3px;height:auto" onclick="cm('m-add');om('m-camp')">📣<br>Campagne</button>
+  </div></div>
+</div></div>
+
+<div class="mo" id="m-cli" onclick="cm('m-cli')"><div class="md" onclick="event.stopPropagation()">
+  <div class="mh"><h3>Nouveau Client / Prospect</h3><button class="mc" onclick="cm('m-cli')">✕</button></div>
+  <div class="mb">
+    <div class="fr"><div class="fg"><label class="fl">Nom</label><input class="fi" id="cn" placeholder="Ex: Amadou Mahamane"/></div>
+    <div class="fg"><label class="fl">Type</label><select class="fs" id="ct"><option>B2C — Famille</option><option>B2B — Hôtel</option><option>B2B — Restaurant</option><option>B2B — Clinique</option><option>B2B — Bureau</option><option>B2B — École</option><option>B2B — Administration</option><option>B2B — ONG</option></select></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Téléphone / WhatsApp</label><input class="fi" id="ctel" placeholder="+227 XX XX XX XX"/></div>
+    <div class="fg"><label class="fl">Ville — Niger</label><select class="fs" id="cvil"></select></div></div>
+    <div class="fg"><label class="fl">Quartier / Zone précise</label><input class="fi" id="cq" placeholder="Ex: Plateau, Gamkallé, Centre..."/></div>
+    <div class="fr"><div class="fg"><label class="fl">Statut</label><select class="fs" id="cst"><option>Prospect froid</option><option>Prospect chaud</option><option>Démonstration faite</option><option>Offre envoyée</option><option>Client actif</option><option>Client perdu</option></select></div>
+    <div class="fg"><label class="fl">Commercial assigné</label><select class="fs" id="casg"></select></div></div>
+    <div class="fg"><label class="fl">Produit</label><select class="fs" id="cprod"><option>Dispositif seul — 30.000 FCFA</option><option>Dispositif + 3 bougies — 70.000 FCFA</option><option>Bougie seule — 20.000 FCFA</option><option>Pack 2 bougies — 35.000 FCFA</option><option>Pack 3 bougies — 50.000 FCFA</option><option>Pack 4 bougies — 60.000 FCFA</option></select></div>
+    <div class="fg"><label class="fl">Notes</label><textarea class="ft" id="cn2"></textarea></div>
+  </div>
+  <div class="mf"><button class="btn bg" onclick="cm('m-cli')">Annuler</button><button class="btn br" onclick="addCli()">Enregistrer</button></div>
+</div></div>
+
+<div class="mo" id="m-mem" onclick="cm('m-mem')"><div class="md" onclick="event.stopPropagation()">
+  <div class="mh"><h3>Nouveau Membre d'Équipe</h3><button class="mc" onclick="cm('m-mem')">✕</button></div>
+  <div class="mb">
+    <div class="fr"><div class="fg"><label class="fl">Nom</label><input class="fi" id="mn"/></div>
+    <div class="fg"><label class="fl">Équipe</label><select class="fs" id="meq"><option>Commercial</option><option>Marketing</option><option>Communication</option></select></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Poste</label><input class="fi" id="mp" placeholder="Agent Commercial Terrain"/></div>
+    <div class="fg"><label class="fl">Téléphone</label><input class="fi" id="mtel"/></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Ville — Niger</label><select class="fs" id="mvil"></select></div>
+    <div class="fg"><label class="fl">Zone / Quartier</label><input class="fi" id="mz" placeholder="Plateau, Centre..."/></div></div>
+    <div class="fg"><label class="fl">Objectif mensuel (FCFA)</label><input class="fi" id="mob" placeholder="Ex: 900000"/></div>
+  </div>
+  <div class="mf"><button class="btn bg" onclick="cm('m-mem')">Annuler</button><button class="btn br" onclick="addMem()">Enregistrer</button></div>
+</div></div>
+
+<div class="mo" id="m-task" onclick="cm('m-task')"><div class="md" onclick="event.stopPropagation()">
+  <div class="mh"><h3>Nouvelle Tâche</h3><button class="mc" onclick="cm('m-task')">✕</button></div>
+  <div class="mb">
+    <div class="fg"><label class="fl">Titre</label><input class="fi" id="tt2" placeholder="Ex: Prospecter 20 familles à Zinder"/></div>
+    <div class="fr"><div class="fg"><label class="fl">Assignée à</label><select class="fs" id="tasg"></select></div>
+    <div class="fg"><label class="fl">Priorité</label><select class="fs" id="tpri"><option>Haute</option><option>Moyenne</option><option>Basse</option></select></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Équipe</label><select class="fs" id="teq"><option>Commercial</option><option>Marketing</option><option>Communication</option><option>Toutes</option></select></div>
+    <div class="fg"><label class="fl">Date limite</label><input class="fi" type="date" id="tdt"/></div></div>
+    <div class="fg"><label class="fl">Description</label><textarea class="ft" id="tdesc"></textarea></div>
+  </div>
+  <div class="mf"><button class="btn bg" onclick="cm('m-task')">Annuler</button><button class="btn br" onclick="addTask()">Créer</button></div>
+</div></div>
+
+<div class="mo" id="m-camp" onclick="cm('m-camp')"><div class="md" onclick="event.stopPropagation()">
+  <div class="mh"><h3>Nouvelle Campagne</h3><button class="mc" onclick="cm('m-camp')">✕</button></div>
+  <div class="mb">
+    <div class="fg"><label class="fl">Nom</label><input class="fi" id="cpn"/></div>
+    <div class="fr"><div class="fg"><label class="fl">Canal</label><select class="fs" id="cpc"><option>TikTok</option><option>Instagram</option><option>Facebook</option><option>WhatsApp</option><option>Terrain</option><option>Multi-canaux</option></select></div>
+    <div class="fg"><label class="fl">Budget (FCFA)</label><input class="fi" id="cpb" placeholder="Ex: 150000"/></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Date début</label><input class="fi" type="date" id="cpd"/></div>
+    <div class="fg"><label class="fl">Date fin</label><input class="fi" type="date" id="cpf"/></div></div>
+    <div class="fg"><label class="fl">Objectif</label><textarea class="ft" id="cpo"></textarea></div>
+  </div>
+  <div class="mf"><button class="btn bg" onclick="cm('m-camp')">Annuler</button><button class="btn br" onclick="addCamp()">Lancer</button></div>
+</div></div>
+
+<div class="mo" id="m-pros" onclick="cm('m-pros')"><div class="md" onclick="event.stopPropagation()">
+  <div class="mh"><h3>Nouveau Prospect — Pipeline</h3><button class="mc" onclick="cm('m-pros')">✕</button></div>
+  <div class="mb">
+    <div class="fr"><div class="fg"><label class="fl">Nom</label><input class="fi" id="ppn"/></div>
+    <div class="fg"><label class="fl">Type</label><select class="fs" id="ppt"><option>B2C — Famille</option><option>B2B — Hôtel</option><option>B2B — Restaurant</option><option>B2B — Clinique</option><option>B2B — Bureau</option></select></div></div>
+    <div class="fr"><div class="fg"><label class="fl">Valeur estimée (FCFA)</label><input class="fi" id="ppv" placeholder="Ex: 70000"/></div>
+    <div class="fg"><label class="fl">Étape</label><select class="fs" id="ppe"><option>Prospect</option><option>Contact établi</option><option>Démonstration</option><option>Offre envoyée</option><option>Gagné</option></select></div></div>
+    <div class="fg"><label class="fl">Ville — Niger</label><select class="fs" id="ppvil"></select></div>
+  </div>
+  <div class="mf"><button class="btn bg" onclick="cm('m-pros')">Annuler</button><button class="btn br" onclick="addPros()">Ajouter</button></div>
+</div></div>
+
+<div class="mo" id="m-pub" onclick="cm('m-pub')"><div class="md" onclick="event.stopPropagation()">
+  <div class="mh"><h3>Nouvelle Publication</h3><button class="mc" onclick="cm('m-pub')">✕</button></div>
+  <div class="mb">
+    <div class="fg"><label class="fl">Titre</label><input class="fi" id="pun"/></div>
+    <div class="fr"><div class="fg"><label class="fl">Plateforme</label><select class="fs" id="pup"><option>TikTok</option><option>Instagram</option><option>Facebook</option><option>WhatsApp</option><option>YouTube</option></select></div>
+    <div class="fg"><label class="fl">Date</label><input class="fi" type="date" id="pud"/></div></div>
+    <div class="fg"><label class="fl">Format</label><select class="fs" id="puf"><option>Vidéo Reels/TikTok</option><option>Post image</option><option>Carousel</option><option>Story</option></select></div>
+    <div class="fg"><label class="fl">Notes</label><textarea class="ft" id="puno"></textarea></div>
+  </div>
+  <div class="mf"><button class="btn bg" onclick="cm('m-pub')">Annuler</button><button class="btn br" onclick="addPub()">Planifier</button></div>
+</div></div>
+
+<div class="mo" id="m-user" onclick="cm('m-user')"><div class="md" onclick="event.stopPropagation()">
+  <div class="mh"><h3>Créer un accès utilisateur</h3><button class="mc" onclick="cm('m-user')">✕</button></div>
+  <div class="mb">
+    <div class="fr"><div class="fg"><label class="fl">Nom complet</label><input class="fi" id="un"/></div>
+    <div class="fg"><label class="fl">Équipe</label><select class="fs" id="ueq"><option>Commercial</option><option>Marketing</option><option>Communication</option></select></div></div>
+    <div class="fg"><label class="fl">Ville assignée — Niger</label><select class="fs" id="uvil"></select></div>
+    <div class="fg"><label class="fl">Email / Identifiant</label><input class="fi" id="ue" placeholder="prenom@acquadue.ne"/></div>
+    <div class="fr"><div class="fg"><label class="fl">Mot de passe</label><input class="fi" type="password" id="up2"/></div>
+    <div class="fg"><label class="fl">Rôle</label><select class="fs" id="ur"><option>Membre</option><option>Admin</option></select></div></div>
+    <div style="background:var(--gold-light);border-radius:var(--r2);padding:9px;font-size:11px;color:var(--gold);margin-top:5px">⚠️ Le rôle Super Admin est réservé au Directeur Général.</div>
+  </div>
+  <div class="mf"><button class="btn bg" onclick="cm('m-user')">Annuler</button><button class="btn br" onclick="createU()">Créer l'accès</button></div>
+</div></div>
+
+<script>
+const VILLES = ["Agadez","Abalak","Arlit","Ayorou","Bilma","Birni-N'Gaouré","Birni-N'Konni","Bouza","Boboye","Dakoro","Diffa","Dogondoutchi","Dosso","Filingué","Gaya","Gouré","Iferouane","Illéla","Ingall","Keïta","Kollo","Loga","Madaoua","Magaria","Maïné-Soroa","Maradi","Mayahi","Mirriah","Nguigmi","Niamey","N'Guimi","Ouallam","Say","Tahoua","Tanout","Tchin-Tabaraden","Tchirozérine","Téra","Tillabéri","Torodi","Zinder"];
+
+let USERS=[
+  {id:1,nom:"Yvan Leunkeu Djine",email:"yvan@acquadue.ne",pass:"admin2026",role:"superadmin",equipe:"Direction",ini:"YL",col:"ar",actif:true,ville:"Niamey"},
+  {id:2,nom:"Moussa Abdou",email:"moussa@acquadue.ne",pass:"comm2026",role:"member",equipe:"Commercial",ini:"MA",col:"ab",actif:true,ville:"Niamey"},
+  {id:3,nom:"Fatima Oumarou",email:"fatima@acquadue.ne",pass:"comm2026",role:"member",equipe:"Commercial",ini:"FO",col:"ag",actif:true,ville:"Niamey"},
+  {id:4,nom:"Ibrahim Issoufou",email:"ibrahim@acquadue.ne",pass:"comm2026",role:"member",equipe:"Commercial",ini:"II",col:"ao",actif:true,ville:"Zinder"},
+  {id:5,nom:"Salimata Diallo",email:"salimata@acquadue.ne",pass:"mkt2026",role:"admin",equipe:"Marketing",ini:"SD",col:"ap",actif:true,ville:"Niamey"},
+  {id:6,nom:"Abdoul Karim",email:"abdoul@acquadue.ne",pass:"com2026",role:"member",equipe:"Communication",ini:"AK",col:"ab",actif:true,ville:"Niamey"},
+];
+
+let LOG=[
+  {ts:new Date(Date.now()-3600000),u:"Moussa Abdou",eq:"Commercial",a:"Client ajouté",d:"Famille Mahamane — Niamey — 70.000 FCFA",c:"g",i:"MA",col:"ab"},
+  {ts:new Date(Date.now()-10800000),u:"Salimata Diallo",eq:"Marketing",a:"Campagne créée",d:"Campagne TikTok Juin — 150.000 FCFA",c:"b",i:"SD",col:"ap"},
+  {ts:new Date(Date.now()-18000000),u:"Fatima Oumarou",eq:"Commercial",a:"Prospect mis à jour",d:"Hôtel Sahel — Offre envoyée",c:"o",i:"FO",col:"ag"},
+  {ts:new Date(Date.now()-86400000),u:"Abdoul Karim",eq:"Communication",a:"Publication planifiée",d:"Story Instagram — 20/06/2026",c:"b",i:"AK",col:"ab"},
+  {ts:new Date(Date.now()-172800000),u:"Ibrahim Issoufou",eq:"Commercial",a:"Démo réalisée",d:"Clinique Al Hayat — Zinder",c:"g",i:"II",col:"ao"},
+];
+
+let DB={
+  comm:[
+    {id:1,nom:"Moussa Abdou",poste:"Agent Senior",tel:"+227 90 11 22 33",ville:"Niamey",zone:"Plateau/Centre",obj:900000,ventes:612000,nb:20,statut:"Actif",tx:5},
+    {id:2,nom:"Fatima Oumarou",poste:"Agent Commercial",tel:"+227 90 44 55 66",ville:"Niamey",zone:"Gamkallé/Rive Droite",obj:750000,ventes:480000,nb:16,statut:"Actif",tx:5},
+    {id:3,nom:"Ibrahim Issoufou",poste:"Agent Commercial",tel:"+227 90 77 88 99",ville:"Zinder",zone:"Centre Zinder",obj:750000,ventes:390000,nb:13,statut:"Actif",tx:5},
+    {id:4,nom:"Aïcha Mahamane",poste:"Agent Junior",tel:"+227 90 22 33 44",ville:"Maradi",zone:"Centre Maradi",obj:600000,ventes:270000,nb:9,statut:"Actif",tx:4},
+  ],
+  mkt:[
+    {id:1,nom:"Salimata Diallo",poste:"Chargée Marketing Digital",tel:"+227 91 11 22 33",ville:"Niamey",spec:"Réseaux sociaux/UGC",camps:3,statut:"Actif"},
+    {id:2,nom:"Hamidou Garba",poste:"Marketing Terrain",tel:"+227 91 44 55 66",ville:"Tahoua",spec:"Animation/Événements",camps:1,statut:"Actif"},
+    {id:3,nom:"Mariama Soule",poste:"Assistante Marketing",tel:"+227 91 77 88 99",ville:"Niamey",spec:"Canva/Visuels",camps:2,statut:"Actif"},
+  ],
+  com:[
+    {id:1,nom:"Abdoul Karim",poste:"Chargé Communication",tel:"+227 92 11 22 33",ville:"Niamey",spec:"TikTok/Reels/WhatsApp",pubs:12,statut:"Actif"},
+    {id:2,nom:"Hawa Boubacar",poste:"Community Manager",tel:"+227 92 44 55 66",ville:"Niamey",spec:"Facebook/Instagram",pubs:18,statut:"Actif"},
+  ],
+  clients:[
+    {id:1,nom:"Famille Mahamane",type:"B2C",ville:"Niamey",zone:"Plateau",tel:"+227 90 00 11 22",statut:"Client actif",prod:"Dispositif + 3 bougies — 70.000",asg:"Moussa Abdou",date:"12/06/2026"},
+    {id:2,nom:"Hôtel Sahel Niamey",type:"B2B",ville:"Niamey",zone:"Centre ville",tel:"+227 90 33 44 55",statut:"Offre envoyée",prod:"Dispositif + 3 bougies — 70.000",asg:"Fatima Oumarou",date:"10/06/2026"},
+    {id:3,nom:"Famille Oumarou",type:"B2C",ville:"Niamey",zone:"Gamkallé",tel:"+227 90 55 66 77",statut:"Client actif",prod:"Dispositif seul — 30.000",asg:"Fatima Oumarou",date:"08/06/2026"},
+    {id:4,nom:"Restaurant Le Fleuve",type:"B2B",ville:"Niamey",zone:"Rive Droite",tel:"+227 90 66 77 88",statut:"Démonstration faite",prod:"Pack 3 bougies — 50.000",asg:"Ibrahim Issoufou",date:"07/06/2026"},
+    {id:5,nom:"Clinique Al Hayat",type:"B2B",ville:"Zinder",zone:"Centre",tel:"+227 90 77 88 99",statut:"Prospect chaud",prod:"Dispositif + 3 bougies — 70.000",asg:"Ibrahim Issoufou",date:"05/06/2026"},
+    {id:6,nom:"Famille Issoufou",type:"B2C",ville:"Zinder",zone:"Bango",tel:"+227 90 88 99 00",statut:"Client actif",prod:"Dispositif seul — 30.000",asg:"Ibrahim Issoufou",date:"03/06/2026"},
+    {id:7,nom:"École Primaire Lafia",type:"B2B",ville:"Maradi",zone:"Centre",tel:"+227 90 99 00 11",statut:"Prospect froid",prod:"Dispositif + 3 bougies — 70.000",asg:"Aïcha Mahamane",date:"01/06/2026"},
+    {id:8,nom:"Famille Abdou",type:"B2C",ville:"Maradi",zone:"Maradawa",tel:"+227 90 11 33 55",statut:"Client actif",prod:"Bougie seule — 20.000",asg:"Aïcha Mahamane",date:"30/05/2026"},
+  ],
+  tasks:[
+    {id:1,titre:"Prospecter 50 familles — Plateau Niamey",asg:"Moussa Abdou",eq:"Commercial",pri:"Haute",statut:"En cours",date:"20/06/2026"},
+    {id:2,titre:"5 scripts UGC TikTok juillet",asg:"Salimata Diallo",eq:"Marketing",pri:"Haute",statut:"En cours",date:"25/06/2026"},
+    {id:3,titre:"Relancer Hôtel Sahel",asg:"Fatima Oumarou",eq:"Commercial",pri:"Haute",statut:"À faire",date:"18/06/2026"},
+    {id:4,titre:"3 posts Facebook cette semaine",asg:"Hawa Boubacar",eq:"Communication",pri:"Moyenne",statut:"À faire",date:"17/06/2026"},
+    {id:5,titre:"Rapport hebdo ventes",asg:"Toute l'équipe",eq:"Commercial",pri:"Moyenne",statut:"À faire",date:"21/06/2026"},
+    {id:6,titre:"Tournage vidéo UGC Acqua Due",asg:"Abdoul Karim",eq:"Communication",pri:"Haute",statut:"En cours",date:"22/06/2026"},
+    {id:7,titre:"Prospecter marché Zinder — 30 contacts",asg:"Ibrahim Issoufou",eq:"Commercial",pri:"Haute",statut:"À faire",date:"25/06/2026"},
+  ],
+  pipe:[
+    {id:1,nom:"Famille Traore",type:"B2C",val:30000,etape:"Prospect",asg:"Moussa Abdou",ville:"Niamey"},
+    {id:2,nom:"Famille Seydou",type:"B2C",val:70000,etape:"Contact établi",asg:"Fatima Oumarou",ville:"Niamey"},
+    {id:3,nom:"Bureau BCEAO",type:"B2B",val:210000,etape:"Démonstration",asg:"Moussa Abdou",ville:"Niamey"},
+    {id:4,nom:"Hôtel Gaweye",type:"B2B",val:140000,etape:"Offre envoyée",asg:"Ibrahim Issoufou",ville:"Zinder"},
+    {id:5,nom:"Famille Moussa",type:"B2C",val:30000,etape:"Gagné",asg:"Aïcha Mahamane",ville:"Maradi"},
+    {id:6,nom:"Restaurant Amani",type:"B2B",val:70000,etape:"Contact établi",asg:"Fatima Oumarou",ville:"Niamey"},
+    {id:7,nom:"Famille Daouda",type:"B2C",val:50000,etape:"Prospect",asg:"Aïcha Mahamane",ville:"Tahoua"},
+    {id:8,nom:"Clinique Maman",type:"B2B",val:140000,etape:"Démonstration",asg:"Ibrahim Issoufou",ville:"Zinder"},
+  ],
+  camps:[
+    {nom:"Campagne TikTok Juin",canal:"TikTok",budget:150000,statut:"Active",leads:28,debut:"01/06",fin:"30/06"},
+    {nom:"WhatsApp Bougie Reminder",canal:"WhatsApp",budget:0,statut:"Active",leads:45,debut:"10/06",fin:"30/06"},
+    {nom:"Facebook Ramadan Promo",canal:"Facebook",budget:75000,statut:"Terminée",leads:62,debut:"01/03",fin:"30/04"},
+    {nom:"Animation Marchés Niger",canal:"Terrain",budget:50000,statut:"Active",leads:18,debut:"15/06",fin:"15/07"},
+  ],
+  pubs:[
+    {titre:"Script UGC — Eau contaminée",plat:"TikTok",fmt:"Vidéo",date:"17/06",statut:"Publié"},
+    {titre:"5 raisons d'utiliser Acqua Due",plat:"Instagram",fmt:"Carousel",date:"15/06",statut:"Publié"},
+    {titre:"Témoignage famille Oumarou",plat:"Facebook",fmt:"Post",date:"20/06",statut:"Planifié"},
+    {titre:"Avant/Après eau robinet",plat:"TikTok",fmt:"Vidéo",date:"22/06",statut:"En création"},
+  ],
+};
+
+let CU=null;
+const AVC=["ar","ab","ag","ao","ap"];
+const ini=n=>n.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase();
+const avc=i=>AVC[i%5];
+const fcfa=n=>Number(n).toLocaleString("fr-FR")+" FCFA";
+const isAdm=()=>CU&&(CU.role==="admin"||CU.role==="superadmin");
+const isSA=()=>CU&&CU.role==="superadmin";
+
+function fl(e,p){document.getElementById("lu").value=e;document.getElementById("lp").value=p;}
+
+function login(){
+  const e=document.getElementById("lu").value.trim();
+  const p=document.getElementById("lp").value.trim();
+  const u=USERS.find(x=>x.email===e&&x.pass===p&&x.actif);
+  if(!u){document.getElementById("lerr").style.display="block";return;}
+  CU=u;
+  document.getElementById("login-screen").style.display="none";
+  document.getElementById("app").classList.add("on");
+  document.getElementById("sb-av").textContent=CU.ini;
+  document.getElementById("sb-nm").textContent=CU.nom;
+  document.getElementById("sb-rl").textContent={superadmin:"👑 Super Admin",admin:"🔴 Admin",member:"👤 Membre"}[CU.role];
+  document.querySelectorAll(".adm").forEach(el=>el.style.display=isAdm()?"":"none");
+  fvil(["cvil","mvil","ppvil","uvil"]);
+  fusr();
+  log("Connexion",CU.nom+" s'est connecté(e)","g");
+  go("dash");
+}
+
+function logout(){
+  log("Déconnexion",CU.nom+" s'est déconnecté(e)","r");
+  CU=null;
+  document.getElementById("login-screen").style.display="flex";
+  document.getElementById("app").classList.remove("on");
+  document.getElementById("lu").value="";
+  document.getElementById("lp").value="";
+  document.getElementById("lerr").style.display="none";
+}
+
+function fvil(ids){ids.forEach(id=>{const s=document.getElementById(id);if(s)s.innerHTML=VILLES.map(v=>`<option>${v}</option>`).join("")});}
+
+function fusr(){
+  const all=[...DB.comm,...DB.mkt,...DB.com];
+  const opts=all.map(m=>`<option>${m.nom}</option>`).join("");
+  ["casg","tasg"].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=opts;});
+}
+
+function log(a,d,c,u){
+  const usr=u||CU;
+  LOG.unshift({ts:new Date(),u:usr.nom,eq:usr.equipe,a,d,c,i:usr.ini,col:usr.col||"ab"});
+}
+
+function td(d){
+  const diff=Math.round((new Date()-d)/1000);
+  if(diff<60)return"À l'instant";
+  if(diff<3600)return`Il y a ${Math.round(diff/60)}min`;
+  if(diff<86400)return`Il y a ${Math.round(diff/3600)}h`;
+  return d.toLocaleDateString("fr-FR")+" "+d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+}
+
+function stg(s){
+  const m={
+    "Client actif":"tg","Prospect chaud":"tgo","Démonstration faite":"tbl","Offre envoyée":"tp",
+    "Prospect froid":"","Client perdu":"tr","Actif":"tg","Active":"tg","Terminée":"",
+    "Publié":"tg","Planifié":"tbl","En création":"tgo","En cours":"tbl","À faire":"tgo",
+    "Haute":"tr","Moyenne":"tgo","Basse":""
+  };
+  return`<span class="tag ${m[s]||""}">${s}</span>`;
+}
+
+function go(v){
+  document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".ni").forEach(x=>x.classList.remove("active"));
+  const el=document.getElementById("v-"+v);
+  if(el)el.classList.add("active");
+  const nm={dash:0,pipe:1,comm:2,mkt:3,com:4,clients:5,taches:6,rapports:7,users:8,journal:9};
+  document.querySelectorAll(".ni")[nm[v]]?.classList.add("active");
+  const tl={dash:"Tableau de bord",pipe:"Pipeline des Ventes",comm:"Équipe Commerciale",mkt:"Équipe Marketing",com:"Équipe Communication",clients:"Clients & Prospects",taches:"Tâches & Objectifs",rapports:"Rapports & Analyses",users:"Gestion des Utilisateurs",journal:"Journal d'Activité"};
+  document.getElementById("ptitle").textContent=tl[v]||v;
+  render(v);
+}
+
+function st(btn,pfx,tab){
+  btn.closest(".tabs").querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+  btn.classList.add("active");
+  document.querySelectorAll(`[id^="${pfx}-"]`).forEach(t=>{if(t.id.startsWith(pfx+"-"))t.style.display="none";});
+  const el=document.getElementById(`${pfx}-${tab}`);
+  if(el)el.style.display="block";
+}
+
+function om(id){document.getElementById(id).classList.add("open");fvil(["cvil","mvil","ppvil","uvil"]);fusr();}
+function cm(id){document.getElementById(id).classList.remove("open");}
+
+function render(v){
+  const fn={dash:rDash,pipe:rPipe,comm:rComm,mkt:rMkt,com:rCom,clients:rCli,taches:rTask,rapports:rRpt,users:rUsers,journal:rJrnl};
+  if(fn[v])fn[v]();
+}
+
+function rDash(){
+  const tp=[{n:"Équipe Commerciale",v:68,s:"2.04M FCFA / 3M objectif",f:"pfr"},{n:"Équipe Marketing",v:82,s:"4 campagnes actives",f:"pfb"},{n:"Équipe Communication",v:75,s:"30 publications/mois",f:"pfg"}];
+  document.getElementById("d-perf").innerHTML=tp.map(t=>`<div style="margin-bottom:11px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:12px;font-weight:500">${t.n}</span><span style="font-size:12px;font-weight:700;color:var(--red)">${t.v}%</span></div><div class="pb"><div class="pf ${t.f}" style="width:${t.v}%"></div></div><div class="tm" style="margin-top:2px">${t.s}</div></div>`).join("");
+  document.getElementById("d-act").innerHTML=LOG.slice(0,5).map(l=>`<div class="tli"><div class="tld ${l.c}"></div><div style="font-size:12px"><strong>${l.u}</strong> — ${l.a}</div><div class="tm">${l.d}</div><div class="tm">${td(l.ts)}</div></div>`).join("");
+  document.getElementById("d-top").innerHTML=[...DB.comm].sort((a,b)=>b.ventes-a.ventes).map((c,i)=>`<div style="display:flex;align-items:center;gap:7px;padding:7px 0;border-bottom:1px solid var(--border)"><div style="font-size:10px;font-weight:700;color:var(--muted);width:13px">${i+1}</div><div class="av ${avc(i)}">${ini(c.nom)}</div><div style="flex:1"><div style="font-size:12px;font-weight:600">${c.nom}</div><div class="tm">${c.ville} • ${c.nb} ventes</div></div><div style="font-size:12px;font-weight:700;color:var(--red)">${fcfa(c.ventes)}</div></div>`).join("");
+  document.getElementById("d-camp").innerHTML=DB.camps.filter(c=>c.statut==="Active").map(c=>`<div style="display:flex;align-items:center;gap:7px;padding:7px 0;border-bottom:1px solid var(--border)"><div style="flex:1"><div style="font-size:12px;font-weight:600">${c.nom}</div><div class="tm">${c.canal} • ${c.leads} leads</div></div>${stg(c.statut)}</div>`).join("");
+  document.getElementById("d-task").innerHTML=DB.tasks.filter(t=>t.pri==="Haute").slice(0,4).map(t=>`<div style="padding:7px 0;border-bottom:1px solid var(--border)"><div style="font-size:12px;font-weight:500;margin-bottom:2px">${t.titre}</div><div style="display:flex;align-items:center;gap:5px"><span class="tm">${t.asg}</span>${stg(t.statut)}</div></div>`).join("");
+}
+
+function rPipe(){
+  const stages=["Prospect","Contact établi","Démonstration","Offre envoyée","Gagné"];
+  const cols=["muted2","blue","gold","purple","green"];
+  document.getElementById("pb").innerHTML=stages.map((s,i)=>{
+    const cards=DB.pipe.filter(p=>p.etape===s);
+    const tot=cards.reduce((a,c)=>a+c.val,0);
+    return`<div class="pc"><div class="pch"><span style="color:var(--${cols[i]})">${s}</span><span>${cards.length}</span></div>${cards.map(c=>`<div class="pcard"><div class="pcn">${c.nom}</div><div class="pcs">${c.type} • ${c.ville}</div><div class="pcv">${fcfa(c.val)}</div></div>`).join("")}<div class="tm" style="text-align:right;margin-top:4px;padding-top:4px;border-top:1px solid var(--border)">Total: ${fcfa(tot)}</div></div>`;
+  }).join("");
+}
+
+function rComm(){
+  document.getElementById("tbl-comm").innerHTML=`<thead><tr><th>Membre</th><th>Ville</th><th>Zone</th><th>Ventes</th><th>Objectif</th><th>%</th><th>Commission</th><th>Statut</th></tr></thead><tbody>`+DB.comm.map((c,i)=>{const p=Math.round(c.ventes/c.obj*100);return`<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="av ${avc(i)}">${ini(c.nom)}</div><div><div class="tb">${c.nom}</div><div class="tm">${c.poste}</div></div></div></td><td class="tm">${c.ville}</td><td class="tm">${c.zone}</td><td><div style="font-weight:700;color:var(--red)">${fcfa(c.ventes)}</div><div class="tm">${c.nb} ventes</div></td><td class="tm">${fcfa(c.obj)}</td><td><div style="font-size:11px;font-weight:700;margin-bottom:2px">${p}%</div><div class="pb" style="min-width:50px"><div class="pf ${p>=100?"pfg":p>=60?"pfb":"pfo"}" style="width:${Math.min(p,100)}%"></div></div></td><td style="color:var(--green);font-weight:700">${fcfa(Math.round(c.ventes*c.tx/100))}</td><td>${stg(c.statut)}</td></tr>`}).join("")+"</tbody>";
+  document.getElementById("obj-v").innerHTML=`<table><thead><tr><th>Commercial</th><th>Ville</th><th>Objectif</th><th>Réalisé</th><th>Écart</th><th>%</th></tr></thead><tbody>`+DB.comm.map(c=>{const e=c.ventes-c.obj;const p=Math.round(c.ventes/c.obj*100);return`<tr><td class="tb">${c.nom}</td><td class="tm">${c.ville}</td><td>${fcfa(c.obj)}</td><td style="color:var(--red);font-weight:600">${fcfa(c.ventes)}</td><td style="color:${e>=0?"var(--green)":"var(--red)"};font-weight:600">${e>=0?"+":""}${fcfa(e)}</td><td style="font-weight:700;color:${p>=100?"var(--green)":p>=60?"var(--blue)":"var(--red)"}">${p}%</td></tr>`}).join("")+"</tbody></table>";
+  const tot=DB.comm.reduce((s,c)=>s+Math.round(c.ventes*c.tx/100),0);
+  document.getElementById("com-v").innerHTML=`<table><thead><tr><th>Commercial</th><th>Ventes</th><th>Taux</th><th>Commission</th></tr></thead><tbody>`+DB.comm.map(c=>`<tr><td class="tb">${c.nom}</td><td>${fcfa(c.ventes)}</td><td>${c.tx}%</td><td style="color:var(--green);font-weight:700">${fcfa(Math.round(c.ventes*c.tx/100))}</td></tr>`).join()+`<tr style="border-top:2px solid var(--border)"><td colspan="3" style="font-weight:700;text-align:right">Total à verser</td><td style="color:var(--red);font-weight:700;font-size:14px">${fcfa(tot)}</td></tr></tbody></table>`;
+}
+
+function rMkt(){
+  document.getElementById("tbl-mkt").innerHTML=`<thead><tr><th>Membre</th><th>Ville</th><th>Spécialité</th><th>Campagnes</th><th>Tél.</th><th>Statut</th></tr></thead><tbody>`+DB.mkt.map((m,i)=>`<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="av ${avc(i+1)}">${ini(m.nom)}</div><div><div class="tb">${m.nom}</div><div class="tm">${m.poste}</div></div></div></td><td class="tm">${m.ville}</td><td class="tm">${m.spec}</td><td style="font-weight:700;color:var(--blue)">${m.camps}</td><td class="tm">${m.tel}</td><td>${stg(m.statut)}</td></tr>`).join("")+"</tbody>";
+  document.getElementById("camp-v").innerHTML=`<div class="g2">`+DB.camps.map(c=>`<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:9px"><div><div style="font-size:13px;font-weight:700">${c.nom}</div><div class="tm">${c.canal} • ${c.debut}→${c.fin}</div></div>${stg(c.statut)}</div><div style="display:flex;gap:13px"><div><div class="kl">Leads</div><div style="font-size:19px;font-weight:800;color:var(--blue)">${c.leads}</div></div><div><div class="kl">Budget</div><div style="font-size:19px;font-weight:800;color:var(--red)">${c.budget>0?fcfa(c.budget):"Gratuit"}</div></div></div></div>`).join("")+"</div>";
+  document.getElementById("cnt-v").innerHTML=`<div class="card"><table><thead><tr><th>Publication</th><th>Plateforme</th><th>Format</th><th>Date</th><th>Statut</th></tr></thead><tbody>`+DB.pubs.map(p=>`<tr><td class="tb">${p.titre}</td><td>${p.plat}</td><td class="tm">${p.fmt}</td><td class="tm">${p.date}</td><td>${stg(p.statut)}</td></tr>`).join("")+"</tbody></table></div>";
+}
+
+function rCom(){
+  document.getElementById("tbl-com").innerHTML=`<thead><tr><th>Membre</th><th>Ville</th><th>Spécialité</th><th>Pubs/mois</th><th>Tél.</th><th>Statut</th></tr></thead><tbody>`+DB.com.map((c,i)=>`<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="av ${avc(i+2)}">${ini(c.nom)}</div><div><div class="tb">${c.nom}</div><div class="tm">${c.poste}</div></div></div></td><td class="tm">${c.ville}</td><td class="tm">${c.spec}</td><td style="font-weight:700;color:var(--green)">${c.pubs}</td><td class="tm">${c.tel}</td><td>${stg(c.statut)}</td></tr>`).join("")+"</tbody>";
+  document.getElementById("pub-v").innerHTML=`<div class="card"><table><thead><tr><th>Titre</th><th>Plateforme</th><th>Format</th><th>Date</th><th>Statut</th></tr></thead><tbody>`+DB.pubs.map(p=>`<tr><td class="tb">${p.titre}</td><td>${p.plat}</td><td class="tm">${p.fmt}</td><td class="tm">${p.date}</td><td>${stg(p.statut)}</td></tr>`).join("")+"</tbody></table></div>";
+}
+
+function rCli(){
+  let data=DB.clients;
+  if(!isAdm())data=data.filter(c=>c.asg.split(" ")[0]===CU.nom.split(" ")[0]);
+  const mk=d=>`<thead><tr><th>Client</th><th>Type</th><th>Ville</th><th>Zone</th><th>Produit</th><th>Commercial</th><th>Statut</th><th>Date</th></tr></thead><tbody>`+d.map((c,i)=>`<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="av ${avc(i)}">${ini(c.nom)}</div><div><div class="tb">${c.nom}</div><div class="tm">${c.tel}</div></div></div></td><td>${c.type==="B2B"?"<span class="tag tbl">B2B</span>":"<span class="tag tg">B2C</span>"}</td><td class="tm">${c.ville}</td><td class="tm">${c.zone||"-"}</td><td class="tm">${c.prod}</td><td class="tm">${c.asg.split(" ")[0]}</td><td>${stg(c.statut)}</td><td class="tm">${c.date}</td></tr>`).join("")+"</tbody>";
+  document.getElementById("tbl-cli").innerHTML=mk(data);
+  document.getElementById("tbl-b2c").innerHTML=mk(data.filter(c=>c.type==="B2C"));
+  document.getElementById("tbl-b2b").innerHTML=mk(data.filter(c=>c.type==="B2B"));
+}
+
+function rTask(){
+  let data=DB.tasks;
+  if(!isAdm())data=data.filter(t=>t.asg.includes(CU.nom.split(" ")[0])||t.asg==="Toute l'équipe");
+  const mk=d=>`<thead><tr><th>Tâche</th><th>Assignée à</th><th>Équipe</th><th>Priorité</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>`+d.map(t=>`<tr><td class="tb">${t.titre}</td><td class="tm">${t.asg}</td><td>${t.eq==="Commercial"?"<span class="tag tr">"+t.eq+"</span>":t.eq==="Marketing"?"<span class="tag tbl">"+t.eq+"</span>":"<span class="tag tg">"+t.eq+"</span>"}</td><td>${stg(t.pri)}</td><td class="tm">${t.date}</td><td>${stg(t.statut)}</td><td><button class="btn bg bsm" onclick="done(${t.id})">✓</button></td></tr>`).join("")+"</tbody>";
+  document.getElementById("tbl-tsk").innerHTML=mk(data);
+  document.getElementById("tbl-urg").innerHTML=mk(data.filter(t=>t.pri==="Haute"));
+  document.getElementById("nb-t").textContent=data.filter(t=>t.statut!=="Terminée").length;
+}
+
+function rRpt(){
+  const tv=DB.comm.reduce((s,c)=>s+c.ventes,0);
+  const tc=DB.comm.reduce((s,c)=>s+Math.round(c.ventes*c.tx/100),0);
+  document.getElementById("rpt-c").innerHTML=`<div class="g2" style="margin-bottom:11px"><div style="background:var(--red-light);border-radius:var(--r2);padding:10px;text-align:center"><div class="kl" style="color:var(--red)">CA TOTAL</div><div style="font-size:18px;font-weight:800;color:var(--red)">${fcfa(tv)}</div></div><div style="background:var(--green-light);border-radius:var(--r2);padding:10px;text-align:center"><div class="kl" style="color:var(--green)">COMMISSIONS</div><div style="font-size:18px;font-weight:800;color:var(--green)">${fcfa(tc)}</div></div></div>`+DB.comm.map(c=>{const p=Math.round(c.ventes/c.obj*100);return`<div style="padding:7px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between;margin-bottom:2px"><span style="font-size:12px;font-weight:600">${c.nom} — ${c.ville}</span><span style="font-size:12px;font-weight:700;color:var(--red)">${p}%</span></div><div class="pb"><div class="pf ${p>=100?"pfg":p>=60?"pfb":"pfr"}" style="width:${Math.min(p,100)}%"></div></div><div class="tm">${fcfa(c.ventes)} / ${fcfa(c.obj)}</div></div>`}).join("");
+  const tl2=DB.camps.reduce((s,c)=>s+c.leads,0);
+  const tb=DB.camps.reduce((s,c)=>s+c.budget,0);
+  document.getElementById("rpt-m").innerHTML=`<div class="g2" style="margin-bottom:11px"><div style="background:var(--blue-light);border-radius:var(--r2);padding:10px;text-align:center"><div class="kl" style="color:var(--blue)">LEADS</div><div style="font-size:18px;font-weight:800;color:var(--blue)">${tl2}</div></div><div style="background:var(--gold-light);border-radius:var(--r2);padding:10px;text-align:center"><div class="kl" style="color:var(--gold)">BUDGET</div><div style="font-size:18px;font-weight:800;color:var(--gold)">${fcfa(tb)}</div></div></div>`+DB.camps.map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)"><div><div style="font-size:12px;font-weight:600">${c.nom}</div><div class="tm">${c.canal}</div></div><div style="text-align:right"><div style="font-size:12px;font-weight:700;color:var(--blue)">${c.leads} leads</div>${stg(c.statut)}</div></div>`).join("");
+  document.getElementById("rpt-a").innerHTML=`<div class="g2"><div><div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--muted2)">Concurrence bouteilles — Niger</div><table><thead><tr><th>Format</th><th>Prix</th><th>Usage</th></tr></thead><tbody>${[["Pack 0,35L x12-15","1.000–1.400 FCFA","Réunions,enfants"],["Pack 1L x12","1.800 FCFA","Restauration,sport"],["Pack 1,5L x6","1.500 FCFA","Famille semaine"],["Pack 1,5L x12","2.500 FCFA","Grand carton"],["Bonbonne 19L","2.000 FCFA","Collectif"],["Bouteille 1,5L unité","400–500 FCFA","Quotidien"]].map(r=>`<tr><td class="tb">${r[0]}</td><td style="color:var(--red);font-weight:600">${r[1]}</td><td class="tm">${r[2]}</td></tr>`).join("")}</tbody></table></div><div><div style="background:var(--red-light);border-radius:var(--r2);padding:10px;margin-bottom:8px"><div class="kl" style="color:var(--red)">COÛT BOUTEILLES/MOIS</div><div style="font-size:11px">2 packs 1,5L x6/semaine = <strong style="color:var(--red)">12.000 FCFA/mois</strong></div></div><div style="background:var(--green-light);border-radius:var(--r2);padding:10px;margin-bottom:8px"><div class="kl" style="color:var(--green)">COÛT ACQUA DUE/MOIS</div><div style="font-size:11px">Bougie 20.000 / 3 mois = <strong style="color:var(--green)">6.700 FCFA/mois</strong></div></div><div style="background:var(--blue-light);border-radius:var(--r2);padding:10px"><div class="kl" style="color:var(--blue)">ÉCONOMIE ANNUELLE</div><div style="font-size:22px;font-weight:800;color:var(--blue)">63.600 FCFA/an</div><div class="tm">Rentabilisé en moins de 6 mois</div></div></div></div>`;
+}
+
+function rUsers(){
+  document.getElementById("ul").innerHTML=USERS.map((u,i)=>`<div class="uc2"><div class="av ${u.col}">${u.ini}</div><div class="user-row-info" style="flex:1"><div style="font-size:13px;font-weight:600">${u.nom}</div><div style="font-size:11px;color:var(--muted)">${u.email} • ${u.equipe} • ${u.ville}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px"><span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;${u.role==="superadmin"?"background:rgba(255,215,0,.2);color:#b8860b":u.role==="admin"?"background:var(--red-light);color:var(--red)":"background:var(--card2);color:var(--muted)"}">${{superadmin:"👑 Super Admin",admin:"🔴 Admin",member:"👤 Membre"}[u.role]}</span>${u.id!==1&&isSA()?`<button class="btn bg bsm" onclick="togU(${u.id})">${u.actif?"Désactiver":"Activer"}</button>`:""}</div></div>`).join("");
+}
+
+function rJrnl(){
+  if(!isAdm()){document.getElementById("jla").innerHTML="<div style='text-align:center;padding:20px;color:var(--muted)'>Accès réservé aux administrateurs.</div>";return;}
+  const rL=(items,id)=>{const el=document.getElementById(id);if(!el)return;el.innerHTML=items.length?items.map(l=>`<div class="ai"><div class="aav ${l.col}">${l.i}</div><div><div style="font-size:12px"><strong>${l.u}</strong> (${l.eq}) — ${l.a}</div><div class="tm">${l.d}</div><div class="tm">🕒 ${td(l.ts)}</div></div></div>`).join(""):"<div style='text-align:center;padding:16px;color:var(--muted)'>Aucune activité</div>";};
+  rL(LOG,"jla");rL(LOG.filter(l=>l.eq==="Commercial"),"jlc");rL(LOG.filter(l=>l.eq==="Marketing"),"jlm");rL(LOG.filter(l=>l.eq==="Communication"),"jlk");
+}
+
+function addCli(){
+  const n=document.getElementById("cn").value.trim();if(!n)return alert("Entrez un nom");
+  const v=document.getElementById("cvil").value;const q=document.getElementById("cq").value;
+  const c={id:Date.now(),nom:n,type:document.getElementById("ct").value.split(" ")[0],ville:v,zone:q||v,tel:document.getElementById("ctel").value,statut:document.getElementById("cst").value,prod:document.getElementById("cprod").value,asg:document.getElementById("casg").value,date:new Date().toLocaleDateString("fr-FR")};
+  DB.clients.unshift(c);log("Client ajouté",`${n} — ${v}${q?" / "+q:""} — ${c.prod}`,"g");
+  document.getElementById("nb-cl").textContent=DB.clients.length;cm("m-cli");go("clients");
+}
+
+function addMem(){
+  const n=document.getElementById("mn").value.trim();if(!n)return alert("Entrez un nom");
+  const eq=document.getElementById("meq").value;const v=document.getElementById("mvil").value;const z=document.getElementById("mz").value;
+  const o={id:Date.now(),nom:n,poste:document.getElementById("mp").value,tel:document.getElementById("mtel").value,ville:v,zone:z,statut:"Actif"};
+  const e=eq.toLowerCase();
+  if(e==="commercial"){o.obj=parseInt(document.getElementById("mob").value)||600000;o.ventes=0;o.nb=0;o.tx=5;DB.comm.push(o);document.getElementById("nb-c").textContent=DB.comm.length;}
+  else if(e==="marketing"){o.spec=z;o.camps=0;DB.mkt.push(o);document.getElementById("nb-m").textContent=DB.mkt.length;}
+  else{o.spec=z;o.pubs=0;DB.com.push(o);document.getElementById("nb-k").textContent=DB.com.length;}
+  log("Membre ajouté",`${n} — ${eq} — ${v}`,"b");cm("m-mem");go(e==="commercial"?"comm":e==="marketing"?"mkt":"com");
+}
+
+function addTask(){
+  const t=document.getElementById("tt2").value.trim();if(!t)return alert("Entrez un titre");
+  const tk={id:Date.now(),titre:t,asg:document.getElementById("tasg").value,eq:document.getElementById("teq").value,pri:document.getElementById("tpri").value,date:document.getElementById("tdt").value||"—",statut:"À faire"};
+  DB.tasks.unshift(tk);log("Tâche créée",`${t} → ${tk.asg}`,"o");
+  document.getElementById("nb-t").textContent=DB.tasks.length;cm("m-task");go("taches");
+}
+
+function addCamp(){
+  const n=document.getElementById("cpn").value.trim();if(!n)return alert("Entrez un nom");
+  DB.camps.unshift({nom:n,canal:document.getElementById("cpc").value,budget:parseInt(document.getElementById("cpb").value)||0,statut:"Active",leads:0,debut:document.getElementById("cpd").value||"—",fin:document.getElementById("cpf").value||"—"});
+  log("Campagne lancée",`${n} — ${DB.camps[0].canal}`,"b");cm("m-camp");go("mkt");
+}
+
+function addPros(){
+  const n=document.getElementById("ppn").value.trim();if(!n)return alert("Entrez un nom");
+  const p={id:Date.now(),nom:n,type:document.getElementById("ppt").value.split(" ")[0],val:parseInt(document.getElementById("ppv").value)||30000,etape:document.getElementById("ppe").value,asg:CU.nom,ville:document.getElementById("ppvil").value};
+  DB.pipe.push(p);log("Prospect ajouté",`${n} — ${p.ville} — ${fcfa(p.val)}`,"o");
+  document.getElementById("nb-p").textContent=DB.pipe.length;cm("m-pros");go("pipe");
+}
+
+function addPub(){
+  const n=document.getElementById("pun").value.trim();if(!n)return alert("Entrez un titre");
+  DB.pubs.unshift({titre:n,plat:document.getElementById("pup").value,fmt:document.getElementById("puf").value,date:document.getElementById("pud").value||"—",statut:"Planifié"});
+  log("Publication planifiée",`${n} — ${DB.pubs[0].plat}`,"b");cm("m-pub");go("com");
+}
+
+function createU(){
+  const n=document.getElementById("un").value.trim();const e=document.getElementById("ue").value.trim();const p=document.getElementById("up2").value.trim();
+  if(!n||!e||!p)return alert("Remplissez tous les champs");
+  if(USERS.find(u=>u.email===e))return alert("Cet email existe déjà");
+  const v=document.getElementById("uvil").value;
+  USERS.push({id:Date.now(),nom:n,email:e,pass:p,role:document.getElementById("ur").value.toLowerCase(),equipe:document.getElementById("ueq").value,ini:ini(n),col:AVC[USERS.length%5],actif:true,ville:v});
+  log("Accès créé",`${n} — ${e} — ${v}`,"b");cm("m-user");go("users");
+}
+
+function togU(id){const u=USERS.find(x=>x.id===id);if(u){u.actif=!u.actif;log(u.actif?"Utilisateur activé":"Utilisateur désactivé",`${u.nom} — ${u.email}`,u.actif?"g":"r");rUsers();}}
+function done(id){const t=DB.tasks.find(x=>x.id===id);if(t){t.statut="Terminée";log("Tâche terminée",t.titre,"g");rTask();}}
+
+document.getElementById("login-screen").style.display="flex";
+document.getElementById("app").style.display="none";
+</script>
+</body>
+</html>
