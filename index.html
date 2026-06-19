@@ -198,6 +198,7 @@ tr:last-child td{border-bottom:none}
     <input class="login-input" id="li-user" placeholder="Email" autocomplete="off"/>
     <input class="login-input" id="li-pass" type="password" placeholder="Mot de passe" onkeydown="if(event.key==='Enter')doLogin()"/>
     <button class="login-btn" onclick="doLogin()">Se connecter</button>
+    <div style="text-align:center;margin-top:10px"><span class="hint" onclick="openForgotPassword()">Mot de passe oublié ?</span></div>
     <div class="login-error" id="li-error">Identifiant ou mot de passe incorrect.</div>
     <div class="lock-banner" id="li-lock">🔒 Compte verrouillé après plusieurs tentatives. Contactez votre administrateur.</div>
     <div class="login-hints">
@@ -209,7 +210,43 @@ tr:last-child td{border-bottom:none}
   </div>
 </div>
 
+<!-- FORGOT PASSWORD SCREEN -->
+<div id="forgot-screen" style="position:fixed;inset:0;background:linear-gradient(135deg,#a00c23,#C8102E);display:none;align-items:center;justify-content:center;z-index:1000">
+  <div class="login-box">
+    <div class="login-logo">
+      <div style="font-size:32px;margin-bottom:6px">🔑</div>
+      <h1>Mot de passe oublié</h1>
+      <p>Recuperation par email securise</p>
+    </div>
+
+    <div id="forgot-step-1">
+      <div class="form-group"><label class="form-label">Votre email</label><input class="login-input" id="fp-email" placeholder="votre.email@acquadue.ne"/></div>
+      <div class="form-hint" style="margin-bottom:10px">Un code de verification sera envoye a l'adresse email de recuperation du compte (djineyvan@yahoo.fr).</div>
+      <button class="login-btn" onclick="sendResetCode()" id="fp-send-btn">Envoyer le code</button>
+      <div class="login-error" id="fp-error-1"></div>
+    </div>
+
+    <div id="forgot-step-2" style="display:none">
+      <div class="form-group"><label class="form-label">Code recu par email</label><input class="login-input" id="fp-code" placeholder="Ex: 482917" maxlength="6"/></div>
+      <div class="form-group"><label class="form-label">Nouveau mot de passe</label><input class="login-input" type="password" id="fp-newpass" placeholder="Min. 8 car., 1 maj., 1 chiffre, 1 special"/></div>
+      <div class="pwd-strength" id="fp-pass-bars"><div class="pwd-bar"></div><div class="pwd-bar"></div><div class="pwd-bar"></div><div class="pwd-bar"></div></div>
+      <div class="form-group" style="margin-top:8px"><label class="form-label">Confirmer le mot de passe</label><input class="login-input" type="password" id="fp-confirmpass" placeholder="Confirmer"/></div>
+      <button class="login-btn" onclick="confirmResetCode()">Reinitialiser le mot de passe</button>
+      <div class="login-error" id="fp-error-2"></div>
+    </div>
+
+    <div id="forgot-step-3" style="display:none;text-align:center">
+      <div style="font-size:40px;margin-bottom:10px">✅</div>
+      <p style="font-size:13px;margin-bottom:16px">Mot de passe reinitialise avec succes !</p>
+      <button class="login-btn" onclick="closeForgotPassword()">Retour a la connexion</button>
+    </div>
+
+    <div style="text-align:center;margin-top:14px"><span class="hint" onclick="closeForgotPassword()">← Retour a la connexion</span></div>
+  </div>
+</div>
+
 <!-- APP CONTAINER -->
+
 <div id="app"></div>
 
 <script>
@@ -2175,6 +2212,150 @@ function addFacture(){
   logAction('Facture generee', id + ' — ' + client + ' — ' + fcfa(parseInt(el('ft-montant').value) || 0), 'green');
   closeModal('modal-facture');
   go('facturation');
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// FORGOT PASSWORD FLOW — sends real email via Resend through /api/forgot-password
+// ════════════════════════════════════════════════════════════════════════════
+
+let FP_TARGET_USER = null;
+let FP_RESET_CODE = null;
+let FP_CODE_EXPIRES = null;
+
+function openForgotPassword(){
+  el('login-screen').style.display = 'none';
+  el('forgot-screen').style.display = 'flex';
+  el('forgot-step-1').style.display = 'block';
+  el('forgot-step-2').style.display = 'none';
+  el('forgot-step-3').style.display = 'none';
+  el('fp-email').value = '';
+  el('fp-error-1').style.display = 'none';
+  el('fp-error-1').textContent = '';
+}
+
+function closeForgotPassword(){
+  el('forgot-screen').style.display = 'none';
+  el('login-screen').style.display = 'flex';
+  FP_TARGET_USER = null; FP_RESET_CODE = null; FP_CODE_EXPIRES = null;
+}
+
+function generateResetCode(){
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function sendResetCode(){
+  const email = el('fp-email').value.trim();
+  const errorEl = el('fp-error-1');
+  errorEl.style.display = 'none';
+
+  const user = USERS.find(function(u){ return u.email === email; });
+  if(!user){
+    errorEl.textContent = "Aucun compte associe a cet email.";
+    errorEl.style.display = 'block';
+    return;
+  }
+  if(!user.actif){
+    errorEl.textContent = "Ce compte est desactive. Contactez le Super Admin.";
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  FP_TARGET_USER = user;
+  FP_RESET_CODE = generateResetCode();
+  FP_CODE_EXPIRES = Date.now() + 15 * 60 * 1000; // 15 minutes
+
+  const btn = el('fp-send-btn');
+  btn.textContent = 'Envoi en cours...';
+  btn.disabled = true;
+
+  fetch('/api/forgot-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      userName: user.nom,
+      userEmail: user.email,
+      resetCode: FP_RESET_CODE,
+      requestedBy: user.nom
+    })
+  })
+  .then(function(res){ return res.json().then(function(data){ return { ok: res.ok, data: data }; }); })
+  .then(function(result){
+    btn.textContent = 'Envoyer le code';
+    btn.disabled = false;
+    if(!result.ok){
+      errorEl.textContent = "Erreur d'envoi: " + (result.data.error || 'Veuillez reessayer');
+      errorEl.style.display = 'block';
+      return;
+    }
+    logAction && typeof CU !== 'undefined'; // no-op guard
+    AUDIT.unshift({ ts:new Date(), user:user.nom, dept:user.departement, action:"Code de reinitialisation envoye", detail:"Email envoye a djineyvan@yahoo.fr pour le compte "+user.email, color:"dot-gold", ini:user.ini, col:user.col, ip:"web" });
+    el('forgot-step-1').style.display = 'none';
+    el('forgot-step-2').style.display = 'block';
+    el('fp-code').value = '';
+    el('fp-newpass').value = '';
+    el('fp-confirmpass').value = '';
+    const newPassEl = el('fp-newpass');
+    newPassEl.removeEventListener('input', fpPwdListener);
+    newPassEl.addEventListener('input', fpPwdListener);
+  })
+  .catch(function(err){
+    btn.textContent = 'Envoyer le code';
+    btn.disabled = false;
+    errorEl.textContent = "Erreur reseau: impossible de contacter le serveur d'envoi.";
+    errorEl.style.display = 'block';
+  });
+}
+
+function fpPwdListener(){
+  updatePasswordStrengthUI(el('fp-newpass').value, 'fp-pass-bars');
+}
+
+function confirmResetCode(){
+  const code = el('fp-code').value.trim();
+  const newPass = el('fp-newpass').value;
+  const confirmPass = el('fp-confirmpass').value;
+  const errorEl = el('fp-error-2');
+  errorEl.style.display = 'none';
+
+  if(!FP_TARGET_USER || !FP_RESET_CODE){
+    errorEl.textContent = "Session expiree. Recommencez la procedure.";
+    errorEl.style.display = 'block';
+    return;
+  }
+  if(Date.now() > FP_CODE_EXPIRES){
+    errorEl.textContent = "Ce code a expire. Demandez-en un nouveau.";
+    errorEl.style.display = 'block';
+    return;
+  }
+  if(code !== FP_RESET_CODE){
+    errorEl.textContent = "Code incorrect.";
+    errorEl.style.display = 'block';
+    return;
+  }
+  const validation = validatePassword(newPass);
+  if(!validation.valid){
+    errorEl.textContent = "Le mot de passe doit contenir 8+ caracteres, 1 majuscule, 1 chiffre, 1 caractere special.";
+    errorEl.style.display = 'block';
+    return;
+  }
+  if(newPass !== confirmPass){
+    errorEl.textContent = "Les mots de passe ne correspondent pas.";
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  FP_TARGET_USER.pass = newPass;
+  FP_TARGET_USER.doitChangerPass = false;
+  FP_TARGET_USER.verrouille = false;
+  FP_TARGET_USER.tentatives = 0;
+
+  AUDIT.unshift({ ts:new Date(), user:FP_TARGET_USER.nom, dept:FP_TARGET_USER.departement, action:"Mot de passe reinitialise via email", detail:"Recuperation par code envoye a djineyvan@yahoo.fr", color:"dot-green", ini:FP_TARGET_USER.ini, col:FP_TARGET_USER.col, ip:"web" });
+
+  el('forgot-step-2').style.display = 'none';
+  el('forgot-step-3').style.display = 'block';
+
+  FP_TARGET_USER = null; FP_RESET_CODE = null; FP_CODE_EXPIRES = null;
 }
 
 
