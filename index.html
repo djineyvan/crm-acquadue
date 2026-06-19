@@ -1750,10 +1750,34 @@ function viewStockDetail(sku, entrepot){
   openDetailModal('Detail Stock — ' + (p?p.nom:sku) + ' @ ' + entrepot, rows, {
     record: s,
     fields: [
+      ['Produit', 'sku_display', (p?p.nom:sku) + ' (' + sku + ')', 'readonly'],
+      ['Entrepot', 'entrepot', ENTREPOTS.map(function(e){ return { label: e.nom, selected: e.nom === s.entrepot }; }), 'select'],
       ['Stock Reel', 'qte', s.qte],
+      ['Reserve', 'reserve', s.reserve||0],
       ['Seuil critique', 'seuil', s.seuil]
     ],
-    onSave: function(){ go('stock'); }
+    onSave: function(record){
+      // Guard against negative values entered by mistake.
+      record.qte = Math.max(0, parseInt(record.qte)||0);
+      record.reserve = Math.max(0, parseInt(record.reserve)||0);
+      record.seuil = Math.max(0, parseInt(record.seuil)||0);
+
+      // If the warehouse was changed to one that ALREADY has a row for this SKU,
+      // merge into that existing row instead of creating a duplicate key.
+      const duplicate = STOCK.find(function(other){
+        return other !== record && other.sku === sku && other.entrepot === record.entrepot;
+      });
+      if(duplicate){
+        duplicate.qte += record.qte;
+        duplicate.reserve = (duplicate.reserve||0) + record.reserve;
+        duplicate.seuil = record.seuil; // keep the newly edited threshold
+        const idx = STOCK.indexOf(record);
+        if(idx >= 0) STOCK.splice(idx, 1);
+        logAction('Fusion de stock', sku + ': lignes fusionnees vers ' + record.entrepot, 'gold');
+      }
+      go('stock');
+    },
+    skipFields: ['sku_display']
   });
 }
 
@@ -2338,17 +2362,20 @@ function buildModals2(){
 // "Edit" button that turns fields into inputs and saves with a timestamp.
 // ════════════════════════════════════════════════════════════════════════════
 
-let DETAIL_CTX = null; // { entity, id, fields, onSave }
+let DETAIL_CTX = null; // { title, record, fields, onSave, skipFields }
 
 function detailRow(label, value){
   return '<tr><td style="font-weight:600;color:var(--muted2);width:38%;padding:7px 10px;border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.05em">' + label + '</td><td style="padding:7px 10px;border-bottom:1px solid var(--border);font-size:13px">' + value + '</td></tr>';
 }
 
+// type: 'text' (default), 'select' (value must be array of {label, selected}), 'readonly' (display only, not saved)
 function detailRowEditable(label, fieldKey, value, type){
   type = type || 'text';
   const inputId = 'detail-edit-' + fieldKey;
   let input;
-  if(type === 'select' && Array.isArray(value)){
+  if(type === 'readonly'){
+    input = '<div style="padding:7px 0;color:var(--muted);font-size:13px">' + value + ' <span class="td-muted">(non modifiable)</span></div>';
+  } else if(type === 'select' && Array.isArray(value)){
     input = '<select class="form-select" id="' + inputId + '">' + value.map(function(o){ return '<option' + (o.selected?' selected':'') + '>' + o.label + '</option>'; }).join('') + '</select>';
   } else {
     input = '<input class="form-input" id="' + inputId + '" value="' + String(value).replace(/"/g,'&quot;') + '"/>';
@@ -2357,7 +2384,7 @@ function detailRowEditable(label, fieldKey, value, type){
 }
 
 // Open a read-only detail view. `rows` is an array of [label, value] pairs.
-// `editConfig` (optional) = { record, fields: [[label,key,currentValue,type,options]], onSave: fn }
+// `editConfig` (optional) = { record, fields: [[label,key,currentValue,type]], onSave: fn, skipFields: [keys not to write back] }
 function openDetailModal(title, rows, editConfig){
   let body = '<table style="width:100%;border-collapse:collapse">' + rows.map(function(r){ return detailRow(r[0], r[1]); }).join('') + '</table>';
 
@@ -2376,7 +2403,10 @@ function openDetailModal(title, rows, editConfig){
   const modalHtml = modalShell('modal-detail', title, '<div id="detail-body">' + body + '</div>', footer);
   el('app').insertAdjacentHTML('beforeend', modalHtml);
 
-  DETAIL_CTX = editConfig ? { title: title, record: editConfig.record, fields: editConfig.fields, onSave: editConfig.onSave } : null;
+  DETAIL_CTX = editConfig ? {
+    title: title, record: editConfig.record, fields: editConfig.fields,
+    onSave: editConfig.onSave, skipFields: editConfig.skipFields || []
+  } : null;
 
   openModal('modal-detail');
 }
@@ -2385,7 +2415,7 @@ function switchToEditMode(){
   if(!DETAIL_CTX) return;
   const fields = DETAIL_CTX.fields;
   let body = '<table style="width:100%;border-collapse:collapse">' + fields.map(function(f){
-    return detailRowEditable(f[0], f[1], f[2], f[3], f[4]);
+    return detailRowEditable(f[0], f[1], f[2], f[3]);
   }).join('') + '</table>';
   body += '<div style="margin-top:10px;background:var(--gold-light);color:var(--gold);font-size:11px;padding:8px;border-radius:6px">⚠️ Vous modifiez en tant que Super Admin. Cette action sera horodatee et tracee dans le journal d\'audit.</div>';
 
@@ -2400,11 +2430,25 @@ function saveDetailEdit(){
   if(!DETAIL_CTX) return;
   const record = DETAIL_CTX.record;
   const fields = DETAIL_CTX.fields;
+  const skip = DETAIL_CTX.skipFields || [];
 
   fields.forEach(function(f){
     const key = f[1];
+    const fieldType = f[3];
+    if(skip.indexOf(key) >= 0 || fieldType === 'readonly') return; // never write back display-only fields
+
     const inputEl = el('detail-edit-' + key);
-    if(inputEl){ record[key] = inputEl.value; }
+    if(!inputEl) return;
+
+    const rawVal = inputEl.value;
+    const originalVal = f[2];
+    // Preserve numeric type when the original value was a number (avoids "12" + "3" = "123" bugs in stock math)
+    if(typeof originalVal === 'number' || (typeof record[key] === 'number')){
+      const parsed = parseFloat(rawVal);
+      record[key] = isNaN(parsed) ? record[key] : parsed;
+    } else {
+      record[key] = rawVal;
+    }
   });
 
   stampModification(record);
