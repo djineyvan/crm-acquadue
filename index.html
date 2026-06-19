@@ -313,15 +313,15 @@ let CLIENTS = [
 
 // ── PIPELINE (Opportunites) ──────────────────────────────────────────────────
 let PIPELINE = [
-  { id:1, nom:"Famille Traore", type:"B2C", val:30000, etape:"Nouveau prospect", asg:"Moussa Abdou", ville:"Niamey", dateEstimee:"25/06/2026", locked:false },
-  { id:2, nom:"Famille Seydou", type:"B2C", val:70000, etape:"Contacte", asg:"Fatima Oumarou", ville:"Niamey", dateEstimee:"22/06/2026", locked:false },
-  { id:3, nom:"Bureau BCEAO", type:"B2B", val:210000, etape:"En negociation", asg:"Moussa Abdou", ville:"Niamey", dateEstimee:"30/06/2026", locked:false },
-  { id:4, nom:"Hotel Gaweye", type:"B2B", val:140000, etape:"Offre envoyee", asg:"Ibrahim Issoufou", ville:"Zinder", dateEstimee:"28/06/2026", locked:false },
-  { id:5, nom:"Famille Moussa", type:"B2C", val:30000, etape:"Gagne", asg:"Aicha Mahamane", ville:"Maradi", dateEstimee:"15/06/2026", locked:true },
-  { id:6, nom:"Restaurant Amani", type:"B2B", val:70000, etape:"Contacte", asg:"Fatima Oumarou", ville:"Niamey", dateEstimee:"24/06/2026", locked:false },
-  { id:7, nom:"Famille Daouda", type:"B2C", val:50000, etape:"Nouveau prospect", asg:"Aicha Mahamane", ville:"Tahoua", dateEstimee:"27/06/2026", locked:false },
-  { id:8, nom:"Clinique Maman", type:"B2B", val:140000, etape:"En negociation", asg:"Ibrahim Issoufou", ville:"Zinder", dateEstimee:"29/06/2026", locked:false },
-  { id:9, nom:"Famille Boulama", type:"B2C", val:30000, etape:"Perdu", asg:"Moussa Abdou", ville:"Niamey", dateEstimee:"10/06/2026", locked:true },
+  { id:1, nom:"Famille Traore", type:"B2C", val:30000, etape:"Nouveau prospect", asg:"Moussa Abdou", ville:"Niamey", dateEstimee:"25/06/2026", locked:false, sku:"PUR-001", qte:1, entrepot:"Stock Principal Niamey", reservationFaite:false },
+  { id:2, nom:"Famille Seydou", type:"B2C", val:70000, etape:"Contacte", asg:"Fatima Oumarou", ville:"Niamey", dateEstimee:"22/06/2026", locked:false, sku:"KIT-001", qte:1, entrepot:"Stock Principal Niamey", reservationFaite:false },
+  { id:3, nom:"Bureau BCEAO", type:"B2B", val:210000, etape:"En negociation", asg:"Moussa Abdou", ville:"Niamey", dateEstimee:"30/06/2026", locked:false, sku:"KIT-001", qte:3, entrepot:"Stock Principal Niamey", reservationFaite:false },
+  { id:4, nom:"Hotel Gaweye", type:"B2B", val:140000, etape:"Offre envoyee", asg:"Ibrahim Issoufou", ville:"Zinder", dateEstimee:"28/06/2026", locked:false, sku:"KIT-001", qte:2, entrepot:"Depot Regional Zinder", reservationFaite:false },
+  { id:5, nom:"Famille Moussa", type:"B2C", val:30000, etape:"Gagne", asg:"Aicha Mahamane", ville:"Maradi", dateEstimee:"15/06/2026", locked:true, sku:"PUR-001", qte:1, entrepot:"Depot Regional Maradi", reservationFaite:true },
+  { id:6, nom:"Restaurant Amani", type:"B2B", val:70000, etape:"Contacte", asg:"Fatima Oumarou", ville:"Niamey", dateEstimee:"24/06/2026", locked:false, sku:"KIT-001", qte:1, entrepot:"Stock Principal Niamey", reservationFaite:false },
+  { id:7, nom:"Famille Daouda", type:"B2C", val:50000, etape:"Nouveau prospect", asg:"Aicha Mahamane", ville:"Tahoua", dateEstimee:"27/06/2026", locked:false, sku:"KIT-003", qte:1, entrepot:"Stock Principal Niamey", reservationFaite:false },
+  { id:8, nom:"Clinique Maman", type:"B2B", val:140000, etape:"En negociation", asg:"Ibrahim Issoufou", ville:"Zinder", dateEstimee:"29/06/2026", locked:false, sku:"KIT-001", qte:2, entrepot:"Depot Regional Zinder", reservationFaite:false },
+  { id:9, nom:"Famille Boulama", type:"B2C", val:30000, etape:"Perdu", asg:"Moussa Abdou", ville:"Niamey", dateEstimee:"10/06/2026", locked:true, sku:"PUR-001", qte:1, entrepot:"Stock Principal Niamey", reservationFaite:false },
 ];
 
 // ── EQUIPES (donnees commerciales/marketing/com) ────────────────────────────
@@ -411,18 +411,19 @@ let ENTREPOTS = [
   { id:4, nom:"Point de vente Niamey Centre", type:"Point de vente", ville:"Niamey" },
 ];
 
-// ── STOCK (par produit x entrepot) ────────────────────────────────────────────
+// ── STOCK (par produit x entrepot) — Stock Reel + Stock Reserve = source de verite ──
+// Stock Disponible = Stock Reel - Stock Reserve (calcule, jamais stocke directement)
 let STOCK = [
-  { sku:"PUR-001", entrepot:"Stock Principal Niamey", qte:145, seuil:50 },
-  { sku:"PUR-001", entrepot:"Depot Regional Zinder", qte:22, seuil:20 },
-  { sku:"PUR-001", entrepot:"Depot Regional Maradi", qte:18, seuil:20 },
-  { sku:"FIL-001", entrepot:"Stock Principal Niamey", qte:15, seuil:20 },
-  { sku:"FIL-001", entrepot:"Depot Regional Zinder", qte:34, seuil:20 },
-  { sku:"KIT-002", entrepot:"Stock Principal Niamey", qte:62, seuil:25 },
-  { sku:"KIT-003", entrepot:"Stock Principal Niamey", qte:48, seuil:25 },
-  { sku:"KIT-004", entrepot:"Stock Principal Niamey", qte:30, seuil:15 },
-  { sku:"KIT-001", entrepot:"Stock Principal Niamey", qte:95, seuil:30 },
-  { sku:"KIT-001", entrepot:"Point de vente Niamey Centre", qte:12, seuil:15 },
+  { sku:"PUR-001", entrepot:"Stock Principal Niamey", qte:145, reserve:0, seuil:50 },
+  { sku:"PUR-001", entrepot:"Depot Regional Zinder", qte:22, reserve:0, seuil:20 },
+  { sku:"PUR-001", entrepot:"Depot Regional Maradi", qte:18, reserve:0, seuil:20 },
+  { sku:"FIL-001", entrepot:"Stock Principal Niamey", qte:15, reserve:0, seuil:20 },
+  { sku:"FIL-001", entrepot:"Depot Regional Zinder", qte:34, reserve:0, seuil:20 },
+  { sku:"KIT-002", entrepot:"Stock Principal Niamey", qte:62, reserve:0, seuil:25 },
+  { sku:"KIT-003", entrepot:"Stock Principal Niamey", qte:48, reserve:0, seuil:25 },
+  { sku:"KIT-004", entrepot:"Stock Principal Niamey", qte:30, reserve:0, seuil:15 },
+  { sku:"KIT-001", entrepot:"Stock Principal Niamey", qte:95, reserve:0, seuil:30 },
+  { sku:"KIT-001", entrepot:"Point de vente Niamey Centre", qte:12, reserve:0, seuil:15 },
 ];
 
 // ── MOUVEMENTS DE STOCK ────────────────────────────────────────────────────────
@@ -465,15 +466,15 @@ let INVENTAIRES = [
 
 // ── DEVIS & FACTURES ───────────────────────────────────────────────────────────
 let DEVIS = [
-  { id:"DEV-2026-014", client:"Hotel Sahel Niamey", produits:"12x KIT-001", montant:840000, date:"10/06/2026", statut:"Envoye", validite:"30 jours" },
-  { id:"DEV-2026-015", client:"Clinique Al Hayat", produits:"5x KIT-001", montant:350000, date:"05/06/2026", statut:"Accepte", validite:"30 jours" },
+  { id:"DEV-2026-014", client:"Hotel Sahel Niamey", produits:"12x KIT-001", montant:840000, date:"10/06/2026", statut:"Envoye", validite:"30 jours", sku:"KIT-001", qte:12, entrepot:"Stock Principal Niamey", reservationFaite:false },
+  { id:"DEV-2026-015", client:"Clinique Al Hayat", produits:"5x KIT-001", montant:350000, date:"05/06/2026", statut:"Accepte", validite:"30 jours", sku:"KIT-001", qte:5, entrepot:"Stock Principal Niamey", reservationFaite:true },
 ];
 
 let FACTURES = [
-  { id:"FACT-2026-0612", client:"Famille Mahamane", produits:"1x KIT-001", montant:70000, date:"12/06/2026", statut:"Payee", mode_paiement:"Mobile Money" },
-  { id:"FACT-2026-0608", client:"Famille Oumarou", produits:"1x PUR-001", montant:30000, date:"08/06/2026", statut:"Payee", mode_paiement:"Especes" },
-  { id:"FACT-2026-0603", client:"Famille Issoufou", produits:"1x PUR-001", montant:30000, date:"03/06/2026", statut:"Payee", mode_paiement:"Virement" },
-  { id:"FACT-2026-0530", client:"Famille Abdou", produits:"1x FIL-001", montant:20000, date:"30/05/2026", statut:"Impayee", mode_paiement:"-" },
+  { id:"FACT-2026-0612", client:"Famille Mahamane", produits:"1x KIT-001", montant:70000, date:"12/06/2026", statut:"Payee", mode_paiement:"Mobile Money", sku:"KIT-001", qte:1, entrepot:"Stock Principal Niamey", sortieAppliquee:true },
+  { id:"FACT-2026-0608", client:"Famille Oumarou", produits:"1x PUR-001", montant:30000, date:"08/06/2026", statut:"Payee", mode_paiement:"Especes", sku:"PUR-001", qte:1, entrepot:"Stock Principal Niamey", sortieAppliquee:true },
+  { id:"FACT-2026-0603", client:"Famille Issoufou", produits:"1x PUR-001", montant:30000, date:"03/06/2026", statut:"Payee", mode_paiement:"Virement", sku:"PUR-001", qte:1, entrepot:"Depot Regional Zinder", sortieAppliquee:true },
+  { id:"FACT-2026-0530", client:"Famille Abdou", produits:"1x FIL-001", montant:20000, date:"30/05/2026", statut:"Impayee", mode_paiement:"-", sku:"FIL-001", qte:1, entrepot:"Depot Regional Maradi", sortieAppliquee:false },
 ];
 
 // ── SESSIONS (Super Admin: voir appareils connectes) ─────────────────────────
@@ -589,14 +590,27 @@ function canSeeRecord(dept, owner){
   return owner === CU.nom; // collaborateur: only own records
 }
 
-// Can the current user EDIT a record (considering lock status)?
+// Can the current user EDIT a record? PER DIRECTIVE: only the Super Admin can
+// modify any existing data entered into the system. Everyone else has read-only
+// access to records (they can still create NEW entries via the "+" buttons,
+// but cannot edit/correct an entry once it exists).
 function canEditRecord(record, dept, owner){
   if(!CU) return false;
-  if(record && record.locked && CU.role !== "superadmin" && CU.role !== "admin") return false;
-  if(CU.role === "superadmin") return true;
-  if(CU.role === "admin") return CU.departement === dept;
-  if(CU.role === "responsable") return CU.departement === dept;
-  return owner === CU.nom && !(record && record.locked);
+  return CU.role === "superadmin";
+}
+
+// Stamp a record with who modified it and when (called after every edit by the Super Admin)
+function stampModification(record){
+  if(!record) return;
+  record.lastModifiedBy = CU.nom;
+  record.lastModifiedAt = new Date();
+}
+
+function modStampHtml(record){
+  if(!record || !record.lastModifiedBy) return '';
+  const d = record.lastModifiedAt instanceof Date ? record.lastModifiedAt : new Date(record.lastModifiedAt);
+  const dateStr = d.toLocaleDateString('fr-FR') + ' a ' + d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+  return '<div class="td-muted" style="margin-top:2px">✏️ Modifie par ' + record.lastModifiedBy + ' le ' + dateStr + '</div>';
 }
 
 // ── AUDIT LOGGING ─────────────────────────────────────────────────────────────
@@ -840,7 +854,7 @@ function openModal(id){
   fillVilleSelect('m-ville-1'); fillVilleSelect('m-ville-2'); fillVilleSelect('m-ville-3');
   fillAssigneeSelect('m-asg-1'); fillAssigneeSelect('m-asg-2');
 }
-function closeModal(id){ el(id).classList.remove('open'); }
+function closeModal(id){ const m = el(id); if(m) m.classList.remove('open'); }
 
 // ════════════════════════════════════════════════════════════════════════════
 // VIEW RENDERERS
@@ -937,7 +951,62 @@ function renderPipe(c){
 function viewPipeCard(id){
   const p = PIPELINE.find(function(x){return x.id===id;});
   if(!p) return;
-  alert(p.nom + "\\n" + p.type + " - " + p.ville + "\\nValeur: " + fcfa(p.val) + "\\nEtape: " + p.etape + "\\nAssigne: " + p.asg + (p.locked ? "\\n\\n🔒 Cet element est verrouille (confirme par admin)" : ""));
+  const produit = PRODUITS.find(function(x){return x.sku===p.sku;});
+  const rows = [
+    ['Nom du prospect', p.nom],
+    ['Type', typeTag(p.type)],
+    ['Ville', p.ville],
+    ['Valeur estimee', '<strong style="color:var(--red)">' + fcfa(p.val) + '</strong>'],
+    ['Etape du pipeline', statusTag(p.etape)],
+    ['Commercial assigne', p.asg],
+    ['Date estimee de signature', p.dateEstimee || '-'],
+    ['Produit lie', (produit ? produit.nom : p.sku || '-') + (p.qte ? ' x' + p.qte : '')],
+    ['Entrepot concerne', p.entrepot || '-'],
+    ['Stock reserve pour cette vente', p.reservationFaite ? '<span style="color:var(--gold);font-weight:700">✓ Reserve (' + p.qte + ' unite(s))</span>' : '<span class="td-muted">Pas encore reserve</span>'],
+    ['Statut de verrouillage', p.locked ? lockBadge() : '<span class="td-muted">Modifiable</span>']
+  ];
+
+  if(isSuperAdmin() && p.etape !== 'Gagne' && p.etape !== 'Perdu'){
+    rows.push(['Action', '<button class="btn btn-red btn-sm" onclick="advancePipelineStage(' + p.id + ')">Faire avancer a l\'etape suivante →</button>']);
+  }
+  if(p.lastModifiedBy){
+    rows.push(['Derniere modification', modStampHtml(p)]);
+  }
+
+  openDetailModal('Detail — ' + p.nom, rows, {
+    record: p,
+    fields: [
+      ['Nom', 'nom', p.nom],
+      ['Valeur (FCFA)', 'val', p.val],
+      ['Ville', 'ville', p.ville],
+      ['Date estimee', 'dateEstimee', p.dateEstimee || '']
+    ],
+    onSave: function(){ go('pipe'); }
+  });
+}
+
+function advancePipelineStage(id){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut faire progresser une opportunite.');
+  const p = PIPELINE.find(function(x){return x.id===id;});
+  if(!p) return;
+  const idx = PIPELINE_STAGES.indexOf(p.etape);
+  if(idx < 0 || idx >= PIPELINE_STAGES.length - 2) return; // already at Gagne/Perdu boundary
+  const nextStage = PIPELINE_STAGES[idx+1];
+  p.etape = nextStage;
+  stampModification(p);
+
+  if(nextStage === 'Gagne'){
+    const ok = triggerPipelineWon(p);
+    if(!ok){
+      alert('⚠️ Opportunite marquee "Gagne" mais le stock disponible est insuffisant pour reserver automatiquement. Verifiez le module Stock.');
+    } else {
+      logAction('Opportunite gagnee — stock reserve', p.nom + ' — ' + p.qte + ' x ' + p.sku + ' a ' + p.entrepot, 'green');
+    }
+  } else {
+    logAction('Pipeline — etape avancee', p.nom + ' → ' + nextStage, 'blue');
+  }
+  closeModal('modal-detail');
+  go('pipe');
 }
 
 // ── NOTIFICATIONS ──────────────────────────────────────────────────────────────
@@ -1062,14 +1131,47 @@ function renderClients(c){
 
   const data = CLIENTS.filter(visibleClientFilter);
   function mkTable(d){
-    return '<thead><tr><th>Client</th><th>Type</th><th>Ville</th><th>Source</th><th>Produit</th><th>Commercial</th><th>Statut</th><th>Date</th></tr></thead><tbody>' +
+    return '<thead><tr><th>Client</th><th>Type</th><th>Ville</th><th>Source</th><th>Produit</th><th>Commercial</th><th>Statut</th><th>Date</th><th></th></tr></thead><tbody>' +
       d.map(function(cl,i){
-        return '<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar '+avColor(i)+'">'+ini(cl.nom)+'</div><div><div class="td-bold">'+cl.nom+(cl.locked?' 🔒':'')+'</div><div class="td-muted">'+cl.tel+'</div></div></div></td><td>'+typeTag(cl.type)+'</td><td class="td-muted">'+cl.ville+'</td><td class="td-muted">'+(cl.source||'-')+'</td><td class="td-muted">'+cl.produit+'</td><td class="td-muted">'+cl.asg.split(' ')[0]+'</td><td>'+statusTag(cl.statut)+'</td><td class="td-muted">'+cl.date+'</td></tr>';
+        return '<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar '+avColor(i)+'">'+ini(cl.nom)+'</div><div><div class="td-bold">'+cl.nom+(cl.locked?' 🔒':'')+'</div><div class="td-muted">'+cl.tel+'</div></div></div></td><td>'+typeTag(cl.type)+'</td><td class="td-muted">'+cl.ville+'</td><td class="td-muted">'+(cl.source||'-')+'</td><td class="td-muted">'+cl.produit+'</td><td class="td-muted">'+cl.asg.split(' ')[0]+'</td><td>'+statusTag(cl.statut)+'</td><td class="td-muted">'+cl.date+'</td><td><button class="btn btn-ghost btn-sm" onclick="viewClientDetail('+cl.id+')">👁 Details</button></td></tr>';
       }).join('') + '</tbody>';
   }
   el('tbl-cli').innerHTML = mkTable(data);
   el('tbl-b2c').innerHTML = mkTable(data.filter(function(x){return x.type==="B2C";}));
   el('tbl-b2b').innerHTML = mkTable(data.filter(function(x){return x.type==="B2B";}));
+}
+
+function viewClientDetail(id){
+  const cl = CLIENTS.find(function(x){return x.id===id;});
+  if(!cl) return;
+  const histo = (cl.historique||[]).map(function(h){ return '<div style="padding:4px 0;border-bottom:1px solid var(--border);font-size:12px"><strong>'+h.type+'</strong> — '+h.date+' : '+h.note+'</div>'; }).join('') || '<div class="td-muted">Aucun historique enregistre</div>';
+  const rows = [
+    ['Nom', '<strong>'+cl.nom+'</strong>'],
+    ['Type', typeTag(cl.type)],
+    ['Ville / Zone', cl.ville + (cl.zone ? ' — ' + cl.zone : '')],
+    ['Telephone', cl.tel || '-'],
+    ['Email', cl.email || '-'],
+    ['Societe', cl.societe || '-'],
+    ['Source du prospect', cl.source || '-'],
+    ['Produit d\'interet', cl.produit],
+    ['Commercial assigne', cl.asg],
+    ['Statut', statusTag(cl.statut)],
+    ['Date de creation', cl.date],
+    ['Verrouillage', cl.locked ? lockBadge() : '<span class="td-muted">Modifiable</span>'],
+    ['Historique (appels, emails, RDV, notes)', histo]
+  ];
+  if(cl.lastModifiedBy) rows.push(['Derniere modification', modStampHtml(cl)]);
+
+  openDetailModal('Detail Client — ' + cl.nom, rows, {
+    record: cl,
+    fields: [
+      ['Nom', 'nom', cl.nom],
+      ['Telephone', 'tel', cl.tel || ''],
+      ['Email', 'email', cl.email || ''],
+      ['Statut', 'statut', cl.statut]
+    ],
+    onSave: function(){ go('clients'); }
+  });
 }
 
 // ── TACHES ────────────────────────────────────────────────────────────────────
@@ -1086,9 +1188,10 @@ function renderTaches(c){
   function mkTable(d){
     return '<thead><tr><th>Tache</th><th>Assignee a</th><th>Departement</th><th>Priorite</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>' +
       d.map(function(t){
-        const canEdit = canEditRecord(t, t.dept, t.asg);
-        const doneBtn = (canEdit && t.statut!=="Termine") ? '<button class="btn btn-ghost btn-sm" onclick="markTaskDone('+t.id+')">✓</button>' : (t.locked ? lockBadge() : '');
-        return '<tr><td class="td-bold">'+t.titre+'</td><td class="td-muted">'+t.asg+'</td><td>'+deptTag(t.dept)+'</td><td>'+statusTag(t.pri)+'</td><td class="td-muted">'+t.date+'</td><td>'+statusTag(t.statut)+'</td><td>'+doneBtn+'</td></tr>';
+        const isOwnTask = t.asg === CU.nom || t.asg === "Toute l'equipe";
+        const doneBtn = (isOwnTask && t.statut!=="Termine") ? '<button class="btn btn-ghost btn-sm" onclick="markTaskDone('+t.id+')">✓ Termine</button>' : '';
+        const detailBtn = '<button class="btn btn-ghost btn-sm" onclick="viewTaskDetail('+t.id+')">👁 Details</button>';
+        return '<tr><td class="td-bold">'+t.titre+(t.locked?' 🔒':'')+'</td><td class="td-muted">'+t.asg+'</td><td>'+deptTag(t.dept)+'</td><td>'+statusTag(t.pri)+'</td><td class="td-muted">'+t.date+'</td><td>'+statusTag(t.statut)+'</td><td>'+detailBtn+' '+doneBtn+'</td></tr>';
       }).join('') + '</tbody>';
   }
   el('tbl-tsk').innerHTML = mkTable(data);
@@ -1097,11 +1200,38 @@ function renderTaches(c){
 
 function markTaskDone(id){
   const t = TASKS.find(function(x){return x.id===id;});
-  if(t && canEditRecord(t, t.dept, t.asg)){
+  const isOwnTask = t && (t.asg === CU.nom || t.asg === "Toute l'equipe");
+  if(t && isOwnTask){
     t.statut = "Termine";
     logAction("Tache terminee", t.titre, "green");
     go('taches');
   }
+}
+
+function viewTaskDetail(id){
+  const t = TASKS.find(function(x){return x.id===id;});
+  if(!t) return;
+  const rows = [
+    ['Titre', '<strong>'+t.titre+'</strong>'],
+    ['Assignee a', t.asg],
+    ['Departement', deptTag(t.dept)],
+    ['Priorite', statusTag(t.pri)],
+    ['Date limite', t.date],
+    ['Statut', statusTag(t.statut)],
+    ['Verrouillage', t.locked ? lockBadge() : '<span class="td-muted">Modifiable</span>']
+  ];
+  if(t.lastModifiedBy) rows.push(['Derniere modification', modStampHtml(t)]);
+
+  openDetailModal('Detail Tache', rows, {
+    record: t,
+    fields: [
+      ['Titre', 'titre', t.titre],
+      ['Priorite', 'pri', t.pri],
+      ['Date limite', 'date', t.date],
+      ['Statut', 'statut', t.statut]
+    ],
+    onSave: function(){ go('taches'); }
+  });
 }
 
 // ── DOCUMENTS ──────────────────────────────────────────────────────────────────
@@ -1350,28 +1480,133 @@ function rejectConge(id){
 }
 
 
-// ════════════════════════════════════════════════════════════════════════════
-// APP PART 2 — Produits, Stocks, Approvisionnement, Achats, Inventaires
-// ════════════════════════════════════════════════════════════════════════════
-
 function canModifyStock(){ return CU && SENSITIVE_PERMS[CU.role].modifier_stock; }
 function canDeleteMovement(){ return CU && SENSITIVE_PERMS[CU.role].supprimer_mouvement; }
 function canModifyPrixAchat(){ return CU && SENSITIVE_PERMS[CU.role].modifier_prix_achat; }
 function canModifyCoutFournisseur(){ return CU && SENSITIVE_PERMS[CU.role].modifier_cout_fournisseur; }
 
-function stockForSku(sku){
+// ── STOCK CORE MODEL ──────────────────────────────────────────────────────────
+// Stock Reel      = somme des mouvements (source de verite, jamais ecrase directement)
+// Stock Reserve    = quantites bloquees pour devis acceptes / opportunites gagnees
+// Stock Disponible = Stock Reel - Stock Reserve  (c'est CE chiffre que voient les commerciaux)
+
+function getStockRow(sku, entrepot){
+  return STOCK.find(function(s){ return s.sku === sku && s.entrepot === entrepot; });
+}
+function ensureStockRow(sku, entrepot){
+  let row = getStockRow(sku, entrepot);
+  if(!row){ row = { sku: sku, entrepot: entrepot, qte: 0, reserve: 0, seuil: 20 }; STOCK.push(row); }
+  return row;
+}
+
+function stockReelForSku(sku){
   return STOCK.filter(function(s){ return s.sku === sku; }).reduce(function(sum,s){ return sum + s.qte; }, 0);
 }
+function stockReserveForSku(sku){
+  return STOCK.filter(function(s){ return s.sku === sku; }).reduce(function(sum,s){ return sum + (s.reserve||0); }, 0);
+}
+function stockDisponibleForSku(sku){
+  return stockReelForSku(sku) - stockReserveForSku(sku);
+}
+function stockForSku(sku){ return stockReelForSku(sku); } // backward-compat alias used elsewhere
+
 function isLowStock(sku){
   const rows = STOCK.filter(function(s){ return s.sku === sku; });
-  return rows.some(function(r){ return r.qte <= r.seuil; });
+  return rows.some(function(r){ return (r.qte - (r.reserve||0)) <= r.seuil; }); // alert is based on AVAILABLE, not just real
 }
 function couvertureMois(sku){
-  // Simple estimate: total qty / average monthly consumption (derived from sales movements)
-  const totalQte = stockForSku(sku);
+  const totalQte = stockDisponibleForSku(sku);
   const sorties = MOUVEMENTS_STOCK.filter(function(m){ return m.sku === sku && m.type === "Sortie" && m.motif === "Vente"; });
-  const moyenne = sorties.length ? sorties.reduce(function(s,m){return s+m.qte;},0) / 1 : 1; // simplified: 1 month window
+  const moyenne = sorties.reduce(function(s,m){return s+m.qte;},0) || 1;
   return moyenne > 0 ? (totalQte / moyenne).toFixed(1) : "—";
+}
+
+// ── RESERVATION ENGINE — links the sales pipeline to physical stock ─────────
+// Reserve stock for a sku/qte at a given entrepot. Returns true if enough
+// stock was available to reserve, false otherwise (caller should warn the user).
+function reserveStock(sku, qte, entrepot, motifLabel){
+  const row = ensureStockRow(sku, entrepot);
+  const dispo = row.qte - (row.reserve||0);
+  if(dispo < qte){
+    return false; // not enough available stock to reserve
+  }
+  row.reserve = (row.reserve||0) + qte;
+  logAction('Stock reserve', motifLabel + ' — ' + qte + ' unite(s) de ' + sku + ' a ' + entrepot, 'gold');
+  return true;
+}
+
+// Release a previously made reservation without consuming real stock (e.g. cancelled order)
+function releaseReservation(sku, qte, entrepot, motifLabel){
+  const row = getStockRow(sku, entrepot);
+  if(!row) return;
+  row.reserve = Math.max(0, (row.reserve||0) - qte);
+  logAction('Reservation liberee', motifLabel + ' — ' + qte + ' unite(s) de ' + sku + ' a ' + entrepot + ' remis en disponible', 'blue');
+}
+
+// Convert a reservation into a definitive stock exit (shipped/delivered/invoiced).
+// This reduces BOTH the real stock and the reservation, and logs a movement.
+function consumeReservedStock(sku, qte, entrepot, motifLabel, userNom){
+  const row = ensureStockRow(sku, entrepot);
+  row.qte = Math.max(0, row.qte - qte);
+  row.reserve = Math.max(0, (row.reserve||0) - qte);
+
+  const p = PRODUITS.find(function(x){ return x.sku === sku; });
+  MOUVEMENTS_STOCK.unshift({
+    id: Date.now(), date: new Date().toLocaleDateString('fr-FR'), type: 'Sortie', motif: 'Vente',
+    sku: sku, produit: p ? p.nom : sku, qte: qte, entrepot: entrepot, user: userNom || (CU?CU.nom:'Systeme')
+  });
+  logAction('Sortie de stock (vente livree)', motifLabel + ' — ' + qte + ' unite(s) de ' + sku + ' a ' + entrepot, 'red');
+
+  if(row.qte <= row.seuil){
+    NOTIFICATIONS.unshift({ id: Date.now()+1, icon:'📦', text:'Alerte stock: '+(p?p.nom:sku)+' sous le seuil critique a '+entrepot, time:"A l'instant", read:false, target:'all' });
+  }
+}
+
+// ── SALES-CYCLE TRIGGERS (called from pipeline/devis/factures actions) ──────
+
+// Trigger 1: Pipeline -> "Gagne" => reserve stock automatically
+function triggerPipelineWon(pipelineEntry){
+  if(!pipelineEntry || pipelineEntry.reservationFaite) return;
+  const ok = reserveStock(pipelineEntry.sku, pipelineEntry.qte, pipelineEntry.entrepot, 'Opportunite gagnee: ' + pipelineEntry.nom);
+  if(ok){
+    pipelineEntry.reservationFaite = true;
+  } else {
+    NOTIFICATIONS.unshift({ id:Date.now(), icon:'⚠️', text:'Stock insuffisant pour reserver la vente: '+pipelineEntry.nom, time:"A l'instant", read:false, target:'all' });
+  }
+  return ok;
+}
+
+// Trigger 2: Devis -> "Accepte" => reserve stock automatically
+function triggerDevisAccepted(devisEntry){
+  if(!devisEntry || devisEntry.reservationFaite) return;
+  const ok = reserveStock(devisEntry.sku, devisEntry.qte, devisEntry.entrepot, 'Devis accepte: ' + devisEntry.id);
+  if(ok){
+    devisEntry.reservationFaite = true;
+  } else {
+    NOTIFICATIONS.unshift({ id:Date.now(), icon:'⚠️', text:'Stock insuffisant pour reserver le devis: '+devisEntry.id, time:"A l'instant", read:false, target:'all' });
+  }
+  return ok;
+}
+
+// Trigger 3: Facture -> "Payee" (expedie/livre) => consume reservation, real stock exits
+function triggerFactureExpediee(factureEntry){
+  if(!factureEntry || factureEntry.sortieAppliquee) return;
+  consumeReservedStock(factureEntry.sku, factureEntry.qte, factureEntry.entrepot, 'Facture ' + factureEntry.id, CU?CU.nom:'Systeme');
+  factureEntry.sortieAppliquee = true;
+}
+
+// Trigger 4: Retour client / Annulation => release reservation OR re-enter stock
+function triggerRetourAnnulation(sku, qte, entrepot, label, wasShipped){
+  if(wasShipped){
+    // Product physically came back: real entry movement
+    const row = ensureStockRow(sku, entrepot);
+    row.qte += qte;
+    const p = PRODUITS.find(function(x){ return x.sku === sku; });
+    MOUVEMENTS_STOCK.unshift({ id:Date.now(), date:new Date().toLocaleDateString('fr-FR'), type:'Entree', motif:'Retour client', sku:sku, produit:p?p.nom:sku, qte:qte, entrepot:entrepot, user:CU?CU.nom:'Systeme' });
+    logAction('Retour client', label + ' — ' + qte + ' unite(s) de ' + sku + ' reintegre(s) au stock reel', 'blue');
+  } else {
+    releaseReservation(sku, qte, entrepot, label + ' (annulation avant expedition)');
+  }
 }
 
 // ── PRODUITS ──────────────────────────────────────────────────────────────────
@@ -1382,31 +1617,68 @@ function renderProduits(c){
   h += '</div><div class="card"><div class="table-wrap"><table id="tbl-produits"></table></div></div>';
   c.innerHTML = h;
 
-  el('tbl-produits').innerHTML = '<thead><tr><th>SKU</th><th>Produit</th><th>Categorie</th><th>Prix achat</th><th>Prix vente</th><th>Prix revendeur</th><th>Stock total</th><th></th></tr></thead><tbody>' +
+  el('tbl-produits').innerHTML = '<thead><tr><th>SKU</th><th>Produit</th><th>Categorie</th><th>Prix achat</th><th>Prix vente</th><th>Stock disponible</th><th></th></tr></thead><tbody>' +
     PRODUITS.map(function(p){
-      const stock = stockForSku(p.sku);
+      const dispo = stockDisponibleForSku(p.sku);
       const low = isLowStock(p.sku);
       const prixAchatDisplay = canModifyPrixAchat() ? fcfa(p.prix_achat) : '<span class="td-muted">Confidentiel</span>';
-      return '<tr><td class="td-bold">'+p.sku+'</td><td>'+p.nom+'</td><td>'+tag(p.categorie,'tag-blue')+'</td><td>'+prixAchatDisplay+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(p.prix_vente)+'</td><td class="td-muted">'+fcfa(p.prix_revendeur)+'</td><td>'+(low?'<span style="color:var(--red);font-weight:700">'+stock+' ⚠️</span>':stock)+'</td><td><button class="btn btn-ghost btn-sm" onclick="viewProductDetail(\''+p.sku+'\')">Detail</button></td></tr>';
+      return '<tr><td class="td-bold">'+p.sku+'</td><td>'+p.nom+'</td><td>'+tag(p.categorie,'tag-blue')+'</td><td>'+prixAchatDisplay+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(p.prix_vente)+'</td><td>'+(low?'<span style="color:var(--red);font-weight:700">'+dispo+' ⚠️</span>':dispo)+'</td><td><button class="btn btn-ghost btn-sm" onclick="viewProductDetail(\''+p.sku+'\')">👁 Details</button></td></tr>';
     }).join('') + '</tbody>';
 }
 
 function viewProductDetail(sku){
   const p = PRODUITS.find(function(x){return x.sku===sku;});
   if(!p) return;
-  const stockDetail = STOCK.filter(function(s){return s.sku===sku;}).map(function(s){ return s.entrepot+': '+s.qte+' (seuil '+s.seuil+')'; }).join('\\n');
-  alert(p.nom+' ('+p.sku+')\\n\\n'+p.desc+'\\nMarque: '+p.marque+'\\nPoids: '+p.poids+' | Dimensions: '+p.dimensions+'\\nCode-barres: '+p.codebarre+'\\nTVA: '+p.tva+'%\\n\\nStock par entrepot:\\n'+stockDetail+'\\n\\nCouverture estimee: '+couvertureMois(sku)+' mois');
+
+  const stockRows = STOCK.filter(function(s){return s.sku===sku;});
+  const stockTableHtml = '<table style="width:100%;font-size:12px;margin-top:4px"><thead><tr><th style="text-align:left;padding:4px">Entrepot</th><th style="text-align:right;padding:4px">Reel</th><th style="text-align:right;padding:4px">Reserve</th><th style="text-align:right;padding:4px">Disponible</th></tr></thead><tbody>' +
+    stockRows.map(function(s){
+      const dispo = s.qte - (s.reserve||0);
+      return '<tr><td style="padding:4px">'+s.entrepot+'</td><td style="text-align:right;padding:4px">'+s.qte+'</td><td style="text-align:right;padding:4px;color:var(--gold)">'+(s.reserve||0)+'</td><td style="text-align:right;padding:4px;font-weight:700;color:'+(dispo<=s.seuil?'var(--red)':'var(--green)')+'">'+dispo+'</td></tr>';
+    }).join('') + '</tbody></table>';
+
+  const rows = [
+    ['SKU', '<strong>'+p.sku+'</strong>'],
+    ['Nom du produit', p.nom],
+    ['Categorie', tag(p.categorie,'tag-blue')],
+    ['Marque', p.marque],
+    ['Description', p.desc || '-'],
+    ['Prix d\'achat', canModifyPrixAchat() ? fcfa(p.prix_achat) : '<span class="td-muted">Confidentiel (Admin/Super Admin uniquement)</span>'],
+    ['Prix de vente', '<strong style="color:var(--red)">'+fcfa(p.prix_vente)+'</strong>'],
+    ['Prix revendeur', fcfa(p.prix_revendeur)],
+    ['TVA', p.tva + '%'],
+    ['Poids / Dimensions', (p.poids||'-') + ' / ' + (p.dimensions||'-')],
+    ['Code-barres', p.codebarre || '-'],
+    ['Stock Reel total', stockReelForSku(sku)],
+    ['Stock Reserve total', '<span style="color:var(--gold)">'+stockReserveForSku(sku)+'</span>'],
+    ['Stock Disponible total', '<strong style="color:var(--green)">'+stockDisponibleForSku(sku)+'</strong>'],
+    ['Couverture estimee', couvertureMois(sku) + ' mois'],
+    ['Detail par entrepot', stockTableHtml]
+  ];
+
+  openDetailModal('Detail Produit — ' + p.nom, rows, {
+    record: p,
+    fields: [
+      ['Nom', 'nom', p.nom],
+      ['Prix de vente (FCFA)', 'prix_vente', p.prix_vente],
+      ['Prix revendeur (FCFA)', 'prix_revendeur', p.prix_revendeur],
+      ['Description', 'desc', p.desc || '']
+    ],
+    onSave: function(){ go('produits'); }
+  });
 }
 
-// ── STOCKS ────────────────────────────────────────────────────────────────────
+// ── STOCKS — vue Reel / Reserve / Disponible ──────────────────────────────────
 function renderStock(c){
   let h = '<div style="margin-bottom:11px"><div class="tabs">';
   h += '<button class="tab active" onclick="switchTab(this,\'st\',\'n\')">Niveaux de stock</button>';
+  h += '<button class="tab" onclick="switchTab(this,\'st\',\'r\')">Reservations en cours</button>';
   h += '<button class="tab" onclick="switchTab(this,\'st\',\'m\')">Mouvements</button>';
   h += '<button class="tab" onclick="switchTab(this,\'st\',\'a\')">Alertes</button>';
   h += '<button class="tab" onclick="switchTab(this,\'st\',\'p\')">Previsions</button>';
   h += '</div></div>';
   h += '<div id="st-n"><div class="card"><div class="table-wrap"><table id="tbl-stock"></table></div></div></div>';
+  h += '<div id="st-r" style="display:none"><div class="card"><div id="reservations-view"></div></div></div>';
   h += '<div id="st-m" style="display:none">';
   h += '  <div style="margin-bottom:9px;text-align:right">' + (canModifyStock() ? '<button class="btn btn-red btn-sm" onclick="openModal(\'modal-mouvement\')">+ Mouvement</button>' : '') + '</div>';
   h += '  <div class="card"><div class="table-wrap"><table id="tbl-mouvements"></table></div></div>';
@@ -1415,12 +1687,26 @@ function renderStock(c){
   h += '<div id="st-p" style="display:none"><div class="card"><div id="previsions-view"></div></div></div>';
   c.innerHTML = h;
 
-  el('tbl-stock').innerHTML = '<thead><tr><th>Produit</th><th>Entrepot</th><th>Quantite</th><th>Seuil critique</th><th>Statut</th></tr></thead><tbody>' +
+  el('tbl-stock').innerHTML = '<thead><tr><th>Produit</th><th>Entrepot</th><th>Stock Reel</th><th>Reserve</th><th>Disponible</th><th>Seuil</th><th>Statut</th><th></th></tr></thead><tbody>' +
     STOCK.map(function(s){
       const p = PRODUITS.find(function(x){return x.sku===s.sku;});
-      const low = s.qte <= s.seuil;
-      return '<tr><td class="td-bold">'+(p?p.nom:s.sku)+'</td><td class="td-muted">'+s.entrepot+'</td><td style="font-weight:700">'+s.qte+'</td><td class="td-muted">'+s.seuil+'</td><td>'+(low?tag('Critique','tag-red'):tag('OK','tag-green'))+'</td></tr>';
+      const dispo = s.qte - (s.reserve||0);
+      const low = dispo <= s.seuil;
+      return '<tr><td class="td-bold">'+(p?p.nom:s.sku)+'</td><td class="td-muted">'+s.entrepot+'</td><td style="font-weight:600">'+s.qte+'</td><td style="color:var(--gold);font-weight:600">'+(s.reserve||0)+'</td><td style="font-weight:700;color:'+(low?'var(--red)':'var(--green)')+'">'+dispo+'</td><td class="td-muted">'+s.seuil+'</td><td>'+(low?tag('Critique','tag-red'):tag('OK','tag-green'))+'</td><td><button class="btn btn-ghost btn-sm" onclick="viewStockDetail(\''+s.sku+'\',\''+s.entrepot+'\')">👁 Details</button></td></tr>';
     }).join('') + '</tbody>';
+
+  // Reservations: all stock rows with reserve > 0, cross-referenced with what created them
+  const reserved = STOCK.filter(function(s){ return (s.reserve||0) > 0; });
+  el('reservations-view').innerHTML = reserved.length === 0
+    ? '<div class="empty-state"><div class="empty-state-icon">📭</div>Aucune reservation active actuellement</div>'
+    : '<table><thead><tr><th>Produit</th><th>Entrepot</th><th>Quantite reservee</th><th>Origine</th></tr></thead><tbody>' +
+      reserved.map(function(s){
+        const p = PRODUITS.find(function(x){return x.sku===s.sku;});
+        const fromPipe = PIPELINE.filter(function(pp){ return pp.sku===s.sku && pp.entrepot===s.entrepot && pp.reservationFaite; }).map(function(pp){ return 'Vente: '+pp.nom; });
+        const fromDevis = DEVIS.filter(function(d){ return d.sku===s.sku && d.entrepot===s.entrepot && d.reservationFaite; }).map(function(d){ return 'Devis: '+d.id; });
+        const origines = fromPipe.concat(fromDevis).join(', ') || '-';
+        return '<tr><td class="td-bold">'+(p?p.nom:s.sku)+'</td><td class="td-muted">'+s.entrepot+'</td><td style="font-weight:700;color:var(--gold)">'+s.reserve+'</td><td class="td-muted">'+origines+'</td></tr>';
+      }).join('') + '</tbody></table>';
 
   el('tbl-mouvements').innerHTML = '<thead><tr><th>Date</th><th>Type</th><th>Motif</th><th>Produit</th><th>Quantite</th><th>Entrepot</th><th>Utilisateur</th><th></th></tr></thead><tbody>' +
     MOUVEMENTS_STOCK.map(function(m){
@@ -1428,22 +1714,47 @@ function renderStock(c){
       return '<tr><td class="td-muted">'+m.date+'</td><td>'+(m.type==="Entree"?tag('Entree','tag-green'):tag('Sortie','tag-red'))+'</td><td class="td-muted">'+m.motif+'</td><td class="td-bold">'+m.produit+'</td><td>'+m.qte+'</td><td class="td-muted">'+m.entrepot+'</td><td class="td-muted">'+m.user+'</td><td>'+delBtn+'</td></tr>';
     }).join('') + '</tbody>';
 
-  const alertes = STOCK.filter(function(s){ return s.qte <= s.seuil; });
+  const alertes = STOCK.filter(function(s){ return (s.qte-(s.reserve||0)) <= s.seuil; });
   el('alertes-view').innerHTML = alertes.length === 0
     ? '<div class="empty-state"><div class="empty-state-icon">✅</div>Aucune alerte de stock pour le moment</div>'
     : alertes.map(function(s){
         const p = PRODUITS.find(function(x){return x.sku===s.sku;});
-        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--red-light);border-radius:8px;margin-bottom:8px"><div><div style="font-weight:700;font-size:12px;color:var(--red)">⚠️ '+(p?p.nom:s.sku)+'</div><div class="td-muted">'+s.entrepot+' — Stock actuel: '+s.qte+' / Seuil: '+s.seuil+'</div></div><button class="btn btn-red btn-sm" onclick="createPurchaseRequest(\''+s.sku+'\')">Creer demande d\'achat</button></div>';
+        const dispo = s.qte - (s.reserve||0);
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--red-light);border-radius:8px;margin-bottom:8px"><div><div style="font-weight:700;font-size:12px;color:var(--red)">⚠️ '+(p?p.nom:s.sku)+'</div><div class="td-muted">'+s.entrepot+' — Disponible: '+dispo+' (Reel: '+s.qte+', Reserve: '+(s.reserve||0)+') / Seuil: '+s.seuil+'</div></div><button class="btn btn-red btn-sm" onclick="createPurchaseRequest(\''+s.sku+'\')">Creer demande d\'achat</button></div>';
       }).join('');
 
-  el('previsions-view').innerHTML = '<table><thead><tr><th>Produit</th><th>Stock actuel</th><th>Ventes moy./mois</th><th>Couverture</th></tr></thead><tbody>' +
+  el('previsions-view').innerHTML = '<table><thead><tr><th>Produit</th><th>Disponible</th><th>Ventes moy./mois</th><th>Couverture</th></tr></thead><tbody>' +
     PRODUITS.map(function(p){
-      const stock = stockForSku(p.sku);
+      const dispo = stockDisponibleForSku(p.sku);
       const sorties = MOUVEMENTS_STOCK.filter(function(m){return m.sku===p.sku && m.type==="Sortie" && m.motif==="Vente";});
       const moyenne = sorties.reduce(function(s,m){return s+m.qte;},0);
       const couverture = couvertureMois(p.sku);
-      return '<tr><td class="td-bold">'+p.nom+'</td><td>'+stock+'</td><td class="td-muted">'+moyenne+' u/mois</td><td style="font-weight:700;color:'+(parseFloat(couverture)<2?'var(--red)':'var(--green)')+'">'+couverture+' mois</td></tr>';
+      return '<tr><td class="td-bold">'+p.nom+'</td><td>'+dispo+'</td><td class="td-muted">'+moyenne+' u/mois</td><td style="font-weight:700;color:'+(parseFloat(couverture)<2?'var(--red)':'var(--green)')+'">'+couverture+' mois</td></tr>';
     }).join('') + '</tbody></table>';
+}
+
+function viewStockDetail(sku, entrepot){
+  const s = getStockRow(sku, entrepot);
+  if(!s) return;
+  const p = PRODUITS.find(function(x){return x.sku===sku;});
+  const dispo = s.qte - (s.reserve||0);
+  const rows = [
+    ['Produit', (p?p.nom:sku) + ' (' + sku + ')'],
+    ['Entrepot', s.entrepot],
+    ['Stock Reel (physique present)', '<strong>' + s.qte + '</strong>'],
+    ['Stock Reserve (devis/ventes en attente)', '<span style="color:var(--gold);font-weight:700">' + (s.reserve||0) + '</span>'],
+    ['Stock Disponible (= Reel − Reserve)', '<strong style="color:' + (dispo<=s.seuil?'var(--red)':'var(--green)') + '">' + dispo + '</strong>'],
+    ['Seuil critique', s.seuil],
+    ['Statut', dispo<=s.seuil ? tag('Critique - reapprovisionnement recommande','tag-red') : tag('Niveau correct','tag-green')]
+  ];
+  openDetailModal('Detail Stock — ' + (p?p.nom:sku) + ' @ ' + entrepot, rows, {
+    record: s,
+    fields: [
+      ['Stock Reel', 'qte', s.qte],
+      ['Seuil critique', 'seuil', s.seuil]
+    ],
+    onSave: function(){ go('stock'); }
+  });
 }
 
 function deleteMovement(id){
@@ -1460,13 +1771,14 @@ function deleteMovement(id){
 
 function createPurchaseRequest(sku){
   const p = PRODUITS.find(function(x){return x.sku===sku;});
-  DEMANDES_ACHAT.unshift({ id:Date.now(), produit:p.nom, qte:50, motif:"Stock sous le seuil critique", demandeur:CU.nom, etape:"Demande", date:new Date().toLocaleDateString('fr-FR') });
+  DEMANDES_ACHAT.unshift({ id:Date.now(), produit:p.nom, qte:50, motif:"Stock disponible sous le seuil critique", demandeur:CU.nom, etape:"Demande", date:new Date().toLocaleDateString('fr-FR') });
   logAction("Demande d'achat creee", p.nom+' — Stock critique', "gold");
   NOTIFICATIONS.unshift({ id:Date.now()+1, icon:"📦", text:"Alerte stock: "+p.nom+" sous le seuil critique", time:"A l'instant", read:false, target:"all" });
   alert("Demande d'achat creee pour "+p.nom);
   go('achats');
 }
 
+// ── FOURNISSEURS & APPROVISIONNEMENT ──────────────────────────────────────────
 // ── FOURNISSEURS & APPROVISIONNEMENT ──────────────────────────────────────────
 function renderApprov(c){
   let h = '<div style="margin-bottom:11px"><div class="tabs">';
@@ -1557,22 +1869,105 @@ function renderFacturation(c){
   h += '</div>';
   c.innerHTML = h;
 
-  el('tbl-devis').innerHTML = '<thead><tr><th>N° Devis</th><th>Client</th><th>Produits</th><th>Montant</th><th>Date</th><th>Validite</th><th>Statut</th><th></th></tr></thead><tbody>' +
+  el('tbl-devis').innerHTML = '<thead><tr><th>N° Devis</th><th>Client</th><th>Produits</th><th>Montant</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>' +
     DEVIS.map(function(d){
-      const convertBtn = d.statut === "Accepte" ? '<button class="btn btn-ghost btn-sm" onclick="convertDevisToFacture(\''+d.id+'\')">→ Facturer</button>' : '';
-      return '<tr><td class="td-bold">'+d.id+'</td><td>'+d.client+'</td><td class="td-muted">'+d.produits+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(d.montant)+'</td><td class="td-muted">'+d.date+'</td><td class="td-muted">'+d.validite+'</td><td>'+statusTag(d.statut)+'</td><td>'+convertBtn+'</td></tr>';
+      let actions = '<button class="btn btn-ghost btn-sm" onclick="viewDevisDetail(\''+d.id+'\')">👁 Details</button>';
+      if(d.statut === "Envoye"){
+        actions += ' <button class="btn btn-ghost btn-sm" onclick="acceptDevis(\''+d.id+'\')">✓ Accepter</button>';
+      }
+      if(d.statut === "Accepte"){
+        actions += ' <button class="btn btn-red btn-sm" onclick="convertDevisToFacture(\''+d.id+'\')">→ Facturer</button>';
+      }
+      return '<tr><td class="td-bold">'+d.id+'</td><td>'+d.client+'</td><td class="td-muted">'+d.produits+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(d.montant)+'</td><td class="td-muted">'+d.date+'</td><td>'+statusTag(d.statut)+(d.reservationFaite?' <span class="locked-badge">📦 Reserve</span>':'')+'</td><td>'+actions+'</td></tr>';
     }).join('') + '</tbody>';
 
-  el('tbl-fact').innerHTML = '<thead><tr><th>N° Facture</th><th>Client</th><th>Produits</th><th>Montant</th><th>Date</th><th>Mode paiement</th><th>Statut</th></tr></thead><tbody>' +
-    FACTURES.map(function(f){ return '<tr><td class="td-bold">'+f.id+'</td><td>'+f.client+'</td><td class="td-muted">'+f.produits+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(f.montant)+'</td><td class="td-muted">'+f.date+'</td><td class="td-muted">'+f.mode_paiement+'</td><td>'+statusTag(f.statut)+'</td></tr>'; }).join('') + '</tbody>';
+  el('tbl-fact').innerHTML = '<thead><tr><th>N° Facture</th><th>Client</th><th>Produits</th><th>Montant</th><th>Date</th><th>Mode paiement</th><th>Statut</th><th></th></tr></thead><tbody>' +
+    FACTURES.map(function(f){
+      let actions = '<button class="btn btn-ghost btn-sm" onclick="viewFactureDetail(\''+f.id+'\')">👁 Details</button>';
+      if(f.statut === "Impayee"){
+        actions += ' <button class="btn btn-red btn-sm" onclick="markFacturePaid(\''+f.id+'\')">✓ Marquer payee / Expedier</button>';
+      }
+      return '<tr><td class="td-bold">'+f.id+'</td><td>'+f.client+'</td><td class="td-muted">'+f.produits+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(f.montant)+'</td><td class="td-muted">'+f.date+'</td><td class="td-muted">'+f.mode_paiement+'</td><td>'+statusTag(f.statut)+(f.sortieAppliquee?' <span class="locked-badge">📤 Stock sorti</span>':'')+'</td><td>'+actions+'</td></tr>';
+    }).join('') + '</tbody>';
+}
+
+function viewDevisDetail(devisId){
+  const d = DEVIS.find(function(x){return x.id===devisId;});
+  if(!d) return;
+  const rows = [
+    ['N° Devis', '<strong>'+d.id+'</strong>'],
+    ['Client', d.client],
+    ['Produits', d.produits],
+    ['Montant', '<strong style="color:var(--red)">'+fcfa(d.montant)+'</strong>'],
+    ['Date', d.date],
+    ['Validite', d.validite],
+    ['Statut', statusTag(d.statut)],
+    ['Entrepot prevu', d.entrepot || '-'],
+    ['Reservation stock', d.reservationFaite ? '<span style="color:var(--gold);font-weight:700">✓ '+d.qte+' unite(s) de '+d.sku+' reservee(s)</span>' : '<span class="td-muted">Pas encore reserve</span>']
+  ];
+  if(d.lastModifiedBy) rows.push(['Derniere modification', modStampHtml(d)]);
+  openDetailModal('Detail Devis — ' + d.id, rows, {
+    record: d,
+    fields: [['Client', 'client', d.client], ['Montant (FCFA)', 'montant', d.montant], ['Validite', 'validite', d.validite]],
+    onSave: function(){ go('facturation'); }
+  });
+}
+
+function viewFactureDetail(factureId){
+  const f = FACTURES.find(function(x){return x.id===factureId;});
+  if(!f) return;
+  const rows = [
+    ['N° Facture', '<strong>'+f.id+'</strong>'],
+    ['Client', f.client],
+    ['Produits', f.produits],
+    ['Montant', '<strong style="color:var(--red)">'+fcfa(f.montant)+'</strong>'],
+    ['Date', f.date],
+    ['Mode de paiement', f.mode_paiement],
+    ['Statut', statusTag(f.statut)],
+    ['Entrepot', f.entrepot || '-'],
+    ['Sortie de stock', f.sortieAppliquee ? '<span style="color:var(--red);font-weight:700">✓ '+f.qte+' unite(s) de '+f.sku+' sortie(s) du stock reel</span>' : '<span class="td-muted">Pas encore expedie — stock toujours reserve uniquement</span>']
+  ];
+  if(f.lastModifiedBy) rows.push(['Derniere modification', modStampHtml(f)]);
+  openDetailModal('Detail Facture — ' + f.id, rows, {
+    record: f,
+    fields: [['Client', 'client', f.client], ['Montant (FCFA)', 'montant', f.montant], ['Mode paiement', 'mode_paiement', f.mode_paiement]],
+    onSave: function(){ go('facturation'); }
+  });
+}
+
+// Devis accepte par le client => reservation automatique du stock
+function acceptDevis(devisId){
+  const d = DEVIS.find(function(x){return x.id===devisId;});
+  if(!d) return;
+  d.statut = "Accepte";
+  const ok = triggerDevisAccepted(d);
+  if(!ok){
+    alert('⚠️ Devis accepte mais stock disponible insuffisant pour reserver automatiquement. Verifiez le module Stock.');
+  }
+  logAction('Devis accepte', d.id + ' — ' + d.client + (ok?' — stock reserve':' — reservation impossible (stock insuffisant)'), ok?'green':'gold');
+  go('facturation');
 }
 
 function convertDevisToFacture(devisId){
   const d = DEVIS.find(function(x){return x.id===devisId;});
   if(!d) return;
   const newFactId = "FACT-2026-" + Math.floor(Math.random()*9000+1000);
-  FACTURES.unshift({ id:newFactId, client:d.client, produits:d.produits, montant:d.montant, date:new Date().toLocaleDateString('fr-FR'), statut:"Impayee", mode_paiement:"-" });
+  FACTURES.unshift({
+    id:newFactId, client:d.client, produits:d.produits, montant:d.montant,
+    date:new Date().toLocaleDateString('fr-FR'), statut:"Impayee", mode_paiement:"-",
+    sku:d.sku, qte:d.qte, entrepot:d.entrepot, sortieAppliquee:false
+  });
   logAction("Devis converti en facture", d.id+' → '+newFactId, "blue");
+  go('facturation');
+}
+
+// Facture marquee payee / expediee => sortie reelle du stock (consomme la reservation)
+function markFacturePaid(factureId){
+  const f = FACTURES.find(function(x){return x.id===factureId;});
+  if(!f) return;
+  f.statut = "Payee";
+  triggerFactureExpediee(f);
+  logAction('Facture payee et expediee', f.id + ' — ' + f.client, 'green');
   go('facturation');
 }
 
@@ -1789,7 +2184,9 @@ function buildModals(){
   const prospectBody =
     fieldRow(fieldText('pr-nom','Nom'), fieldSelect('pr-type','Type',['B2C — Famille','B2B — Hotel','B2B — Restaurant','B2B — Clinique'])) +
     fieldRow(fieldText('pr-valeur','Valeur estimee (FCFA)','70000'), fieldSelect('pr-etape','Etape',PIPELINE_STAGES)) +
-    fieldRow(fieldSelect('m-ville-3','Ville — Niger',[]), fieldDate('pr-dateest','Date estimee de signature'));
+    fieldRow(fieldSelect('m-ville-3','Ville — Niger',[]), fieldDate('pr-dateest','Date estimee de signature')) +
+    fieldRow(fieldSelect('pr-sku','Produit lie', PRODUITS.map(function(p){return p.sku+' — '+p.nom;})), fieldText('pr-qte','Quantite','1')) +
+    fieldSelect('pr-entrepot','Entrepot prevu', ENTREPOTS.map(function(e){return e.nom;}));
   modals += modalShell('modal-prospect', 'Nouveau Prospect — Pipeline', prospectBody,
     btnGhost('Annuler', "closeModal('modal-prospect')") + btnRed('Ajouter', 'addProspect()'));
 
@@ -1908,17 +2305,18 @@ function buildModals2(){
   // ── Modal: Devis ──
   const devisBody =
     fieldText('dv-client','Client') +
-    fieldText('dv-produits','Produits','Ex: 1x KIT-001') +
-    fieldRow(fieldText('dv-montant','Montant (FCFA)'), fieldSelect('dv-validite','Validite',['15 jours','30 jours','60 jours']));
+    fieldRow(fieldSelect('dv-sku','Produit', PRODUITS.map(function(p){return p.sku+' — '+p.nom;})), fieldText('dv-qte','Quantite','1')) +
+    fieldRow(fieldText('dv-montant','Montant (FCFA)'), fieldSelect('dv-validite','Validite',['15 jours','30 jours','60 jours'])) +
+    fieldSelect('dv-entrepot','Entrepot prevu', ENTREPOTS.map(function(e){return e.nom;}));
   modals += modalShell('modal-devis', 'Nouveau Devis', devisBody,
     btnGhost('Annuler', "closeModal('modal-devis')") + btnRed('Creer le devis', 'addDevis()'));
 
   // ── Modal: Facture ──
   const factureBody =
     fieldText('ft-client','Client') +
-    fieldText('ft-produits','Produits','Ex: 1x PUR-001') +
+    fieldRow(fieldSelect('ft-sku','Produit', PRODUITS.map(function(p){return p.sku+' — '+p.nom;})), fieldText('ft-qte','Quantite','1')) +
     fieldRow(fieldText('ft-montant','Montant (FCFA)'), fieldSelect('ft-mode','Mode de paiement',['Especes','Virement','Cheque','Mobile Money','Carte bancaire'])) +
-    fieldSelect('ft-statut','Statut',['Payee','Impayee']);
+    fieldRow(fieldSelect('ft-statut','Statut',['Payee','Impayee']), fieldSelect('ft-entrepot','Entrepot', ENTREPOTS.map(function(e){return e.nom;})));
   modals += modalShell('modal-facture', 'Nouvelle Facture', factureBody,
     btnGhost('Annuler', "closeModal('modal-facture')") + btnRed('Generer la facture', 'addFacture()'));
 
@@ -1931,6 +2329,90 @@ function buildModals2(){
     btnGhost('Annuler', "closeModal('modal-reset-dept')") + btnRed('Reinitialiser le departement', 'resetDeptPasswords()'));
 
   el('app').insertAdjacentHTML('beforeend', modals);
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// DETAIL VIEWER — generic, structured, readable modal for "view details"
+// Replaces alert() popups. Read-only table by default; Super Admin gets an
+// "Edit" button that turns fields into inputs and saves with a timestamp.
+// ════════════════════════════════════════════════════════════════════════════
+
+let DETAIL_CTX = null; // { entity, id, fields, onSave }
+
+function detailRow(label, value){
+  return '<tr><td style="font-weight:600;color:var(--muted2);width:38%;padding:7px 10px;border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.05em">' + label + '</td><td style="padding:7px 10px;border-bottom:1px solid var(--border);font-size:13px">' + value + '</td></tr>';
+}
+
+function detailRowEditable(label, fieldKey, value, type){
+  type = type || 'text';
+  const inputId = 'detail-edit-' + fieldKey;
+  let input;
+  if(type === 'select' && Array.isArray(value)){
+    input = '<select class="form-select" id="' + inputId + '">' + value.map(function(o){ return '<option' + (o.selected?' selected':'') + '>' + o.label + '</option>'; }).join('') + '</select>';
+  } else {
+    input = '<input class="form-input" id="' + inputId + '" value="' + String(value).replace(/"/g,'&quot;') + '"/>';
+  }
+  return '<tr><td style="font-weight:600;color:var(--muted2);width:38%;padding:7px 10px;border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.05em">' + label + '</td><td style="padding:7px 10px;border-bottom:1px solid var(--border)">' + input + '</td></tr>';
+}
+
+// Open a read-only detail view. `rows` is an array of [label, value] pairs.
+// `editConfig` (optional) = { record, fields: [[label,key,currentValue,type,options]], onSave: fn }
+function openDetailModal(title, rows, editConfig){
+  let body = '<table style="width:100%;border-collapse:collapse">' + rows.map(function(r){ return detailRow(r[0], r[1]); }).join('') + '</table>';
+
+  if(editConfig && editConfig.record){
+    body += '<div id="detail-stamp" style="margin-top:10px">' + modStampHtml(editConfig.record) + '</div>';
+  }
+
+  let footer = btnGhost('Fermer', "closeModal('modal-detail')");
+  if(editConfig && isSuperAdmin()){
+    footer = btnGhost('Fermer', "closeModal('modal-detail')") + btnRed('✏️ Modifier', 'switchToEditMode()');
+  }
+
+  const existing = el('modal-detail');
+  if(existing) existing.remove();
+
+  const modalHtml = modalShell('modal-detail', title, '<div id="detail-body">' + body + '</div>', footer);
+  el('app').insertAdjacentHTML('beforeend', modalHtml);
+
+  DETAIL_CTX = editConfig ? { title: title, record: editConfig.record, fields: editConfig.fields, onSave: editConfig.onSave } : null;
+
+  openModal('modal-detail');
+}
+
+function switchToEditMode(){
+  if(!DETAIL_CTX) return;
+  const fields = DETAIL_CTX.fields;
+  let body = '<table style="width:100%;border-collapse:collapse">' + fields.map(function(f){
+    return detailRowEditable(f[0], f[1], f[2], f[3], f[4]);
+  }).join('') + '</table>';
+  body += '<div style="margin-top:10px;background:var(--gold-light);color:var(--gold);font-size:11px;padding:8px;border-radius:6px">⚠️ Vous modifiez en tant que Super Admin. Cette action sera horodatee et tracee dans le journal d\'audit.</div>';
+
+  el('detail-body').innerHTML = body;
+
+  const modal = el('modal-detail');
+  const footer = modal.querySelector('.modal-footer');
+  footer.innerHTML = btnGhost('Annuler', "closeModal('modal-detail')") + btnRed('💾 Enregistrer les modifications', 'saveDetailEdit()');
+}
+
+function saveDetailEdit(){
+  if(!DETAIL_CTX) return;
+  const record = DETAIL_CTX.record;
+  const fields = DETAIL_CTX.fields;
+
+  fields.forEach(function(f){
+    const key = f[1];
+    const inputEl = el('detail-edit-' + key);
+    if(inputEl){ record[key] = inputEl.value; }
+  });
+
+  stampModification(record);
+  if(typeof DETAIL_CTX.onSave === 'function') DETAIL_CTX.onSave(record);
+
+  logAction('Modification', DETAIL_CTX.title + ' modifie par ' + CU.nom, 'gold');
+  closeModal('modal-detail');
+  DETAIL_CTX = null;
 }
 
 
@@ -2025,12 +2507,20 @@ function addCampagne(){
 function addProspect(){
   const nom = el('pr-nom').value.trim();
   if(!nom){ alert('Entrez un nom'); return; }
+  const skuRaw = el('pr-sku').value;
+  const sku = skuRaw.split(' — ')[0];
+  const etape = el('pr-etape').value;
   const p = {
     id: Date.now(), nom: nom, type: el('pr-type').value.split(' ')[0],
-    val: parseInt(el('pr-valeur').value) || 30000, etape: el('pr-etape').value,
-    asg: CU.nom, ville: el('m-ville-3').value, dateEstimee: el('pr-dateest').value || '—', locked: false
+    val: parseInt(el('pr-valeur').value) || 30000, etape: etape,
+    asg: CU.nom, ville: el('m-ville-3').value, dateEstimee: el('pr-dateest').value || '—', locked: false,
+    sku: sku, qte: parseInt(el('pr-qte').value) || 1, entrepot: el('pr-entrepot').value, reservationFaite: false
   };
   PIPELINE.push(p);
+  if(etape === 'Gagne'){
+    const ok = triggerPipelineWon(p);
+    if(!ok) alert('⚠️ Opportunite creee en "Gagne" mais stock disponible insuffisant pour reserver.');
+  }
   logAction('Prospect ajoute au pipeline', nom + ' — ' + p.ville + ' — ' + fcfa(p.val), 'gold');
   closeModal('modal-prospect');
   updateAllBadges();
@@ -2191,10 +2681,15 @@ function addInventaire(){
 function addDevis(){
   const client = el('dv-client').value.trim();
   if(!client){ alert('Entrez un client'); return; }
+  const skuRaw = el('dv-sku').value;
+  const sku = skuRaw.split(' — ')[0];
+  const produitNom = skuRaw.split(' — ')[1] || sku;
+  const qte = parseInt(el('dv-qte').value) || 1;
   const id = "DEV-2026-" + Math.floor(Math.random()*900+100);
   DEVIS.unshift({
-    id: id, client: client, produits: el('dv-produits').value, montant: parseInt(el('dv-montant').value) || 0,
-    date: new Date().toLocaleDateString('fr-FR'), statut: 'Envoye', validite: el('dv-validite').value
+    id: id, client: client, produits: qte + 'x ' + sku, montant: parseInt(el('dv-montant').value) || 0,
+    date: new Date().toLocaleDateString('fr-FR'), statut: 'Envoye', validite: el('dv-validite').value,
+    sku: sku, qte: qte, entrepot: el('dv-entrepot').value, reservationFaite: false
   });
   logAction('Devis cree', id + ' — ' + client, 'blue');
   closeModal('modal-devis');
@@ -2204,12 +2699,23 @@ function addDevis(){
 function addFacture(){
   const client = el('ft-client').value.trim();
   if(!client){ alert('Entrez un client'); return; }
+  const skuRaw = el('ft-sku').value;
+  const sku = skuRaw.split(' — ')[0];
+  const qte = parseInt(el('ft-qte').value) || 1;
+  const entrepot = el('ft-entrepot').value;
+  const statut = el('ft-statut').value;
   const id = "FACT-2026-" + Math.floor(Math.random()*9000+1000);
-  FACTURES.unshift({
-    id: id, client: client, produits: el('ft-produits').value, montant: parseInt(el('ft-montant').value) || 0,
-    date: new Date().toLocaleDateString('fr-FR'), statut: el('ft-statut').value, mode_paiement: el('ft-mode').value
-  });
-  logAction('Facture generee', id + ' — ' + client + ' — ' + fcfa(parseInt(el('ft-montant').value) || 0), 'green');
+  const f = {
+    id: id, client: client, produits: qte + 'x ' + sku, montant: parseInt(el('ft-montant').value) || 0,
+    date: new Date().toLocaleDateString('fr-FR'), statut: statut, mode_paiement: el('ft-mode').value,
+    sku: sku, qte: qte, entrepot: entrepot, sortieAppliquee: false
+  };
+  FACTURES.unshift(f);
+  if(statut === 'Payee'){
+    // Direct cash sale, no prior reservation: consume real stock immediately
+    triggerFactureExpediee(f);
+  }
+  logAction('Facture generee', id + ' — ' + client + ' — ' + fcfa(f.montant), 'green');
   closeModal('modal-facture');
   go('facturation');
 }
