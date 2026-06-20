@@ -726,10 +726,36 @@ function switchTab(btn, prefix, tab){
   if(target) target.style.display = 'block';
 }
 
+function fillProduitSelect(id){
+  const sel = el(id);
+  if(!sel) return;
+  sel.innerHTML = PRODUITS.map(function(p){ return "<option>" + p.sku + " — " + p.nom + "</option>"; }).join("");
+}
+function fillProduitNomSelect(id){
+  const sel = el(id);
+  if(!sel) return;
+  sel.innerHTML = PRODUITS.map(function(p){ return "<option>" + p.nom + "</option>"; }).join("");
+}
+function fillEntrepotSelect(id){
+  const sel = el(id);
+  if(!sel) return;
+  sel.innerHTML = ENTREPOTS.map(function(e){ return "<option>" + e.nom + "</option>"; }).join("");
+}
+
 function openModal(id){
   el(id).classList.add('open');
   fillVilleSelect('m-ville-1'); fillVilleSelect('m-ville-2'); fillVilleSelect('m-ville-3');
   fillAssigneeSelect('m-asg-1'); fillAssigneeSelect('m-asg-2');
+  // Refresh product/warehouse dropdowns every time a modal opens — these lists
+  // change as the Super Admin adds products/warehouses, so they must never be
+  // left stale from whenever buildModals2() first ran (e.g. at login).
+  fillProduitSelect('mv-sku');
+  fillEntrepotSelect('mv-entrepot');
+  fillEntrepotSelect('cm-entrepot');
+  fillProduitNomSelect('da-produit');
+  fillEntrepotSelect('iv-entrepot');
+  fillProduitSelect('pr-sku');
+  fillEntrepotSelect('pr-entrepot');
 }
 function closeModal(id){ const m = el(id); if(m) m.classList.remove('open'); }
 
