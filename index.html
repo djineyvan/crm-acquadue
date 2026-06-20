@@ -3536,6 +3536,7 @@ function clearSessionToken(){
 function bootstrapApp(){
   Promise.all([loadAllDataFromDb(), loadAuditFromDb()]).then(function(){
     buildApp();
+    updateAllBadges(); // safety net: ensure sidebar counts reflect freshly-loaded DB data
     el('login-screen').style.display = 'none';
     el('app').classList.add('on');
     if(CU.doitChangerPass){
