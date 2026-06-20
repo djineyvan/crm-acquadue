@@ -274,215 +274,86 @@ const ROLE_LABELS = {
 };
 
 // ── USERS ────────────────────────────────────────────────────────────────────
+// Base videe : seul le compte Super Admin est conserve pour le demarrage.
+// Tous les autres membres d'equipe doivent etre crees par le Super Admin via
+// "Utilisateurs & Acces" ou directement dans chaque module Equipe.
 let USERS = [
   { id:1, nom:"Yvan Leunkeu Djine", email:"yvan@acquadue.ne", pass:"Admin@2026", role:"superadmin", departement:"Direction", ini:"YL", col:"av-red", actif:true, ville:"Niamey", tentatives:0, verrouille:false, doitChangerPass:false, dernierLogin:null, sessions:[] },
-  { id:2, nom:"Moussa Abdou", email:"moussa@acquadue.ne", pass:"Comm@2026", role:"collaborateur", departement:"Commercial", ini:"MA", col:"av-blue", actif:true, ville:"Niamey", tentatives:0, verrouille:false, doitChangerPass:false, dernierLogin:null, sessions:[] },
-  { id:3, nom:"Fatima Oumarou", email:"fatima@acquadue.ne", pass:"Comm@2026", role:"collaborateur", departement:"Commercial", ini:"FO", col:"av-green", actif:true, ville:"Niamey", tentatives:0, verrouille:false, doitChangerPass:false, dernierLogin:null, sessions:[] },
-  { id:4, nom:"Ibrahim Issoufou", email:"ibrahim@acquadue.ne", pass:"Comm@2026", role:"collaborateur", departement:"Commercial", ini:"II", col:"av-gold", actif:true, ville:"Zinder", tentatives:0, verrouille:false, doitChangerPass:false, dernierLogin:null, sessions:[] },
-  { id:5, nom:"Aicha Mahamane", role_label:"Responsable Commercial", email:"aicha@acquadue.ne", pass:"Resp@2026", role:"responsable", departement:"Commercial", ini:"AM", col:"av-purple", actif:true, ville:"Maradi", tentatives:0, verrouille:false, doitChangerPass:false, dernierLogin:null, sessions:[] },
-  { id:6, nom:"Salimata Diallo", email:"salimata@acquadue.ne", pass:"Mkt@2026", role:"admin", departement:"Marketing", ini:"SD", col:"av-purple", actif:true, ville:"Niamey", tentatives:0, verrouille:false, doitChangerPass:false, dernierLogin:null, sessions:[] },
-  { id:7, nom:"Hamidou Garba", email:"hamidou@acquadue.ne", pass:"Mkt@2026", role:"collaborateur", departement:"Marketing", ini:"HG", col:"av-gold", actif:true, ville:"Tahoua", tentatives:0, verrouille:false, doitChangerPass:false, dernierLogin:null, sessions:[] },
-  { id:8, nom:"Mariama Soule", email:"mariama@acquadue.ne", pass:"Mkt@2026", role:"collaborateur", departement:"Marketing", ini:"MS", col:"av-blue", actif:true, ville:"Niamey", tentatives:0, verrouille:false, doitChangerPass:false, dernierLogin:null, sessions:[] },
-  { id:9, nom:"Abdoul Karim", email:"abdoul@acquadue.ne", pass:"Com@2026", role:"admin", departement:"Communication", ini:"AK", col:"av-blue", actif:true, ville:"Niamey", tentatives:0, verrouille:false, doitChangerPass:false, dernierLogin:null, sessions:[] },
-  { id:10, nom:"Hawa Boubacar", email:"hawa@acquadue.ne", pass:"Com@2026", role:"collaborateur", departement:"Communication", ini:"HB", col:"av-green", actif:true, ville:"Niamey", tentatives:0, verrouille:false, doitChangerPass:false, dernierLogin:null, sessions:[] },
 ];
 
 // ── AUDIT LOG ────────────────────────────────────────────────────────────────
-let AUDIT = [
-  { ts:new Date(Date.now()-3600000), user:"Moussa Abdou", dept:"Commercial", action:"Client ajoute", detail:"Famille Mahamane - Niamey - 70.000 FCFA", color:"dot-green", ini:"MA", col:"av-blue", ip:"41.138.22.10" },
-  { ts:new Date(Date.now()-10800000), user:"Salimata Diallo", dept:"Marketing", action:"Campagne creee", detail:"Campagne TikTok Juin - 150.000 FCFA", color:"dot-blue", ini:"SD", col:"av-purple", ip:"41.138.45.2" },
-  { ts:new Date(Date.now()-18000000), user:"Fatima Oumarou", dept:"Commercial", action:"Prospect mis a jour", detail:"Hotel Sahel - Offre envoyee", color:"dot-gold", ini:"FO", col:"av-green", ip:"41.138.22.11" },
-  { ts:new Date(Date.now()-86400000), user:"Abdoul Karim", dept:"Communication", action:"Publication planifiee", detail:"Story Instagram - 20/06/2026", color:"dot-blue", ini:"AK", col:"av-blue", ip:"41.138.60.5" },
-  { ts:new Date(Date.now()-172800000), user:"Ibrahim Issoufou", dept:"Commercial", action:"Demo realisee", detail:"Clinique Al Hayat - Zinder", color:"dot-green", ini:"II", col:"av-gold", ip:"41.138.70.3" },
-];
+let AUDIT = [];
 
 // ── PIPELINE STAGES (6 etapes selon cahier des charges) ─────────────────────
 const PIPELINE_STAGES = ["Nouveau prospect","Contacte","En negociation","Offre envoyee","Gagne","Perdu"];
 
 // ── CLIENTS / PROSPECTS ──────────────────────────────────────────────────────
-let CLIENTS = [
-  { id:1, nom:"Famille Mahamane", type:"B2C", ville:"Niamey", zone:"Plateau", tel:"+227 90 00 11 22", email:"", societe:"", source:"Bouche a oreille", statut:"Client actif", produit:"Dispositif + 3 bougies - 70.000", asg:"Moussa Abdou", date:"12/06/2026", locked:true, historique:[{type:"appel",date:"12/06/2026",note:"Premier contact telephonique"},{type:"rdv",date:"13/06/2026",note:"Demonstration a domicile - vente conclue"}] },
-  { id:2, nom:"Hotel Sahel Niamey", type:"B2B", ville:"Niamey", zone:"Centre ville", tel:"+227 90 33 44 55", email:"contact@hotelsahel.ne", societe:"Hotel Sahel SARL", source:"Prospection terrain", statut:"Offre envoyee", produit:"Dispositif + 3 bougies - 70.000", asg:"Fatima Oumarou", date:"10/06/2026", locked:false, historique:[{type:"appel",date:"10/06/2026",note:"Prise de contact"},{type:"email",date:"11/06/2026",note:"Envoi devis pour 12 unites"}] },
-  { id:3, nom:"Famille Oumarou", type:"B2C", ville:"Niamey", zone:"Gamkalle", tel:"+227 90 55 66 77", email:"", societe:"", source:"Recommandation", statut:"Client actif", produit:"Dispositif seul - 30.000", asg:"Fatima Oumarou", date:"08/06/2026", locked:true, historique:[] },
-  { id:4, nom:"Restaurant Le Fleuve", type:"B2B", ville:"Niamey", zone:"Rive Droite", tel:"+227 90 66 77 88", email:"", societe:"Le Fleuve Resto", source:"Salon professionnel", statut:"Demonstration faite", produit:"Pack 3 bougies - 50.000", asg:"Ibrahim Issoufou", date:"07/06/2026", locked:false, historique:[] },
-  { id:5, nom:"Clinique Al Hayat", type:"B2B", ville:"Zinder", zone:"Centre", tel:"+227 90 77 88 99", email:"", societe:"Clinique Al Hayat", source:"Prospection terrain", statut:"Prospect chaud", produit:"Dispositif + 3 bougies - 70.000", asg:"Ibrahim Issoufou", date:"05/06/2026", locked:false, historique:[] },
-  { id:6, nom:"Famille Issoufou", type:"B2C", ville:"Zinder", zone:"Bango", tel:"+227 90 88 99 00", email:"", societe:"", source:"Reseaux sociaux", statut:"Client actif", produit:"Dispositif seul - 30.000", asg:"Ibrahim Issoufou", date:"03/06/2026", locked:true, historique:[] },
-  { id:7, nom:"Ecole Primaire Lafia", type:"B2B", ville:"Maradi", zone:"Centre", tel:"+227 90 99 00 11", email:"", societe:"Ecole Lafia", source:"Prospection terrain", statut:"Prospect froid", produit:"Dispositif + 3 bougies - 70.000", asg:"Aicha Mahamane", date:"01/06/2026", locked:false, historique:[] },
-  { id:8, nom:"Famille Abdou", type:"B2C", ville:"Maradi", zone:"Maradawa", tel:"+227 90 11 33 55", email:"", societe:"", source:"Bouche a oreille", statut:"Client actif", produit:"Bougie seule - 20.000", asg:"Aicha Mahamane", date:"30/05/2026", locked:true, historique:[] },
-];
+let CLIENTS = [];
 
 // ── PIPELINE (Opportunites) ──────────────────────────────────────────────────
-let PIPELINE = [
-  { id:1, nom:"Famille Traore", type:"B2C", val:30000, etape:"Nouveau prospect", asg:"Moussa Abdou", ville:"Niamey", dateEstimee:"25/06/2026", locked:false, sku:"PUR-001", qte:1, entrepot:"Stock Principal Niamey", reservationFaite:false },
-  { id:2, nom:"Famille Seydou", type:"B2C", val:70000, etape:"Contacte", asg:"Fatima Oumarou", ville:"Niamey", dateEstimee:"22/06/2026", locked:false, sku:"KIT-001", qte:1, entrepot:"Stock Principal Niamey", reservationFaite:false },
-  { id:3, nom:"Bureau BCEAO", type:"B2B", val:210000, etape:"En negociation", asg:"Moussa Abdou", ville:"Niamey", dateEstimee:"30/06/2026", locked:false, sku:"KIT-001", qte:3, entrepot:"Stock Principal Niamey", reservationFaite:false },
-  { id:4, nom:"Hotel Gaweye", type:"B2B", val:140000, etape:"Offre envoyee", asg:"Ibrahim Issoufou", ville:"Zinder", dateEstimee:"28/06/2026", locked:false, sku:"KIT-001", qte:2, entrepot:"Depot Regional Zinder", reservationFaite:false },
-  { id:5, nom:"Famille Moussa", type:"B2C", val:30000, etape:"Gagne", asg:"Aicha Mahamane", ville:"Maradi", dateEstimee:"15/06/2026", locked:true, sku:"PUR-001", qte:1, entrepot:"Depot Regional Maradi", reservationFaite:true },
-  { id:6, nom:"Restaurant Amani", type:"B2B", val:70000, etape:"Contacte", asg:"Fatima Oumarou", ville:"Niamey", dateEstimee:"24/06/2026", locked:false, sku:"KIT-001", qte:1, entrepot:"Stock Principal Niamey", reservationFaite:false },
-  { id:7, nom:"Famille Daouda", type:"B2C", val:50000, etape:"Nouveau prospect", asg:"Aicha Mahamane", ville:"Tahoua", dateEstimee:"27/06/2026", locked:false, sku:"KIT-003", qte:1, entrepot:"Stock Principal Niamey", reservationFaite:false },
-  { id:8, nom:"Clinique Maman", type:"B2B", val:140000, etape:"En negociation", asg:"Ibrahim Issoufou", ville:"Zinder", dateEstimee:"29/06/2026", locked:false, sku:"KIT-001", qte:2, entrepot:"Depot Regional Zinder", reservationFaite:false },
-  { id:9, nom:"Famille Boulama", type:"B2C", val:30000, etape:"Perdu", asg:"Moussa Abdou", ville:"Niamey", dateEstimee:"10/06/2026", locked:true, sku:"PUR-001", qte:1, entrepot:"Stock Principal Niamey", reservationFaite:false },
-];
+let PIPELINE = [];
 
 // ── EQUIPES (donnees commerciales/marketing/com) ────────────────────────────
-let COMM_PERF = [
-  { nom:"Moussa Abdou", ville:"Niamey", zone:"Plateau/Centre", obj:900000, ventes:612000, nb:20, tx:5 },
-  { nom:"Fatima Oumarou", ville:"Niamey", zone:"Gamkalle/Rive Droite", obj:750000, ventes:480000, nb:16, tx:5 },
-  { nom:"Ibrahim Issoufou", ville:"Zinder", zone:"Centre Zinder", obj:750000, ventes:390000, nb:13, tx:5 },
-  { nom:"Aicha Mahamane", ville:"Maradi", zone:"Centre Maradi", obj:600000, ventes:270000, nb:9, tx:4 },
-];
+let COMM_PERF = [];
 
-let CAMPAGNES = [
-  { nom:"Campagne TikTok Juin", canal:"TikTok", budget:150000, statut:"Active", leads:28, cout_lead:5357, debut:"01/06/2026", fin:"30/06/2026", resp:"Salimata Diallo", locked:false },
-  { nom:"WhatsApp Bougie Reminder", canal:"WhatsApp", budget:0, statut:"Active", leads:45, cout_lead:0, debut:"10/06/2026", fin:"30/06/2026", resp:"Hamidou Garba", locked:false },
-  { nom:"Facebook Ramadan Promo", canal:"Facebook", budget:75000, statut:"Terminee", leads:62, cout_lead:1210, debut:"01/03/2026", fin:"30/04/2026", resp:"Salimata Diallo", locked:true },
-  { nom:"Animation Marches Niger", canal:"Terrain", budget:50000, statut:"Active", leads:18, cout_lead:2778, debut:"15/06/2026", fin:"15/07/2026", resp:"Mariama Soule", locked:false },
-];
+let CAMPAGNES = [];
 
-let PUBLICATIONS = [
-  { titre:"Script UGC - Eau contaminee", plat:"TikTok", fmt:"Video", date:"17/06/2026", statut:"Publie", workflow:"Publication", redacteur:"Abdoul Karim", locked:true },
-  { titre:"5 raisons d'utiliser Acqua Due", plat:"Instagram", fmt:"Carousel", date:"15/06/2026", statut:"Publie", workflow:"Publication", redacteur:"Hawa Boubacar", locked:true },
-  { titre:"Temoignage famille Oumarou", plat:"Facebook", fmt:"Post image", date:"20/06/2026", statut:"En attente validation", workflow:"Responsable", redacteur:"Hawa Boubacar", locked:false },
-  { titre:"Avant/Apres eau robinet", plat:"TikTok", fmt:"Video", date:"22/06/2026", statut:"Brouillon", workflow:"Redacteur", redacteur:"Abdoul Karim", locked:false },
-];
+let PUBLICATIONS = [];
 
 // ── TACHES ────────────────────────────────────────────────────────────────────
-let TASKS = [
-  { id:1, titre:"Prospecter 50 familles - Plateau Niamey", asg:"Moussa Abdou", dept:"Commercial", pri:"Haute", statut:"En cours", date:"20/06/2026", locked:false },
-  { id:2, titre:"5 scripts UGC TikTok juillet", asg:"Salimata Diallo", dept:"Marketing", pri:"Haute", statut:"En cours", date:"25/06/2026", locked:false },
-  { id:3, titre:"Relancer Hotel Sahel", asg:"Fatima Oumarou", dept:"Commercial", pri:"Haute", statut:"A faire", date:"18/06/2026", locked:false },
-  { id:4, titre:"3 posts Facebook cette semaine", asg:"Hawa Boubacar", dept:"Communication", pri:"Moyenne", statut:"A faire", date:"17/06/2026", locked:false },
-  { id:5, titre:"Rapport hebdo ventes", asg:"Toute l'equipe", dept:"Commercial", pri:"Moyenne", statut:"A faire", date:"21/06/2026", locked:false },
-  { id:6, titre:"Tournage video UGC Acqua Due", asg:"Abdoul Karim", dept:"Communication", pri:"Haute", statut:"En cours", date:"22/06/2026", locked:false },
-  { id:7, titre:"Prospecter marche Zinder - 30 contacts", asg:"Ibrahim Issoufou", dept:"Commercial", pri:"Haute", statut:"A faire", date:"25/06/2026", locked:false },
-  { id:8, titre:"Validation budget campagne juillet", asg:"Yvan Leunkeu Djine", dept:"Direction", pri:"Haute", statut:"Termine", date:"15/06/2026", locked:true },
-];
+let TASKS = [];
 
 // ── NOTIFICATIONS ─────────────────────────────────────────────────────────────
-let NOTIFICATIONS = [
-  { id:1, icon:"🎯", text:"Nouveau lead: Famille Traore (Niamey)", time:"Il y a 1h", read:false, target:"Moussa Abdou" },
-  { id:2, icon:"✅", text:"Tache assignee: Relancer Hotel Sahel", time:"Il y a 3h", read:false, target:"Fatima Oumarou" },
-  { id:3, icon:"⏰", text:"Echeance proche: Prospecter 50 familles (20/06)", time:"Il y a 5h", read:true, target:"Moussa Abdou" },
-  { id:4, icon:"🔑", text:"Votre mot de passe a ete modifie", time:"Hier", read:true, target:"all" },
-  { id:5, icon:"📣", text:"Publication en attente de validation", time:"Il y a 2h", read:false, target:"Abdoul Karim" },
-];
+let NOTIFICATIONS = [];
 
 // ── RH SIMPLIFIE ──────────────────────────────────────────────────────────────
-let RH_PRESENCE = [
-  { nom:"Moussa Abdou", date:"19/06/2026", arrivee:"08:05", depart:"17:30", statut:"Present" },
-  { nom:"Fatima Oumarou", date:"19/06/2026", arrivee:"08:15", depart:"-", statut:"Present" },
-  { nom:"Ibrahim Issoufou", date:"19/06/2026", arrivee:"-", depart:"-", statut:"Absent" },
-  { nom:"Salimata Diallo", date:"19/06/2026", arrivee:"08:00", depart:"-", statut:"Present" },
-];
+let RH_PRESENCE = [];
 
-let RH_CONGES = [
-  { id:1, nom:"Fatima Oumarou", debut:"25/06/2026", fin:"28/06/2026", motif:"Conges annuels", statut:"En attente" },
-  { id:2, nom:"Abdoul Karim", debut:"01/07/2026", fin:"05/07/2026", motif:"Evenement familial", statut:"Approuve" },
-];
+let RH_CONGES = [];
 
 // ── DOCUMENTS ──────────────────────────────────────────────────────────────────
-let DOCUMENTS = [
-  { nom:"Contrat Hotel Sahel.pdf", categorie:"Contrats", taille:"245 KB", date:"10/06/2026", par:"Fatima Oumarou" },
-  { nom:"Facture-2026-0612.pdf", categorie:"Factures", taille:"88 KB", date:"12/06/2026", par:"Moussa Abdou" },
-  { nom:"Brief Campagne TikTok.docx", categorie:"Campagnes", taille:"156 KB", date:"01/06/2026", par:"Salimata Diallo" },
-  { nom:"Fiche Client Clinique Al Hayat.xlsx", categorie:"Clients", taille:"42 KB", date:"05/06/2026", par:"Ibrahim Issoufou" },
-];
+let DOCUMENTS = [];
 
 
 // ════════════════════════════════════════════════════════════════════════════
 // DATA LAYER PART 2 — Produits, Stocks, Approvisionnement, Achats, Facturation
+// Base videe : aucune donnee de test. Le Super Admin remplit tout depuis zero.
 // ════════════════════════════════════════════════════════════════════════════
 
 // ── PRODUITS ──────────────────────────────────────────────────────────────────
-let PRODUITS = [
-  { sku:"PUR-001", nom:"Purificateur Lorenzetti 2000", categorie:"Dispositif", marque:"Lorenzetti", desc:"Robinet purificateur 3 etapes", prix_achat:18000, prix_vente:30000, prix_revendeur:25000, tva:19, poids:"0.8kg", dimensions:"15x10x8cm", codebarre:"6190000010019" },
-  { sku:"FIL-001", nom:"Bougie filtrante simple", categorie:"Consommable", marque:"Lorenzetti", desc:"Cartouche filtrante 1500-2000L", prix_achat:12000, prix_vente:20000, prix_revendeur:16500, tva:19, poids:"0.2kg", dimensions:"8x4x4cm", codebarre:"6190000010026" },
-  { sku:"KIT-002", nom:"Pack 2 bougies", categorie:"Consommable", marque:"Lorenzetti", desc:"Lot de 2 cartouches filtrantes", prix_achat:21000, prix_vente:35000, prix_revendeur:29000, tva:19, poids:"0.4kg", dimensions:"16x4x4cm", codebarre:"6190000010033" },
-  { sku:"KIT-003", nom:"Pack 3 bougies", categorie:"Consommable", marque:"Lorenzetti", desc:"Lot de 3 cartouches filtrantes", prix_achat:30000, prix_vente:50000, prix_revendeur:41000, tva:19, poids:"0.6kg", dimensions:"24x4x4cm", codebarre:"6190000010040" },
-  { sku:"KIT-004", nom:"Pack 4 bougies", categorie:"Consommable", marque:"Lorenzetti", desc:"Lot de 4 cartouches filtrantes", prix_achat:36000, prix_vente:60000, prix_revendeur:49000, tva:19, poids:"0.8kg", dimensions:"32x4x4cm", codebarre:"6190000010057" },
-  { sku:"KIT-001", nom:"Kit installation complet", categorie:"Accessoire", marque:"Lorenzetti", desc:"Dispositif + 3 bougies + accessoires", prix_achat:42000, prix_vente:70000, prix_revendeur:58000, tva:19, poids:"1.4kg", dimensions:"30x20x10cm", codebarre:"6190000010064" },
-];
+let PRODUITS = [];
 
 // ── ENTREPOTS ─────────────────────────────────────────────────────────────────
-let ENTREPOTS = [
-  { id:1, nom:"Stock Principal Niamey", type:"Principal", ville:"Niamey" },
-  { id:2, nom:"Depot Regional Zinder", type:"Depot regional", ville:"Zinder" },
-  { id:3, nom:"Depot Regional Maradi", type:"Depot regional", ville:"Maradi" },
-  { id:4, nom:"Point de vente Niamey Centre", type:"Point de vente", ville:"Niamey" },
-];
+let ENTREPOTS = [];
 
 // ── STOCK (par produit x entrepot) — Stock Reel + Stock Reserve = source de verite ──
 // Stock Disponible = Stock Reel - Stock Reserve (calcule, jamais stocke directement)
-let STOCK = [
-  { sku:"PUR-001", entrepot:"Stock Principal Niamey", qte:145, reserve:0, seuil:50 },
-  { sku:"PUR-001", entrepot:"Depot Regional Zinder", qte:22, reserve:0, seuil:20 },
-  { sku:"PUR-001", entrepot:"Depot Regional Maradi", qte:18, reserve:0, seuil:20 },
-  { sku:"FIL-001", entrepot:"Stock Principal Niamey", qte:15, reserve:0, seuil:20 },
-  { sku:"FIL-001", entrepot:"Depot Regional Zinder", qte:34, reserve:0, seuil:20 },
-  { sku:"KIT-002", entrepot:"Stock Principal Niamey", qte:62, reserve:0, seuil:25 },
-  { sku:"KIT-003", entrepot:"Stock Principal Niamey", qte:48, reserve:0, seuil:25 },
-  { sku:"KIT-004", entrepot:"Stock Principal Niamey", qte:30, reserve:0, seuil:15 },
-  { sku:"KIT-001", entrepot:"Stock Principal Niamey", qte:95, reserve:0, seuil:30 },
-  { sku:"KIT-001", entrepot:"Point de vente Niamey Centre", qte:12, reserve:0, seuil:15 },
-];
+let STOCK = [];
 
 // ── MOUVEMENTS DE STOCK ────────────────────────────────────────────────────────
-let MOUVEMENTS_STOCK = [
-  { id:1, date:"18/06/2026", type:"Entree", motif:"Achat fournisseur", sku:"PUR-001", produit:"Purificateur Lorenzetti 2000", qte:100, entrepot:"Stock Principal Niamey", user:"Yvan Leunkeu Djine" },
-  { id:2, date:"17/06/2026", type:"Sortie", motif:"Vente", sku:"FIL-001", produit:"Bougie filtrante simple", qte:5, entrepot:"Stock Principal Niamey", user:"Moussa Abdou" },
-  { id:3, date:"16/06/2026", type:"Sortie", motif:"Vente", sku:"KIT-001", produit:"Kit installation complet", qte:3, entrepot:"Stock Principal Niamey", user:"Fatima Oumarou" },
-  { id:4, date:"15/06/2026", type:"Entree", motif:"Reapprovisionnement", sku:"FIL-001", produit:"Bougie filtrante simple", qte:40, entrepot:"Depot Regional Zinder", user:"Ibrahim Issoufou" },
-  { id:5, date:"14/06/2026", type:"Sortie", motif:"Casse", sku:"PUR-001", produit:"Purificateur Lorenzetti 2000", qte:2, entrepot:"Stock Principal Niamey", user:"Yvan Leunkeu Djine" },
-];
+let MOUVEMENTS_STOCK = [];
 
 // ── FOURNISSEURS ──────────────────────────────────────────────────────────────
-let FOURNISSEURS = [
-  { id:1, nom:"Lorenzetti Brasil Export", contact:"Carlos Mendes", tel:"+55 11 4002 8922", email:"export@lorenzetti.com.br", adresse:"Sao Paulo, Bresil", paiement:"30 jours net" },
-  { id:2, nom:"Afrique Logistique SARL", contact:"Boubacar Sani", tel:"+227 96 11 22 33", email:"contact@afriquelog.ne", adresse:"Niamey, Niger", paiement:"A la livraison" },
-  { id:3, nom:"Lorenzetti Maroc Distribution", contact:"Yasmine Alaoui", tel:"+212 6 61 22 33 44", email:"distrib@lorenzetti.ma", adresse:"Casablanca, Maroc", paiement:"15 jours net" },
-];
+let FOURNISSEURS = [];
 
 // ── COMMANDES FOURNISSEURS ────────────────────────────────────────────────────
-let COMMANDES_FOURNISSEUR = [
-  { id:1, fournisseur:"Lorenzetti Brasil Export", date:"01/06/2026", produits:"100x PUR-001, 200x FIL-001", montant:3000000, statut:"Recue", entrepot:"Stock Principal Niamey" },
-  { id:2, fournisseur:"Afrique Logistique SARL", date:"15/06/2026", produits:"50x KIT-001", montant:2100000, statut:"Confirmee", entrepot:"Stock Principal Niamey" },
-  { id:3, fournisseur:"Lorenzetti Maroc Distribution", date:"18/06/2026", produits:"80x FIL-001, 40x KIT-002", montant:1800000, statut:"Envoyee", entrepot:"Depot Regional Zinder" },
-  { id:4, fournisseur:"Lorenzetti Brasil Export", date:"19/06/2026", produits:"30x PUR-001", montant:540000, statut:"Brouillon", entrepot:"Depot Regional Maradi" },
-];
+let COMMANDES_FOURNISSEUR = [];
 
 // ── DEMANDES D'ACHAT (workflow Demande -> Validation -> Commande -> Reception -> Paiement) ─
-let DEMANDES_ACHAT = [
-  { id:1, produit:"Bougie filtrante simple", qte:60, motif:"Stock sous le seuil critique", demandeur:"Moussa Abdou", etape:"Demande", date:"19/06/2026" },
-  { id:2, produit:"Purificateur Lorenzetti 2000", qte:40, motif:"Forte demande Zinder", demandeur:"Ibrahim Issoufou", etape:"Validation", date:"17/06/2026" },
-  { id:3, produit:"Kit installation complet", qte:25, motif:"Reapprovisionnement standard", demandeur:"Fatima Oumarou", etape:"Commande", date:"12/06/2026" },
-];
+let DEMANDES_ACHAT = [];
 
 // ── INVENTAIRES ────────────────────────────────────────────────────────────────
-let INVENTAIRES = [
-  { id:1, entrepot:"Stock Principal Niamey", type:"Mensuel", date:"01/06/2026", statut:"Termine", ecarts:2 },
-  { id:2, entrepot:"Depot Regional Zinder", type:"Trimestriel", date:"15/05/2026", statut:"Termine", ecarts:0 },
-  { id:3, entrepot:"Stock Principal Niamey", type:"Mensuel", date:"01/07/2026", statut:"Planifie", ecarts:null },
-];
+let INVENTAIRES = [];
 
-// ── DEVIS & FACTURES ───────────────────────────────────────────────────────────
-let DEVIS = [
-  { id:"DEV-2026-014", client:"Hotel Sahel Niamey", produits:"12x KIT-001", montant:840000, date:"10/06/2026", statut:"Envoye", validite:"30 jours", sku:"KIT-001", qte:12, entrepot:"Stock Principal Niamey", reservationFaite:false },
-  { id:"DEV-2026-015", client:"Clinique Al Hayat", produits:"5x KIT-001", montant:350000, date:"05/06/2026", statut:"Accepte", validite:"30 jours", sku:"KIT-001", qte:5, entrepot:"Stock Principal Niamey", reservationFaite:true },
-];
+// ── DEVIS & FACTURES — structure multi-lignes (plusieurs produits possibles) ──
+// Chaque devis/facture a un tableau `lignes`: [{sku, nom, qte, prixUnitaire, entrepot}, ...]
+// `montant` est toujours recalcule = somme(qte * prixUnitaire) pour eviter les incoherences.
+let DEVIS = [];
 
-let FACTURES = [
-  { id:"FACT-2026-0612", client:"Famille Mahamane", produits:"1x KIT-001", montant:70000, date:"12/06/2026", statut:"Payee", mode_paiement:"Mobile Money", sku:"KIT-001", qte:1, entrepot:"Stock Principal Niamey", sortieAppliquee:true },
-  { id:"FACT-2026-0608", client:"Famille Oumarou", produits:"1x PUR-001", montant:30000, date:"08/06/2026", statut:"Payee", mode_paiement:"Especes", sku:"PUR-001", qte:1, entrepot:"Stock Principal Niamey", sortieAppliquee:true },
-  { id:"FACT-2026-0603", client:"Famille Issoufou", produits:"1x PUR-001", montant:30000, date:"03/06/2026", statut:"Payee", mode_paiement:"Virement", sku:"PUR-001", qte:1, entrepot:"Depot Regional Zinder", sortieAppliquee:true },
-  { id:"FACT-2026-0530", client:"Famille Abdou", produits:"1x FIL-001", montant:20000, date:"30/05/2026", statut:"Impayee", mode_paiement:"-", sku:"FIL-001", qte:1, entrepot:"Depot Regional Maradi", sortieAppliquee:false },
-];
+let FACTURES = [];
 
 // ── SESSIONS (Super Admin: voir appareils connectes) ─────────────────────────
-let SESSIONS_ACTIVES = [
-  { user:"Yvan Leunkeu Djine", appareil:"MacBook Pro - Safari", ip:"41.138.10.5", debut:"Aujourd'hui 08:02", actif:true },
-  { user:"Moussa Abdou", appareil:"Samsung Galaxy A14 - Chrome Mobile", ip:"41.138.22.10", debut:"Aujourd'hui 07:45", actif:true },
-  { user:"Salimata Diallo", appareil:"iPhone 13 - Safari Mobile", ip:"41.138.45.2", debut:"Hier 16:30", actif:true },
-];
+let SESSIONS_ACTIVES = [];
 
 // ── EXTEND PERMISSIONS — autorisations sensibles (module 27) ────────────────
 const SENSITIVE_PERMS = {
@@ -493,11 +364,12 @@ const SENSITIVE_PERMS = {
 };
 
 // ── SAUVEGARDES (Super Admin centre de controle) ─────────────────────────────
-let BACKUPS = [
-  { type:"Quotidienne", date:"19/06/2026 03:00", taille:"4.2 MB", statut:"Reussie" },
-  { type:"Hebdomadaire", date:"15/06/2026 03:00", taille:"4.1 MB", statut:"Reussie" },
-  { type:"Mensuelle", date:"01/06/2026 03:00", taille:"3.9 MB", statut:"Reussie" },
-];
+let BACKUPS = [];
+
+
+// ── DEPENSES ───────────────────────────────────────────────────────────────────
+let DEPENSES = [];
+const CATEGORIES_DEPENSES = ["Loyer","Transport","Marketing","Charges","Salaires","Fournitures","Maintenance","Autre"];
 
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -537,7 +409,10 @@ function statusTag(s){
     "Nouveau prospect":"tag-grey","Contacte":"tag-blue","En negociation":"tag-gold",
     "Gagne":"tag-green","Perdu":"tag-red","En attente":"tag-gold","Approuve":"tag-green",
     "Refuse":"tag-red","Present":"tag-green","Absent":"tag-red",
-    "Brouillon":"tag-grey","En attente validation":"tag-gold"
+    "Brouillon":"tag-grey","En attente validation":"tag-gold",
+    "Envoye":"tag-blue","Accepte":"tag-green","Expire":"tag-red","Refuse par client":"tag-red",
+    "Payee":"tag-green","Impayee":"tag-red","Partiellement payee":"tag-gold","Annulee":"tag-grey",
+    "Envoyee":"tag-blue","Confirmee":"tag-blue","Partiellement recue":"tag-gold","Recue":"tag-green"
   };
   return tag(s, map[s] || "tag-grey");
 }
@@ -746,6 +621,7 @@ function buildApp(){
   html += navItem('✅','Taches','taches','nb-taches');
   html += navItem('📁','Documents','docs');
   html += navItem('📈','Rapports','rapports');
+  html += navItem('💸','Depenses','depenses');
   html += '    <div class="nsec">Produits & Stocks</div>';
   html += navItem('📦','Produits','produits');
   html += navItem('🏬','Stocks','stock');
@@ -828,7 +704,8 @@ const VIEW_TITLES = {
   rapports:"Rapports & Analyses", users:"Utilisateurs & Acces", journal:"Journal d'audit", rh:"Ressources Humaines",
   produits:"Catalogue Produits", stock:"Gestion des Stocks", approv:"Fournisseurs & Approvisionnement",
   achats:"Workflow des Achats", inventaires:"Inventaires", facturation:"Devis & Facturation",
-  direction:"Tableau de Bord — Direction Generale", controle:"Centre de Controle — Super Admin"
+  direction:"Tableau de Bord — Direction Generale", controle:"Centre de Controle — Super Admin",
+  depenses:"Depenses"
 };
 
 function go(view){
@@ -867,7 +744,8 @@ function renderView(view){
     mkt: renderMkt, com: renderCom, clients: renderClients, taches: renderTaches,
     docs: renderDocs, rapports: renderRapports, users: renderUsers, journal: renderJournal, rh: renderRH,
     produits: renderProduits, stock: renderStock, approv: renderApprov, achats: renderAchats,
-    inventaires: renderInventaires, facturation: renderFacturation, direction: renderDirection, controle: renderControle
+    inventaires: renderInventaires, facturation: renderFacturation, direction: renderDirection, controle: renderControle,
+    depenses: renderDepenses
   };
   if(renderers[view]) renderers[view](c);
 }
@@ -876,16 +754,20 @@ function renderView(view){
 function renderDash(c){
   const totalVentes = COMM_PERF.reduce(function(s,x){return s+x.ventes;},0);
   const totalObj = COMM_PERF.reduce(function(s,x){return s+x.obj;},0);
-  const pctObj = Math.round(totalVentes/totalObj*100);
+  const pctObj = totalObj > 0 ? Math.round(totalVentes/totalObj*100) : 0;
   const myClients = CLIENTS.filter(visibleClientFilter);
   const myTasks = TASKS.filter(visibleTaskFilter).filter(function(t){return t.pri==="Haute" && t.statut!=="Termine";});
 
   let h = '';
+  const pipelineClos = PIPELINE.filter(function(p){return p.etape==='Gagne'||p.etape==='Perdu';});
+  const pipelineGagne = PIPELINE.filter(function(p){return p.etape==='Gagne';});
+  const tauxConversion = pipelineClos.length > 0 ? Math.round(pipelineGagne.length/pipelineClos.length*100) : 0;
+
   h += '<div class="grid4" style="margin-bottom:13px">';
-  h += '  <div class="kpi kred"><div class="kpi-lbl">Ventes ce mois</div><div class="kpi-val">' + (totalVentes/1000000).toFixed(2) + 'M</div><div class="kpi-delta up">↑ +18%</div></div>';
-  h += '  <div class="kpi kblue"><div class="kpi-lbl">Prospects actifs</div><div class="kpi-val">' + myClients.length + '</div><div class="kpi-delta up">↑ +5 cette semaine</div></div>';
-  h += '  <div class="kpi kgreen"><div class="kpi-lbl">Taux conversion</div><div class="kpi-val">34%</div><div class="kpi-delta up">↑ +4pts</div></div>';
-  h += '  <div class="kpi kgold"><div class="kpi-lbl">Objectif mensuel</div><div class="kpi-val">' + pctObj + '%</div><div class="kpi-delta down">↓ ' + Math.max(0,Math.round((totalObj-totalVentes)/35000)) + ' ventes restantes</div></div>';
+  h += '  <div class="kpi kred"><div class="kpi-lbl">Ventes ce mois</div><div class="kpi-val">' + (totalVentes/1000000).toFixed(2) + 'M</div></div>';
+  h += '  <div class="kpi kblue"><div class="kpi-lbl">Prospects actifs</div><div class="kpi-val">' + myClients.length + '</div></div>';
+  h += '  <div class="kpi kgreen"><div class="kpi-lbl">Taux conversion</div><div class="kpi-val">' + tauxConversion + '%</div></div>';
+  h += '  <div class="kpi kgold"><div class="kpi-lbl">Objectif mensuel</div><div class="kpi-val">' + pctObj + '%</div></div>';
   h += '</div>';
 
   h += '<div class="grid2" style="margin-bottom:12px">';
@@ -899,10 +781,13 @@ function renderDash(c){
   h += '</div>';
   c.innerHTML = h;
 
+  const campagnesActives = CAMPAGNES.filter(function(x){return x.statut==="Active";}).length;
+  const pctMkt = CAMPAGNES.length > 0 ? Math.round(campagnesActives/CAMPAGNES.length*100) : 0;
+  const pctCom = PUBLICATIONS.length > 0 ? Math.round(PUBLICATIONS.filter(function(p){return p.statut==='Publie';}).length/PUBLICATIONS.length*100) : 0;
   const teams = [
-    {n:"Equipe Commerciale", v:Math.round(totalVentes/totalObj*100), s:fcfa(totalVentes)+" / "+fcfa(totalObj), f:"pf-red"},
-    {n:"Equipe Marketing", v:82, s:CAMPAGNES.filter(function(x){return x.statut==="Active";}).length+" campagnes actives", f:"pf-blue"},
-    {n:"Equipe Communication", v:75, s:PUBLICATIONS.length+" publications", f:"pf-green"}
+    {n:"Equipe Commerciale", v:pctObj, s:fcfa(totalVentes)+" / "+fcfa(totalObj), f:"pf-red"},
+    {n:"Equipe Marketing", v:pctMkt, s:campagnesActives+" campagnes actives sur "+CAMPAGNES.length, f:"pf-blue"},
+    {n:"Equipe Communication", v:pctCom, s:PUBLICATIONS.length+" publications", f:"pf-green"}
   ];
   el('d-perf').innerHTML = teams.map(function(t){
     return '<div style="margin-bottom:11px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:12px;font-weight:500">'+t.n+'</span><span style="font-size:12px;font-weight:700;color:var(--red)">'+t.v+'%</span></div><div class="progress-bar"><div class="progress-fill '+t.f+'" style="width:'+t.v+'%"></div></div><div class="td-muted" style="margin-top:2px">'+t.s+'</div></div>';
@@ -1030,31 +915,91 @@ function renderNotifs(c){
 // ── EQUIPE COMMERCIALE ──────────────────────────────────────────────────────
 function renderComm(c){
   let h = '<div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">';
-  h += '<div class="tabs"><button class="tab active" onclick="switchTab(this,\'tc\',\'l\')">Liste</button><button class="tab" onclick="switchTab(this,\'tc\',\'o\')">Objectifs</button><button class="tab" onclick="switchTab(this,\'tc\',\'k\')">Commissions</button></div>';
+  h += '<div class="tabs"><button class="tab active" onclick="switchTab(this,\'tc\',\'l\')">Liste</button><button class="tab" onclick="switchTab(this,\'tc\',\'o\')">Objectifs</button><button class="tab" onclick="switchTab(this,\'tc\',\'k\')">Commissions</button><button class="tab" onclick="switchTab(this,\'tc\',\'h\')">Historique</button></div>';
   if(canManageUsers()) h += '<button class="btn btn-red btn-sm" onclick="openModal(\'modal-membre\')">+ Membre</button>';
   h += '</div>';
   h += '<div id="tc-l"><div class="card"><div class="table-wrap"><table id="tbl-comm"></table></div></div></div>';
   h += '<div id="tc-o" style="display:none"><div class="card"><div id="obj-view"></div></div></div>';
   h += '<div id="tc-k" style="display:none"><div class="card"><div id="comm-view"></div></div></div>';
+  h += '<div id="tc-h" style="display:none"><div class="card"><div id="histo-view"></div></div></div>';
   c.innerHTML = h;
 
-  el('tbl-comm').innerHTML = '<thead><tr><th>Membre</th><th>Ville</th><th>Zone</th><th>Ventes</th><th>Objectif</th><th>%</th><th>Commission</th></tr></thead><tbody>' +
+  const editBtn = function(idx){ return isSuperAdmin() ? ' <button class="btn btn-ghost btn-sm" onclick="openTeamEditModal('+idx+')">✏️ Modifier</button>' : ''; };
+
+  el('tbl-comm').innerHTML = '<thead><tr><th>Membre</th><th>Ville</th><th>Zone</th><th>Ventes</th><th>Objectif</th><th>%</th><th>Commission</th><th>Enregistre le</th><th></th></tr></thead><tbody>' +
     COMM_PERF.map(function(cm,i){
-      const p = Math.round(cm.ventes/cm.obj*100);
+      const p = cm.obj > 0 ? Math.round(cm.ventes/cm.obj*100) : 0;
       const pc = p>=100 ? "pf-green" : p>=60 ? "pf-blue" : "pf-gold";
-      return '<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar '+avColor(i)+'">'+ini(cm.nom)+'</div><div class="td-bold">'+cm.nom+'</div></div></td><td class="td-muted">'+cm.ville+'</td><td class="td-muted">'+cm.zone+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(cm.ventes)+'</td><td class="td-muted">'+fcfa(cm.obj)+'</td><td><div style="font-size:11px;font-weight:700;margin-bottom:2px">'+p+'%</div><div class="progress-bar" style="min-width:50px"><div class="progress-fill '+pc+'" style="width:'+Math.min(p,100)+'%"></div></div></td><td style="color:var(--green);font-weight:700">'+fcfa(Math.round(cm.ventes*cm.tx/100))+'</td></tr>';
+      return '<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar '+avColor(i)+'">'+ini(cm.nom)+'</div><div class="td-bold">'+cm.nom+'</div></div></td><td class="td-muted">'+cm.ville+'</td><td class="td-muted">'+cm.zone+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(cm.ventes)+'</td><td class="td-muted">'+fcfa(cm.obj)+'</td><td><div style="font-size:11px;font-weight:700;margin-bottom:2px">'+p+'%</div><div class="progress-bar" style="min-width:50px"><div class="progress-fill '+pc+'" style="width:'+Math.min(p,100)+'%"></div></div></td><td style="color:var(--green);font-weight:700">'+fcfa(Math.round(cm.ventes*cm.tx/100))+'</td><td class="td-muted">'+(cm.dateEnregistrement||'-')+'</td><td>'+editBtn(i)+'</td></tr>';
     }).join('') + '</tbody>';
 
-  el('obj-view').innerHTML = '<table><thead><tr><th>Commercial</th><th>Ville</th><th>Objectif</th><th>Realise</th><th>Ecart</th><th>%</th></tr></thead><tbody>' +
-    COMM_PERF.map(function(cm){
-      const ecart = cm.ventes - cm.obj; const p = Math.round(cm.ventes/cm.obj*100);
-      return '<tr><td class="td-bold">'+cm.nom+'</td><td class="td-muted">'+cm.ville+'</td><td>'+fcfa(cm.obj)+'</td><td style="color:var(--red);font-weight:600">'+fcfa(cm.ventes)+'</td><td style="color:'+(ecart>=0?'var(--green)':'var(--red)')+';font-weight:600">'+(ecart>=0?'+':'')+fcfa(ecart)+'</td><td style="font-weight:700;color:'+(p>=100?'var(--green)':p>=60?'var(--blue)':'var(--red)')+'">'+p+'%</td></tr>';
+  el('obj-view').innerHTML = '<table><thead><tr><th>Commercial</th><th>Ville</th><th>Objectif</th><th>Realise</th><th>Ecart</th><th>%</th><th></th></tr></thead><tbody>' +
+    COMM_PERF.map(function(cm,i){
+      const ecart = cm.ventes - cm.obj; const p = cm.obj > 0 ? Math.round(cm.ventes/cm.obj*100) : 0;
+      return '<tr><td class="td-bold">'+cm.nom+'</td><td class="td-muted">'+cm.ville+'</td><td>'+fcfa(cm.obj)+'</td><td style="color:var(--red);font-weight:600">'+fcfa(cm.ventes)+'</td><td style="color:'+(ecart>=0?'var(--green)':'var(--red)')+';font-weight:600">'+(ecart>=0?'+':'')+fcfa(ecart)+'</td><td style="font-weight:700;color:'+(p>=100?'var(--green)':p>=60?'var(--blue)':'var(--red)')+'">'+p+'%</td><td>'+editBtn(i)+'</td></tr>';
     }).join('') + '</tbody></table>';
 
   const totalComm = COMM_PERF.reduce(function(s,cm){return s+Math.round(cm.ventes*cm.tx/100);},0);
-  el('comm-view').innerHTML = '<table><thead><tr><th>Commercial</th><th>Ventes</th><th>Taux</th><th>Commission</th></tr></thead><tbody>' +
-    COMM_PERF.map(function(cm){ return '<tr><td class="td-bold">'+cm.nom+'</td><td>'+fcfa(cm.ventes)+'</td><td>'+cm.tx+'%</td><td style="color:var(--green);font-weight:700">'+fcfa(Math.round(cm.ventes*cm.tx/100))+'</td></tr>'; }).join('') +
-    '<tr style="border-top:2px solid var(--border)"><td colspan="3" style="font-weight:700;text-align:right">Total a verser</td><td style="color:var(--red);font-weight:700;font-size:14px">'+fcfa(totalComm)+'</td></tr></tbody></table>';
+  el('comm-view').innerHTML = '<table><thead><tr><th>Commercial</th><th>Ventes</th><th>Taux</th><th>Commission</th><th></th></tr></thead><tbody>' +
+    COMM_PERF.map(function(cm,i){ return '<tr><td class="td-bold">'+cm.nom+'</td><td>'+fcfa(cm.ventes)+'</td><td>'+cm.tx+'%</td><td style="color:var(--green);font-weight:700">'+fcfa(Math.round(cm.ventes*cm.tx/100))+'</td><td>'+editBtn(i)+'</td></tr>'; }).join('') +
+    '<tr style="border-top:2px solid var(--border)"><td colspan="3" style="font-weight:700;text-align:right">Total a verser</td><td style="color:var(--red);font-weight:700;font-size:14px">'+fcfa(totalComm)+'</td><td></td></tr></tbody></table>';
+
+  const allHisto = [];
+  COMM_PERF.forEach(function(cm){
+    (cm.historiqueModifs||[]).forEach(function(h){ allHisto.push(Object.assign({membre:cm.nom}, h)); });
+  });
+  allHisto.sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
+  el('histo-view').innerHTML = allHisto.length === 0
+    ? '<div class="empty-state"><div class="empty-state-icon">📋</div>Aucune modification enregistree pour le moment</div>'
+    : '<table><thead><tr><th>Membre</th><th>Champ modifie</th><th>Ancienne valeur</th><th>Nouvelle valeur</th><th>Raison</th><th>Par</th><th>Date / Heure</th></tr></thead><tbody>' +
+      allHisto.map(function(h){
+        return '<tr><td class="td-bold">'+h.membre+'</td><td>'+h.champ+'</td><td class="td-muted">'+h.ancienneValeur+'</td><td class="td-bold">'+h.nouvelleValeur+'</td><td class="td-muted">'+h.raison+'</td><td class="td-muted">'+h.par+'</td><td class="td-muted">'+new Date(h.ts).toLocaleString('fr-FR')+'</td></tr>';
+      }).join('') + '</tbody></table>';
+}
+
+// ── EDITION D'UN MEMBRE D'EQUIPE — Super Admin uniquement, raison obligatoire ──
+let TEAM_EDIT_IDX = null;
+function openTeamEditModal(idx){
+  if(!isSuperAdmin()) return;
+  TEAM_EDIT_IDX = idx;
+  const cm = COMM_PERF[idx];
+  el('te-nom').textContent = cm.nom;
+  el('te-ville').value = cm.ville;
+  el('te-zone').value = cm.zone;
+  el('te-obj').value = cm.obj;
+  el('te-tx').value = cm.tx;
+  el('te-raison').value = '';
+  openModal('modal-team-edit');
+}
+
+function saveTeamEdit(){
+  if(TEAM_EDIT_IDX === null) return;
+  const cm = COMM_PERF[TEAM_EDIT_IDX];
+  const raison = el('te-raison').value.trim();
+  if(!raison){ alert('La raison de la modification est obligatoire.'); return; }
+
+  const changes = [
+    { champ:'Ville', key:'ville', newVal: el('te-ville').value },
+    { champ:'Zone', key:'zone', newVal: el('te-zone').value },
+    { champ:'Objectif mensuel', key:'obj', newVal: parseInt(el('te-obj').value)||cm.obj },
+    { champ:'Taux de commission (%)', key:'tx', newVal: parseFloat(el('te-tx').value)||cm.tx },
+  ];
+
+  if(!cm.historiqueModifs) cm.historiqueModifs = [];
+  let anyChange = false;
+  changes.forEach(function(ch){
+    if(String(cm[ch.key]) !== String(ch.newVal)){
+      cm.historiqueModifs.unshift({ champ: ch.champ, ancienneValeur: cm[ch.key], nouvelleValeur: ch.newVal, raison: raison, par: CU.nom, ts: new Date().toISOString() });
+      cm[ch.key] = ch.newVal;
+      anyChange = true;
+    }
+  });
+
+  if(!anyChange){ alert('Aucune valeur n\'a ete modifiee.'); return; }
+
+  logAction('Membre equipe modifie', cm.nom + ' — Raison: ' + raison, 'gold');
+  closeModal('modal-team-edit');
+  go('comm');
 }
 
 // ── EQUIPE MARKETING ──────────────────────────────────────────────────────────
@@ -1258,7 +1203,7 @@ function renderRapports(c){
   const tv = COMM_PERF.reduce(function(s,x){return s+x.ventes;},0);
   const tc = COMM_PERF.reduce(function(s,x){return s+Math.round(x.ventes*x.tx/100);},0);
   el('rpt-comm').innerHTML = '<div class="grid2" style="margin-bottom:11px"><div style="background:var(--red-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--red)">CA TOTAL</div><div style="font-size:18px;font-weight:800;color:var(--red)">'+fcfa(tv)+'</div></div><div style="background:var(--green-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--green)">COMMISSIONS</div><div style="font-size:18px;font-weight:800;color:var(--green)">'+fcfa(tc)+'</div></div></div>' +
-    COMM_PERF.map(function(cm){ const p=Math.round(cm.ventes/cm.obj*100); return '<div style="padding:7px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between"><span style="font-size:12px;font-weight:600">'+cm.nom+'</span><span style="font-weight:700;color:var(--red)">'+p+'%</span></div><div class="progress-bar"><div class="progress-fill '+(p>=100?'pf-green':p>=60?'pf-blue':'pf-red')+'" style="width:'+Math.min(p,100)+'%"></div></div></div>'; }).join('');
+    COMM_PERF.map(function(cm){ const p=cm.obj>0?Math.round(cm.ventes/cm.obj*100):0; return '<div style="padding:7px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between"><span style="font-size:12px;font-weight:600">'+cm.nom+'</span><span style="font-weight:700;color:var(--red)">'+p+'%</span></div><div class="progress-bar"><div class="progress-fill '+(p>=100?'pf-green':p>=60?'pf-blue':'pf-red')+'" style="width:'+Math.min(p,100)+'%"></div></div></div>'; }).join('');
 
   const tl = CAMPAGNES.reduce(function(s,x){return s+x.leads;},0);
   const tb = CAMPAGNES.reduce(function(s,x){return s+x.budget;},0);
@@ -1301,7 +1246,8 @@ function renderUsers(c){
     } else if(canManageUsers() && u.departement === CU.departement && u.id !== CU.id){
       actions += '<button class="btn btn-ghost btn-sm" onclick="openResetPwd('+u.id+')">🔑 Reset mdp</button>';
     }
-    return '<div class="user-row"><div class="avatar '+u.col+'">'+u.ini+'</div><div style="flex:1"><div style="font-size:13px;font-weight:600">'+u.nom+(u.verrouille?' 🔒':'')+(!u.actif?' (inactif)':'')+'</div><div class="td-muted">'+u.email+' • '+u.departement+' • '+u.ville+'</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">'+roleBadgeHtml(u.role)+'<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">'+actions+'</div></div></div>';
+    const regDate = u.dateEnregistrement ? new Date(u.dateEnregistrement).toLocaleDateString('fr-FR') : '-';
+    return '<div class="user-row"><div class="avatar '+u.col+'">'+u.ini+'</div><div style="flex:1"><div style="font-size:13px;font-weight:600">'+u.nom+(u.verrouille?' 🔒':'')+(!u.actif?' (inactif)':'')+'</div><div class="td-muted">'+u.email+' • '+u.departement+' • '+u.ville+'</div><div class="td-muted">Enregistre le '+regDate+'</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">'+roleBadgeHtml(u.role)+'<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">'+actions+'</div></div></div>';
   }).join('');
 
   el('rbac-matrix').innerHTML = '<table class="perm-table"><thead><tr><th>Permission</th><th>Collab.</th><th>Resp.</th><th>Admin</th><th>S.Admin</th></tr></thead><tbody>' +
@@ -1576,25 +1522,6 @@ function triggerPipelineWon(pipelineEntry){
   return ok;
 }
 
-// Trigger 2: Devis -> "Accepte" => reserve stock automatically
-function triggerDevisAccepted(devisEntry){
-  if(!devisEntry || devisEntry.reservationFaite) return;
-  const ok = reserveStock(devisEntry.sku, devisEntry.qte, devisEntry.entrepot, 'Devis accepte: ' + devisEntry.id);
-  if(ok){
-    devisEntry.reservationFaite = true;
-  } else {
-    NOTIFICATIONS.unshift({ id:Date.now(), icon:'⚠️', text:'Stock insuffisant pour reserver le devis: '+devisEntry.id, time:"A l'instant", read:false, target:'all' });
-  }
-  return ok;
-}
-
-// Trigger 3: Facture -> "Payee" (expedie/livre) => consume reservation, real stock exits
-function triggerFactureExpediee(factureEntry){
-  if(!factureEntry || factureEntry.sortieAppliquee) return;
-  consumeReservedStock(factureEntry.sku, factureEntry.qte, factureEntry.entrepot, 'Facture ' + factureEntry.id, CU?CU.nom:'Systeme');
-  factureEntry.sortieAppliquee = true;
-}
-
 // Trigger 4: Retour client / Annulation => release reservation OR re-enter stock
 function triggerRetourAnnulation(sku, qte, entrepot, label, wasShipped){
   if(wasShipped){
@@ -1660,9 +1587,16 @@ function viewProductDetail(sku){
     record: p,
     fields: [
       ['Nom', 'nom', p.nom],
+      ['Categorie', 'categorie', [{label:'Dispositif',selected:p.categorie==='Dispositif'},{label:'Consommable',selected:p.categorie==='Consommable'},{label:'Accessoire',selected:p.categorie==='Accessoire'}], 'select'],
+      ['Marque', 'marque', p.marque],
+      ['Description', 'desc', p.desc || ''],
+      ['Prix d\'achat (FCFA)', 'prix_achat', p.prix_achat],
       ['Prix de vente (FCFA)', 'prix_vente', p.prix_vente],
       ['Prix revendeur (FCFA)', 'prix_revendeur', p.prix_revendeur],
-      ['Description', 'desc', p.desc || '']
+      ['TVA (%)', 'tva', p.tva],
+      ['Poids', 'poids', p.poids || ''],
+      ['Dimensions', 'dimensions', p.dimensions || ''],
+      ['Code-barres', 'codebarre', p.codebarre || '']
     ],
     onSave: function(){ go('produits'); }
   });
@@ -1676,6 +1610,7 @@ function renderStock(c){
   h += '<button class="tab" onclick="switchTab(this,\'st\',\'m\')">Mouvements</button>';
   h += '<button class="tab" onclick="switchTab(this,\'st\',\'a\')">Alertes</button>';
   h += '<button class="tab" onclick="switchTab(this,\'st\',\'p\')">Previsions</button>';
+  h += '<button class="tab" onclick="switchTab(this,\'st\',\'e\')">Entrepots</button>';
   h += '</div></div>';
   h += '<div id="st-n"><div class="card"><div class="table-wrap"><table id="tbl-stock"></table></div></div></div>';
   h += '<div id="st-r" style="display:none"><div class="card"><div id="reservations-view"></div></div></div>';
@@ -1685,6 +1620,10 @@ function renderStock(c){
   h += '</div>';
   h += '<div id="st-a" style="display:none"><div class="card"><div id="alertes-view"></div></div></div>';
   h += '<div id="st-p" style="display:none"><div class="card"><div id="previsions-view"></div></div></div>';
+  h += '<div id="st-e" style="display:none">';
+  h += '  <div style="margin-bottom:9px;text-align:right">' + (canModifyStock() ? '<button class="btn btn-red btn-sm" onclick="openModal(\'modal-entrepot\')">+ Entrepot</button>' : '') + '</div>';
+  h += '  <div class="card"><div id="entrepots-view"></div></div>';
+  h += '</div>';
   c.innerHTML = h;
 
   el('tbl-stock').innerHTML = '<thead><tr><th>Produit</th><th>Entrepot</th><th>Stock Reel</th><th>Reserve</th><th>Disponible</th><th>Seuil</th><th>Statut</th><th></th></tr></thead><tbody>' +
@@ -1731,6 +1670,25 @@ function renderStock(c){
       const couverture = couvertureMois(p.sku);
       return '<tr><td class="td-bold">'+p.nom+'</td><td>'+dispo+'</td><td class="td-muted">'+moyenne+' u/mois</td><td style="font-weight:700;color:'+(parseFloat(couverture)<2?'var(--red)':'var(--green)')+'">'+couverture+' mois</td></tr>';
     }).join('') + '</tbody></table>';
+
+  el('entrepots-view').innerHTML = ENTREPOTS.length === 0
+    ? '<div class="empty-state"><div class="empty-state-icon">🏬</div>Aucun entrepot cree encore. Ajoutez votre premier entrepot pour commencer a gerer le stock.</div>'
+    : '<table><thead><tr><th>Nom</th><th>Type</th><th>Ville</th><th>Produits stockes</th></tr></thead><tbody>' +
+      ENTREPOTS.map(function(e){
+        const nbProduits = STOCK.filter(function(s){return s.entrepot===e.nom;}).length;
+        return '<tr><td class="td-bold">'+e.nom+'</td><td>'+tag(e.type,'tag-blue')+'</td><td class="td-muted">'+e.ville+'</td><td class="td-muted">'+nbProduits+' reference(s)</td></tr>';
+      }).join('') + '</tbody></table>';
+}
+
+function addEntrepot(){
+  if(!canModifyStock()) return alert("Vous n'avez pas la permission de creer un entrepot.");
+  const nom = el('en-nom').value.trim();
+  if(!nom){ alert('Entrez un nom'); return; }
+  if(ENTREPOTS.find(function(e){return e.nom===nom;})){ alert('Un entrepot avec ce nom existe deja.'); return; }
+  ENTREPOTS.push({ id: Date.now(), nom: nom, type: el('en-type').value, ville: el('en-ville').value });
+  logAction('Entrepot cree', nom + ' — ' + el('en-type').value + ' — ' + el('en-ville').value, 'blue');
+  closeModal('modal-entrepot');
+  go('stock');
 }
 
 function viewStockDetail(sku, entrepot){
@@ -1877,41 +1835,67 @@ function renderInventaires(c){
 // APP PART 3 — Ventes/Facturation, Tableau Direction, Centre Controle Super Admin
 // ════════════════════════════════════════════════════════════════════════════
 
-// ── VENTES & FACTURATION ──────────────────────────────────────────────────────
+// ── VENTES & FACTURATION (multi-produits) ────────────────────────────────────
+
+function lignesTotalMontant(lignes){
+  return lignes.reduce(function(sum, l){ return sum + (l.qte * l.prixUnitaire); }, 0);
+}
+function lignesLabel(lignes){
+  return lignes.map(function(l){ return l.qte + 'x ' + l.sku; }).join(', ');
+}
+function lignesTableHtml(lignes, editable){
+  let h = '<table style="width:100%;font-size:12px;margin-top:4px"><thead><tr>' +
+    '<th style="text-align:left;padding:4px">Produit</th><th style="text-align:right;padding:4px">Qte</th><th style="text-align:right;padding:4px">Prix unitaire</th><th style="text-align:right;padding:4px">Sous-total</th></tr></thead><tbody>';
+  h += lignes.map(function(l){
+    return '<tr><td style="padding:4px">'+l.nom+' ('+l.sku+')</td><td style="text-align:right;padding:4px">'+l.qte+'</td><td style="text-align:right;padding:4px">'+fcfa(l.prixUnitaire)+'</td><td style="text-align:right;padding:4px;font-weight:700">'+fcfa(l.qte*l.prixUnitaire)+'</td></tr>';
+  }).join('');
+  h += '<tr style="border-top:2px solid var(--border)"><td colspan="3" style="text-align:right;font-weight:700;padding:6px 4px">Total</td><td style="text-align:right;font-weight:700;color:var(--red);padding:6px 4px">'+fcfa(lignesTotalMontant(lignes))+'</td></tr>';
+  h += '</tbody></table>';
+  return h;
+}
+
 function renderFacturation(c){
   let h = '<div style="margin-bottom:11px"><div class="tabs">';
   h += '<button class="tab active" onclick="switchTab(this,\'fa\',\'d\')">Devis</button>';
   h += '<button class="tab" onclick="switchTab(this,\'fa\',\'f\')">Factures</button>';
   h += '</div></div>';
   h += '<div id="fa-d">';
-  h += '  <div style="margin-bottom:9px;text-align:right"><button class="btn btn-red btn-sm" onclick="openModal(\'modal-devis\')">+ Devis</button></div>';
+  h += '  <div style="margin-bottom:9px;text-align:right"><button class="btn btn-red btn-sm" onclick="openDevisBuilder()">+ Devis</button></div>';
   h += '  <div class="card"><div class="table-wrap"><table id="tbl-devis"></table></div></div>';
   h += '</div>';
   h += '<div id="fa-f" style="display:none">';
-  h += '  <div style="margin-bottom:9px;text-align:right"><button class="btn btn-red btn-sm" onclick="openModal(\'modal-facture\')">+ Facture</button></div>';
+  h += '  <div style="margin-bottom:9px;text-align:right"><button class="btn btn-red btn-sm" onclick="openFactureBuilder(null)">+ Facture</button></div>';
   h += '  <div class="card"><div class="table-wrap"><table id="tbl-fact"></table></div></div>';
   h += '</div>';
   c.innerHTML = h;
 
   el('tbl-devis').innerHTML = '<thead><tr><th>N° Devis</th><th>Client</th><th>Produits</th><th>Montant</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>' +
     DEVIS.map(function(d){
+      const montant = lignesTotalMontant(d.lignes);
       let actions = '<button class="btn btn-ghost btn-sm" onclick="viewDevisDetail(\''+d.id+'\')">👁 Details</button>';
+      if(isSuperAdmin() && d.statut !== 'Accepte'){
+        actions += ' <button class="btn btn-ghost btn-sm" onclick="openDevisBuilder(\''+d.id+'\')">✏️ Modifier</button>';
+      }
       if(d.statut === "Envoye"){
         actions += ' <button class="btn btn-ghost btn-sm" onclick="acceptDevis(\''+d.id+'\')">✓ Accepter</button>';
       }
       if(d.statut === "Accepte"){
         actions += ' <button class="btn btn-red btn-sm" onclick="convertDevisToFacture(\''+d.id+'\')">→ Facturer</button>';
       }
-      return '<tr><td class="td-bold">'+d.id+'</td><td>'+d.client+'</td><td class="td-muted">'+d.produits+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(d.montant)+'</td><td class="td-muted">'+d.date+'</td><td>'+statusTag(d.statut)+(d.reservationFaite?' <span class="locked-badge">📦 Reserve</span>':'')+'</td><td>'+actions+'</td></tr>';
+      return '<tr><td class="td-bold">'+d.id+'</td><td>'+d.client+'</td><td class="td-muted">'+lignesLabel(d.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+d.date+'</td><td>'+statusTag(d.statut)+(d.reservationFaite?' <span class="locked-badge">📦 Reserve</span>':'')+'</td><td>'+actions+'</td></tr>';
     }).join('') + '</tbody>';
 
   el('tbl-fact').innerHTML = '<thead><tr><th>N° Facture</th><th>Client</th><th>Produits</th><th>Montant</th><th>Date</th><th>Mode paiement</th><th>Statut</th><th></th></tr></thead><tbody>' +
     FACTURES.map(function(f){
+      const montant = lignesTotalMontant(f.lignes);
       let actions = '<button class="btn btn-ghost btn-sm" onclick="viewFactureDetail(\''+f.id+'\')">👁 Details</button>';
+      if(isSuperAdmin() && f.statut === 'Impayee'){
+        actions += ' <button class="btn btn-ghost btn-sm" onclick="openFactureBuilder(\''+f.id+'\')">✏️ Modifier</button>';
+      }
       if(f.statut === "Impayee"){
         actions += ' <button class="btn btn-red btn-sm" onclick="markFacturePaid(\''+f.id+'\')">✓ Marquer payee / Expedier</button>';
       }
-      return '<tr><td class="td-bold">'+f.id+'</td><td>'+f.client+'</td><td class="td-muted">'+f.produits+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(f.montant)+'</td><td class="td-muted">'+f.date+'</td><td class="td-muted">'+f.mode_paiement+'</td><td>'+statusTag(f.statut)+(f.sortieAppliquee?' <span class="locked-badge">📤 Stock sorti</span>':'')+'</td><td>'+actions+'</td></tr>';
+      return '<tr><td class="td-bold">'+f.id+'</td><td>'+f.client+'</td><td class="td-muted">'+lignesLabel(f.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+f.date+'</td><td class="td-muted">'+f.mode_paiement+'</td><td>'+statusTag(f.statut)+(f.sortieAppliquee?' <span class="locked-badge">📤 Stock sorti</span>':'')+'</td><td>'+actions+'</td></tr>';
     }).join('') + '</tbody>';
 }
 
@@ -1921,20 +1905,14 @@ function viewDevisDetail(devisId){
   const rows = [
     ['N° Devis', '<strong>'+d.id+'</strong>'],
     ['Client', d.client],
-    ['Produits', d.produits],
-    ['Montant', '<strong style="color:var(--red)">'+fcfa(d.montant)+'</strong>'],
+    ['Produits', lignesTableHtml(d.lignes)],
     ['Date', d.date],
     ['Validite', d.validite],
     ['Statut', statusTag(d.statut)],
-    ['Entrepot prevu', d.entrepot || '-'],
-    ['Reservation stock', d.reservationFaite ? '<span style="color:var(--gold);font-weight:700">✓ '+d.qte+' unite(s) de '+d.sku+' reservee(s)</span>' : '<span class="td-muted">Pas encore reserve</span>']
+    ['Reservation stock', d.reservationFaite ? '<span style="color:var(--gold);font-weight:700">✓ Stock reserve pour ces lignes</span>' : '<span class="td-muted">Pas encore reserve</span>']
   ];
   if(d.lastModifiedBy) rows.push(['Derniere modification', modStampHtml(d)]);
-  openDetailModal('Detail Devis — ' + d.id, rows, {
-    record: d,
-    fields: [['Client', 'client', d.client], ['Montant (FCFA)', 'montant', d.montant], ['Validite', 'validite', d.validite]],
-    onSave: function(){ go('facturation'); }
-  });
+  openDetailModal('Detail Devis — ' + d.id, rows, null); // read-only here; editing goes through openDevisBuilder
 }
 
 function viewFactureDetail(factureId){
@@ -1943,54 +1921,242 @@ function viewFactureDetail(factureId){
   const rows = [
     ['N° Facture', '<strong>'+f.id+'</strong>'],
     ['Client', f.client],
-    ['Produits', f.produits],
-    ['Montant', '<strong style="color:var(--red)">'+fcfa(f.montant)+'</strong>'],
+    ['Produits', lignesTableHtml(f.lignes)],
     ['Date', f.date],
     ['Mode de paiement', f.mode_paiement],
     ['Statut', statusTag(f.statut)],
-    ['Entrepot', f.entrepot || '-'],
-    ['Sortie de stock', f.sortieAppliquee ? '<span style="color:var(--red);font-weight:700">✓ '+f.qte+' unite(s) de '+f.sku+' sortie(s) du stock reel</span>' : '<span class="td-muted">Pas encore expedie — stock toujours reserve uniquement</span>']
+    ['Devis d\'origine', f.devisOrigine || '<span class="td-muted">Vente directe (sans devis)</span>'],
+    ['Sortie de stock', f.sortieAppliquee ? '<span style="color:var(--red);font-weight:700">✓ Stock reel sorti pour ces lignes</span>' : '<span class="td-muted">Pas encore expedie</span>']
   ];
   if(f.lastModifiedBy) rows.push(['Derniere modification', modStampHtml(f)]);
-  openDetailModal('Detail Facture — ' + f.id, rows, {
-    record: f,
-    fields: [['Client', 'client', f.client], ['Montant (FCFA)', 'montant', f.montant], ['Mode paiement', 'mode_paiement', f.mode_paiement]],
-    onSave: function(){ go('facturation'); }
-  });
+  openDetailModal('Detail Facture — ' + f.id, rows, null);
 }
 
-// Devis accepte par le client => reservation automatique du stock
+// ── DEVIS BUILDER — multi-produits, creation ET edition (Super Admin) ───────
+let DEVIS_BUILDER_LIGNES = [];
+let DEVIS_BUILDER_EDIT_ID = null;
+
+function openDevisBuilder(devisId){
+  DEVIS_BUILDER_EDIT_ID = devisId || null;
+  const existing = devisId ? DEVIS.find(function(x){return x.id===devisId;}) : null;
+  DEVIS_BUILDER_LIGNES = existing ? JSON.parse(JSON.stringify(existing.lignes)) : [];
+
+  el('db-client').value = existing ? existing.client : '';
+  el('db-validite').value = existing ? existing.validite : '30 jours';
+  renderDevisBuilderLignes();
+  el('modal-devis-title').textContent = existing ? 'Modifier le Devis — ' + existing.id : 'Nouveau Devis';
+  el('modal-devis-save-btn').textContent = existing ? 'Enregistrer les modifications' : 'Creer le devis';
+  openModal('modal-devis-builder');
+}
+
+function renderDevisBuilderLignes(){
+  fillVilleSelect; // no-op reference kept for lint clarity
+  const skuOptions = PRODUITS.map(function(p){ return p.sku+' — '+p.nom; });
+  let h = DEVIS_BUILDER_LIGNES.map(function(l, i){
+    return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center">' +
+      '<div class="td-bold" style="font-size:12px">'+l.nom+' ('+l.sku+')</div>' +
+      '<div style="font-size:12px">Qte: <strong>'+l.qte+'</strong></div>' +
+      '<div style="font-size:12px">'+fcfa(l.prixUnitaire)+'</div>' +
+      '<div style="font-size:12px;font-weight:700">'+fcfa(l.qte*l.prixUnitaire)+'</div>' +
+      '<button class="btn btn-ghost btn-sm" onclick="removeDevisBuilderLigne('+i+')">🗑</button>' +
+    '</div>';
+  }).join('') || '<div class="td-muted" style="margin-bottom:8px">Aucun produit ajoute encore.</div>';
+
+  h += '<div style="display:grid;grid-template-columns:2fr 1fr auto;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">' +
+    '<select class="form-select" id="db-add-sku">' + skuOptions.map(function(o){return '<option>'+o+'</option>';}).join('') + '</select>' +
+    '<input class="form-input" id="db-add-qte" type="number" min="1" value="1" placeholder="Qte"/>' +
+    '<button class="btn btn-ghost btn-sm" onclick="addDevisBuilderLigne()">+ Ajouter</button>' +
+  '</div>';
+
+  h += '<div style="margin-top:10px;text-align:right;font-size:14px;font-weight:700;color:var(--red)">Total: ' + fcfa(lignesTotalMontant(DEVIS_BUILDER_LIGNES)) + '</div>';
+
+  el('devis-builder-lignes').innerHTML = h;
+}
+
+function addDevisBuilderLigne(){
+  const skuRaw = el('db-add-sku').value;
+  const sku = skuRaw.split(' — ')[0];
+  const nom = skuRaw.split(' — ')[1] || sku;
+  const qte = parseInt(el('db-add-qte').value) || 1;
+  const p = PRODUITS.find(function(x){return x.sku===sku;});
+  if(!p) return;
+
+  const existingLigne = DEVIS_BUILDER_LIGNES.find(function(l){return l.sku===sku;});
+  if(existingLigne){
+    existingLigne.qte += qte;
+  } else {
+    DEVIS_BUILDER_LIGNES.push({ sku: sku, nom: nom, qte: qte, prixUnitaire: p.prix_vente, entrepot: 'Stock Principal Niamey' });
+  }
+  renderDevisBuilderLignes();
+}
+
+function removeDevisBuilderLigne(idx){
+  DEVIS_BUILDER_LIGNES.splice(idx, 1);
+  renderDevisBuilderLignes();
+}
+
+function saveDevisBuilder(){
+  const client = el('db-client').value.trim();
+  if(!client){ alert('Entrez un nom de client'); return; }
+  if(DEVIS_BUILDER_LIGNES.length === 0){ alert('Ajoutez au moins un produit'); return; }
+
+  if(DEVIS_BUILDER_EDIT_ID){
+    const d = DEVIS.find(function(x){return x.id===DEVIS_BUILDER_EDIT_ID;});
+    d.client = client;
+    d.validite = el('db-validite').value;
+    d.lignes = JSON.parse(JSON.stringify(DEVIS_BUILDER_LIGNES));
+    stampModification(d);
+    logAction('Devis modifie', d.id + ' — ' + client, 'gold');
+  } else {
+    const id = "DEV-2026-" + Math.floor(Math.random()*900+100);
+    DEVIS.unshift({
+      id: id, client: client, date: new Date().toLocaleDateString('fr-FR'), statut: 'Envoye',
+      validite: el('db-validite').value, lignes: JSON.parse(JSON.stringify(DEVIS_BUILDER_LIGNES)), reservationFaite: false
+    });
+    logAction('Devis cree', id + ' — ' + client, 'blue');
+  }
+  closeModal('modal-devis-builder');
+  go('facturation');
+}
+
+// ── FACTURE BUILDER — multi-produits, creation directe OU depuis un devis ───
+let FACTURE_BUILDER_LIGNES = [];
+let FACTURE_BUILDER_EDIT_ID = null;
+let FACTURE_BUILDER_DEVIS_ORIGINE = null;
+
+function openFactureBuilder(factureId, fromDevisId){
+  FACTURE_BUILDER_EDIT_ID = factureId || null;
+  FACTURE_BUILDER_DEVIS_ORIGINE = fromDevisId || null;
+
+  const existingFact = factureId ? FACTURES.find(function(x){return x.id===factureId;}) : null;
+  const sourceDevis = fromDevisId ? DEVIS.find(function(x){return x.id===fromDevisId;}) : null;
+
+  if(existingFact){
+    FACTURE_BUILDER_LIGNES = JSON.parse(JSON.stringify(existingFact.lignes));
+    el('fb-client').value = existingFact.client;
+    el('fb-mode').value = existingFact.mode_paiement;
+  } else if(sourceDevis){
+    FACTURE_BUILDER_LIGNES = JSON.parse(JSON.stringify(sourceDevis.lignes));
+    el('fb-client').value = sourceDevis.client;
+    el('fb-mode').value = 'Especes';
+  } else {
+    FACTURE_BUILDER_LIGNES = [];
+    el('fb-client').value = '';
+    el('fb-mode').value = 'Especes';
+  }
+
+  renderFactureBuilderLignes();
+  el('modal-facture-title').textContent = existingFact ? 'Modifier la Facture — ' + existingFact.id : (sourceDevis ? 'Nouvelle Facture (depuis ' + sourceDevis.id + ')' : 'Nouvelle Facture');
+  openModal('modal-facture-builder');
+}
+
+function renderFactureBuilderLignes(){
+  const skuOptions = PRODUITS.map(function(p){ return p.sku+' — '+p.nom; });
+  let h = FACTURE_BUILDER_LIGNES.map(function(l, i){
+    return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center">' +
+      '<div class="td-bold" style="font-size:12px">'+l.nom+' ('+l.sku+')</div>' +
+      '<div style="font-size:12px">Qte: <strong>'+l.qte+'</strong></div>' +
+      '<div style="font-size:12px">'+fcfa(l.prixUnitaire)+'</div>' +
+      '<div style="font-size:12px;font-weight:700">'+fcfa(l.qte*l.prixUnitaire)+'</div>' +
+      '<button class="btn btn-ghost btn-sm" onclick="removeFactureBuilderLigne('+i+')">🗑</button>' +
+    '</div>';
+  }).join('') || '<div class="td-muted" style="margin-bottom:8px">Aucun produit ajoute encore.</div>';
+
+  h += '<div style="display:grid;grid-template-columns:2fr 1fr auto;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">' +
+    '<select class="form-select" id="fb-add-sku">' + skuOptions.map(function(o){return '<option>'+o+'</option>';}).join('') + '</select>' +
+    '<input class="form-input" id="fb-add-qte" type="number" min="1" value="1" placeholder="Qte"/>' +
+    '<button class="btn btn-ghost btn-sm" onclick="addFactureBuilderLigne()">+ Ajouter</button>' +
+  '</div>';
+
+  h += '<div style="margin-top:10px;text-align:right;font-size:14px;font-weight:700;color:var(--red)">Total: ' + fcfa(lignesTotalMontant(FACTURE_BUILDER_LIGNES)) + '</div>';
+
+  el('facture-builder-lignes').innerHTML = h;
+}
+
+function addFactureBuilderLigne(){
+  const skuRaw = el('fb-add-sku').value;
+  const sku = skuRaw.split(' — ')[0];
+  const nom = skuRaw.split(' — ')[1] || sku;
+  const qte = parseInt(el('fb-add-qte').value) || 1;
+  const p = PRODUITS.find(function(x){return x.sku===sku;});
+  if(!p) return;
+
+  const existingLigne = FACTURE_BUILDER_LIGNES.find(function(l){return l.sku===sku;});
+  if(existingLigne){
+    existingLigne.qte += qte;
+  } else {
+    FACTURE_BUILDER_LIGNES.push({ sku: sku, nom: nom, qte: qte, prixUnitaire: p.prix_vente, entrepot: 'Stock Principal Niamey' });
+  }
+  renderFactureBuilderLignes();
+}
+
+function removeFactureBuilderLigne(idx){
+  FACTURE_BUILDER_LIGNES.splice(idx, 1);
+  renderFactureBuilderLignes();
+}
+
+function saveFactureBuilder(){
+  const client = el('fb-client').value.trim();
+  if(!client){ alert('Entrez un nom de client'); return; }
+  if(FACTURE_BUILDER_LIGNES.length === 0){ alert('Ajoutez au moins un produit'); return; }
+
+  if(FACTURE_BUILDER_EDIT_ID){
+    const f = FACTURES.find(function(x){return x.id===FACTURE_BUILDER_EDIT_ID;});
+    f.client = client;
+    f.mode_paiement = el('fb-mode').value;
+    f.lignes = JSON.parse(JSON.stringify(FACTURE_BUILDER_LIGNES));
+    stampModification(f);
+    logAction('Facture modifiee', f.id + ' — ' + client, 'gold');
+  } else {
+    const id = "FACT-2026-" + Math.floor(Math.random()*9000+1000);
+    const newFact = {
+      id: id, client: client, date: new Date().toLocaleDateString('fr-FR'), statut: 'Impayee',
+      mode_paiement: el('fb-mode').value, lignes: JSON.parse(JSON.stringify(FACTURE_BUILDER_LIGNES)),
+      sortieAppliquee: false, devisOrigine: FACTURE_BUILDER_DEVIS_ORIGINE
+    };
+    FACTURES.unshift(newFact);
+    logAction('Facture generee', id + ' — ' + client + (FACTURE_BUILDER_DEVIS_ORIGINE ? ' (depuis devis ' + FACTURE_BUILDER_DEVIS_ORIGINE + ')' : ''), 'green');
+  }
+  closeModal('modal-facture-builder');
+  go('facturation');
+}
+
+// ── SALES-CYCLE ACTIONS ───────────────────────────────────────────────────────
+
+// Devis accepte par le client => reservation automatique du stock pour CHAQUE ligne
 function acceptDevis(devisId){
   const d = DEVIS.find(function(x){return x.id===devisId;});
   if(!d) return;
   d.statut = "Accepte";
-  const ok = triggerDevisAccepted(d);
-  if(!ok){
-    alert('⚠️ Devis accepte mais stock disponible insuffisant pour reserver automatiquement. Verifiez le module Stock.');
+  let allOk = true;
+  d.lignes.forEach(function(ligne){
+    const ok = reserveStock(ligne.sku, ligne.qte, ligne.entrepot, 'Devis accepte: ' + d.id);
+    if(!ok) allOk = false;
+  });
+  d.reservationFaite = allOk;
+  if(!allOk){
+    alert('⚠️ Devis accepte mais stock disponible insuffisant pour reserver au moins une ligne. Verifiez le module Stock.');
   }
-  logAction('Devis accepte', d.id + ' — ' + d.client + (ok?' — stock reserve':' — reservation impossible (stock insuffisant)'), ok?'green':'gold');
+  logAction('Devis accepte', d.id + ' — ' + d.client + (allOk?' — stock reserve':' — reservation partielle/impossible'), allOk?'green':'gold');
   go('facturation');
 }
 
+// Convertit un devis en facture en conservant toutes les lignes (plusieurs produits)
 function convertDevisToFacture(devisId){
   const d = DEVIS.find(function(x){return x.id===devisId;});
   if(!d) return;
-  const newFactId = "FACT-2026-" + Math.floor(Math.random()*9000+1000);
-  FACTURES.unshift({
-    id:newFactId, client:d.client, produits:d.produits, montant:d.montant,
-    date:new Date().toLocaleDateString('fr-FR'), statut:"Impayee", mode_paiement:"-",
-    sku:d.sku, qte:d.qte, entrepot:d.entrepot, sortieAppliquee:false
-  });
-  logAction("Devis converti en facture", d.id+' → '+newFactId, "blue");
-  go('facturation');
+  openFactureBuilder(null, devisId);
 }
 
-// Facture marquee payee / expediee => sortie reelle du stock (consomme la reservation)
+// Facture marquee payee / expediee => sortie reelle du stock pour CHAQUE ligne
 function markFacturePaid(factureId){
   const f = FACTURES.find(function(x){return x.id===factureId;});
   if(!f) return;
   f.statut = "Payee";
-  triggerFactureExpediee(f);
+  f.lignes.forEach(function(ligne){
+    consumeReservedStock(ligne.sku, ligne.qte, ligne.entrepot, 'Facture ' + f.id, CU?CU.nom:'Systeme');
+  });
+  f.sortieAppliquee = true;
   logAction('Facture payee et expediee', f.id + ' — ' + f.client, 'green');
   go('facturation');
 }
@@ -2004,16 +2170,32 @@ function renderDirection(c){
   const ca = COMM_PERF.reduce(function(s,x){return s+x.ventes;},0);
   const leads = CAMPAGNES.reduce(function(s,x){return s+x.leads;},0);
   const coutAcq = CAMPAGNES.reduce(function(s,x){return s+x.budget;},0) / Math.max(leads,1);
-  const valeurStock = PRODUITS.reduce(function(s,p){ return s + stockForSku(p.sku) * p.prix_achat; }, 0);
-  const produitsCritiques = STOCK.filter(function(s){return s.qte<=s.seuil;}).length;
-  const encaissements = FACTURES.filter(function(f){return f.statut==="Payee";}).reduce(function(s,f){return s+f.montant;},0);
-  const impayes = FACTURES.filter(function(f){return f.statut==="Impayee";}).reduce(function(s,f){return s+f.montant;},0);
-  const marge = ca - PRODUITS.reduce(function(s,p){ return s + p.prix_achat * 10; }, 0); // simplified margin estimate
+  // Valeur financiere du stock — methode CMUP (Cout Moyen Unitaire Pondere) : Stock Reel x Prix d'achat moyen pondere
+  const valeurStock = PRODUITS.reduce(function(s,p){ return s + stockReelForSku(p.sku) * p.prix_achat; }, 0);
+  const produitsCritiques = STOCK.filter(function(s){return (s.qte-(s.reserve||0))<=s.seuil;}).length;
+  const encaissements = FACTURES.filter(function(f){return f.statut==="Payee";}).reduce(function(s,f){return s+lignesTotalMontant(f.lignes);},0);
+  const impayes = FACTURES.filter(function(f){return f.statut==="Impayee";}).reduce(function(s,f){return s+lignesTotalMontant(f.lignes);},0);
+  const totalDepenses = DEPENSES.filter(function(d){return d.statut==='Payee';}).reduce(function(s,d){return s+d.montant;},0);
+  const margeEstimee = ca - PRODUITS.reduce(function(s,p){
+    const sorties = MOUVEMENTS_STOCK.filter(function(m){return m.sku===p.sku && m.type==='Sortie' && m.motif==='Vente';}).reduce(function(ss,m){return ss+m.qte;},0);
+    return s + sorties * p.prix_achat;
+  }, 0) - totalDepenses;
+
+  // ── Rotation des stocks : produits "bestsellers" (forte sortie, risque de rupture) vs "dormants" (faible/aucune sortie) ──
+  const rotationData = PRODUITS.map(function(p){
+    const sortiesVente = MOUVEMENTS_STOCK.filter(function(m){return m.sku===p.sku && m.type==='Sortie' && m.motif==='Vente';}).reduce(function(s,m){return s+m.qte;},0);
+    const dispo = stockDisponibleForSku(p.sku);
+    const valeurImmobilisee = stockReelForSku(p.sku) * p.prix_achat;
+    return { sku:p.sku, nom:p.nom, sortiesVente:sortiesVente, dispo:dispo, valeurImmobilisee:valeurImmobilisee };
+  });
+  const bestsellers = rotationData.slice().sort(function(a,b){return b.sortiesVente-a.sortiesVente;}).slice(0,3).filter(function(r){return r.sortiesVente>0;});
+  const dormants = rotationData.filter(function(r){return r.sortiesVente===0;}).sort(function(a,b){return b.valeurImmobilisee-a.valeurImmobilisee;});
+  const produitPlusVendu = bestsellers.length ? bestsellers[0].nom : 'Aucune vente enregistree';
 
   let h = '<div class="grid4" style="margin-bottom:13px">';
   h += '<div class="kpi kred"><div class="kpi-lbl">CA Total</div><div class="kpi-val">'+(ca/1000000).toFixed(2)+'M</div></div>';
   h += '<div class="kpi kblue"><div class="kpi-lbl">Leads generes</div><div class="kpi-val">'+leads+'</div></div>';
-  h += '<div class="kpi kgold"><div class="kpi-lbl">Valeur stock</div><div class="kpi-val">'+(valeurStock/1000000).toFixed(1)+'M</div></div>';
+  h += '<div class="kpi kgold"><div class="kpi-lbl">Valeur stock (CMUP)</div><div class="kpi-val">'+(valeurStock/1000000).toFixed(1)+'M</div></div>';
   h += '<div class="kpi kgreen"><div class="kpi-lbl">Encaissements</div><div class="kpi-val">'+(encaissements/1000).toFixed(0)+'K</div></div>';
   h += '</div>';
 
@@ -2021,31 +2203,50 @@ function renderDirection(c){
   h += '  <div class="card"><div class="card-title">💼 Commercial</div><div id="dir-comm"></div></div>';
   h += '  <div class="card"><div class="card-title">📣 Marketing</div><div id="dir-mkt"></div></div>';
   h += '</div>';
-  h += '<div class="grid2">';
+  h += '<div class="grid2" style="margin-bottom:12px">';
   h += '  <div class="card"><div class="card-title">📦 Stock</div><div id="dir-stock"></div></div>';
   h += '  <div class="card"><div class="card-title">💰 Finance</div><div id="dir-fin"></div></div>';
   h += '</div>';
+  h += '<div class="card"><div class="card-title">🔄 Rotation des stocks — Bestsellers vs Produits dormants</div><div id="dir-rotation"></div></div>';
   c.innerHTML = h;
+
+  const pipelineClosDir = PIPELINE.filter(function(p){return p.etape==='Gagne'||p.etape==='Perdu';});
+  const pipelineGagneDir = PIPELINE.filter(function(p){return p.etape==='Gagne';});
+  const tauxConversionDir = pipelineClosDir.length > 0 ? Math.round(pipelineGagneDir.length/pipelineClosDir.length*100) : 0;
 
   el('dir-comm').innerHTML =
     '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span class="td-muted">Chiffre d\'affaires</span><strong style="color:var(--red)">'+fcfa(ca)+'</strong></div>' +
     COMM_PERF.map(function(cm){ return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span class="td-muted">'+cm.nom+'</span><strong>'+fcfa(cm.ventes)+'</strong></div>'; }).join('') +
-    '<div style="display:flex;justify-content:space-between;padding:6px 0"><span class="td-muted">Taux de conversion</span><strong style="color:var(--green)">34%</strong></div>';
+    '<div style="display:flex;justify-content:space-between;padding:6px 0"><span class="td-muted">Taux de conversion</span><strong style="color:var(--green)">'+tauxConversionDir+'%</strong></div>';
 
   el('dir-mkt').innerHTML =
     '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span class="td-muted">Leads generes</span><strong style="color:var(--blue)">'+leads+'</strong></div>' +
     '<div style="display:flex;justify-content:space-between;padding:6px 0"><span class="td-muted">Cout d\'acquisition moyen</span><strong>'+fcfa(Math.round(coutAcq))+'</strong></div>';
 
   el('dir-stock').innerHTML =
-    '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span class="td-muted">Valeur totale du stock</span><strong style="color:var(--gold)">'+fcfa(valeurStock)+'</strong></div>' +
+    '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span class="td-muted">Valeur totale du stock (CMUP)</span><strong style="color:var(--gold)">'+fcfa(valeurStock)+'</strong></div>' +
     '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span class="td-muted">Produits en alerte critique</span><strong style="color:'+(produitsCritiques>0?'var(--red)':'var(--green)')+'">'+produitsCritiques+'</strong></div>' +
     '<div style="display:flex;justify-content:space-between;padding:6px 0">' +
-    '<span class="td-muted">Produit le plus vendu</span><strong>Kit installation complet</strong></div>';
+    '<span class="td-muted">Produit le plus vendu</span><strong>'+produitPlusVendu+'</strong></div>';
 
   el('dir-fin').innerHTML =
     '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span class="td-muted">Encaissements</span><strong style="color:var(--green)">'+fcfa(encaissements)+'</strong></div>' +
     '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span class="td-muted">Impayes</span><strong style="color:var(--red)">'+fcfa(impayes)+'</strong></div>' +
-    '<div style="display:flex;justify-content:space-between;padding:6px 0"><span class="td-muted">Marge estimee</span><strong>'+fcfa(Math.round(marge))+'</strong></div>';
+    '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span class="td-muted">Depenses payees</span><strong style="color:var(--red)">'+fcfa(totalDepenses)+'</strong></div>' +
+    '<div style="display:flex;justify-content:space-between;padding:6px 0"><span class="td-muted">Marge estimee</span><strong>'+fcfa(Math.round(margeEstimee))+'</strong></div>';
+
+  el('dir-rotation').innerHTML = '<div class="grid2">' +
+    '<div><div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--green)">🔥 Bestsellers (risque de rupture)</div>' +
+    (bestsellers.length === 0 ? '<div class="td-muted">Aucune vente enregistree pour le moment</div>' :
+      '<table><thead><tr><th>Produit</th><th>Ventes</th><th>Disponible</th></tr></thead><tbody>' +
+      bestsellers.map(function(r){ return '<tr><td class="td-bold">'+r.nom+'</td><td style="color:var(--green);font-weight:700">'+r.sortiesVente+'</td><td style="color:'+(r.dispo<10?'var(--red)':'var(--text)')+'">'+r.dispo+'</td></tr>'; }).join('') +
+      '</tbody></table>') +
+    '</div><div><div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--gold)">💤 Produits dormants (capital immobilise)</div>' +
+    (dormants.length === 0 ? '<div class="td-muted">Aucun produit dormant — bonne rotation globale</div>' :
+      '<table><thead><tr><th>Produit</th><th>Valeur immobilisee</th></tr></thead><tbody>' +
+      dormants.map(function(r){ return '<tr><td class="td-bold">'+r.nom+'</td><td style="color:var(--gold);font-weight:700">'+fcfa(r.valeurImmobilisee)+'</td></tr>'; }).join('') +
+      '</tbody></table>') +
+    '</div></div>';
 }
 
 // ── CENTRE DE CONTROLE SUPER ADMIN (sessions, sauvegardes, RBAC sensible) ───
@@ -2058,10 +2259,16 @@ function renderControle(c){
   h += '<button class="tab active" onclick="switchTab(this,\'co\',\'s\')">Sessions actives</button>';
   h += '<button class="tab" onclick="switchTab(this,\'co\',\'b\')">Sauvegardes</button>';
   h += '<button class="tab" onclick="switchTab(this,\'co\',\'p\')">Permissions sensibles</button>';
+  h += '<button class="tab" onclick="switchTab(this,\'co\',\'z\')" style="color:var(--red)">⚠️ Zone dangereuse</button>';
   h += '</div></div>';
   h += '<div id="co-s"><div class="card"><div class="table-wrap"><table id="tbl-sessions"></table></div></div></div>';
   h += '<div id="co-b" style="display:none"><div class="card"><div class="table-wrap"><table id="tbl-backups"></table></div></div></div>';
   h += '<div id="co-p" style="display:none"><div class="card"><div id="sensitive-matrix"></div></div></div>';
+  h += '<div id="co-z" style="display:none"><div class="card" style="border-color:var(--red)">';
+  h += '  <div class="card-title" style="color:var(--red)">⚠️ Reinitialisation complete de la base</div>';
+  h += '  <p class="td-muted" style="margin-bottom:12px">Cette action supprime DEFINITIVEMENT toutes les donnees metier (clients, pipeline, taches, stock, produits, devis, factures, depenses, journal d\'audit...) ainsi que TOUS les comptes utilisateurs sauf le votre. Cette action est irreversible.</p>';
+  h += '  <button class="btn btn-red" onclick="openModal(\'modal-reset-all\')">Tout reinitialiser</button>';
+  h += '</div></div>';
   c.innerHTML = h;
 
   el('tbl-sessions').innerHTML = '<thead><tr><th>Utilisateur</th><th>Appareil</th><th>IP</th><th>Debut session</th><th></th></tr></thead><tbody>' +
@@ -2186,6 +2393,16 @@ function buildModals(){
   modals += modalShell('modal-membre', "Nouveau Membre d'Equipe", membreBody,
     btnGhost('Annuler', "closeModal('modal-membre')") + btnRed('Enregistrer', 'addMembre()'));
 
+  // ── Modal: Modifier un membre d'equipe (Super Admin, raison obligatoire) ──
+  const teamEditBody =
+    '<div style="margin-bottom:10px;font-size:12px">Modification de <strong id="te-nom">-</strong></div>' +
+    fieldRow(fieldText('te-ville','Ville'), fieldText('te-zone','Zone')) +
+    fieldRow(fieldText('te-obj','Objectif mensuel (FCFA)'), fieldText('te-tx','Taux de commission (%)')) +
+    fieldTextarea('te-raison','Raison de la modification (obligatoire)', 'Ex: Revalorisation suite a la nouvelle zone Zinder Nord') +
+    '<div style="background:var(--gold-light);border-radius:8px;padding:9px;font-size:11px;color:var(--gold);margin-top:6px">⚠️ Cette modification sera horodatee et tracee dans l\'historique de l\'equipe.</div>';
+  modals += modalShell('modal-team-edit', "Modifier le Membre d'Equipe", teamEditBody,
+    btnGhost('Annuler', "closeModal('modal-team-edit')") + btnRed('Enregistrer la modification', 'saveTeamEdit()'));
+
   // ── Modal: Nouvelle Tache ──
   const tacheBody =
     fieldText('ta-titre','Titre','Ex: Prospecter 20 familles a Zinder') +
@@ -2277,6 +2494,13 @@ function buildModals(){
 function buildModals2(){
   let modals = '';
 
+  // ── Modal: Nouvel Entrepot ──
+  const entrepotBody =
+    fieldText('en-nom','Nom de l\'entrepot','Ex: Stock Principal Niamey') +
+    fieldRow(fieldSelect('en-type','Type',['Principal','Depot regional','Point de vente']), fieldSelect('en-ville','Ville', VILLES_NIGER));
+  modals += modalShell('modal-entrepot', 'Nouvel Entrepot', entrepotBody,
+    btnGhost('Annuler', "closeModal('modal-entrepot')") + btnRed('Creer', 'addEntrepot()'));
+
   // ── Modal: Nouveau Produit ──
   const produitBody =
     fieldRow(fieldText('pd-sku','Reference (SKU)','PUR-002'), fieldText('pd-nom','Nom du produit')) +
@@ -2326,23 +2550,25 @@ function buildModals2(){
   modals += modalShell('modal-inventaire', 'Planifier un Inventaire', inventaireBody,
     btnGhost('Annuler', "closeModal('modal-inventaire')") + btnRed('Planifier', 'addInventaire()'));
 
-  // ── Modal: Devis ──
-  const devisBody =
-    fieldText('dv-client','Client') +
-    fieldRow(fieldSelect('dv-sku','Produit', PRODUITS.map(function(p){return p.sku+' — '+p.nom;})), fieldText('dv-qte','Quantite','1')) +
-    fieldRow(fieldText('dv-montant','Montant (FCFA)'), fieldSelect('dv-validite','Validite',['15 jours','30 jours','60 jours'])) +
-    fieldSelect('dv-entrepot','Entrepot prevu', ENTREPOTS.map(function(e){return e.nom;}));
-  modals += modalShell('modal-devis', 'Nouveau Devis', devisBody,
-    btnGhost('Annuler', "closeModal('modal-devis')") + btnRed('Creer le devis', 'addDevis()'));
+  // ── Modal: Devis Builder (multi-produits, creation ET edition) ──
+  const devisBuilderBody =
+    '<h3 id="modal-devis-title" style="font-family:Syne,sans-serif;font-size:14px;margin-bottom:12px">Nouveau Devis</h3>' +
+    fieldText('db-client','Client') +
+    fieldSelect('db-validite','Validite',['15 jours','30 jours','60 jours']) +
+    '<div class="form-label" style="margin-top:10px">Produits</div>' +
+    '<div id="devis-builder-lignes"></div>';
+  modals += modalShell('modal-devis-builder', 'Devis', devisBuilderBody,
+    btnGhost('Annuler', "closeModal('modal-devis-builder')") + '<button class="btn btn-red" id="modal-devis-save-btn" onclick="saveDevisBuilder()">Creer le devis</button>');
 
-  // ── Modal: Facture ──
-  const factureBody =
-    fieldText('ft-client','Client') +
-    fieldRow(fieldSelect('ft-sku','Produit', PRODUITS.map(function(p){return p.sku+' — '+p.nom;})), fieldText('ft-qte','Quantite','1')) +
-    fieldRow(fieldText('ft-montant','Montant (FCFA)'), fieldSelect('ft-mode','Mode de paiement',['Especes','Virement','Cheque','Mobile Money','Carte bancaire'])) +
-    fieldRow(fieldSelect('ft-statut','Statut',['Payee','Impayee']), fieldSelect('ft-entrepot','Entrepot', ENTREPOTS.map(function(e){return e.nom;})));
-  modals += modalShell('modal-facture', 'Nouvelle Facture', factureBody,
-    btnGhost('Annuler', "closeModal('modal-facture')") + btnRed('Generer la facture', 'addFacture()'));
+  // ── Modal: Facture Builder (multi-produits, creation directe OU depuis devis, edition) ──
+  const factureBuilderBody =
+    '<h3 id="modal-facture-title" style="font-family:Syne,sans-serif;font-size:14px;margin-bottom:12px">Nouvelle Facture</h3>' +
+    fieldText('fb-client','Client') +
+    fieldSelect('fb-mode','Mode de paiement',['Especes','Virement','Cheque','Mobile Money','Carte bancaire']) +
+    '<div class="form-label" style="margin-top:10px">Produits</div>' +
+    '<div id="facture-builder-lignes"></div>';
+  modals += modalShell('modal-facture-builder', 'Facture', factureBuilderBody,
+    btnGhost('Annuler', "closeModal('modal-facture-builder')") + btnRed('Enregistrer', 'saveFactureBuilder()'));
 
   // ── Modal: Reset password par departement (Super Admin) ──
   const resetDeptBody =
@@ -2351,6 +2577,23 @@ function buildModals2(){
     '<div style="background:var(--gold-light);border-radius:8px;padding:9px;font-size:11px;color:var(--gold);margin-top:8px">⚠️ Chaque utilisateur recevra un mot de passe temporaire et devra le changer a la prochaine connexion.</div>';
   modals += modalShell('modal-reset-dept', 'Reinitialisation par departement', resetDeptBody,
     btnGhost('Annuler', "closeModal('modal-reset-dept')") + btnRed('Reinitialiser le departement', 'resetDeptPasswords()'));
+
+  // ── Modal: Depense ──
+  const depenseBody =
+    '<h3 id="modal-depense-title" style="font-family:Syne,sans-serif;font-size:14px;margin-bottom:12px">Nouvelle Depense</h3>' +
+    fieldText('dp-libelle','Libelle','Ex: Loyer entrepot Niamey') +
+    fieldRow(fieldSelect('dp-categorie','Categorie', CATEGORIES_DEPENSES), fieldText('dp-montant','Montant (FCFA)')) +
+    fieldRow(fieldText('dp-payepar','Paye par'), fieldSelect('dp-statut','Statut',['Payee','En attente'])) +
+    fieldText('dp-justificatif','Justificatif','Ex: Recu signe, Facture n°...');
+  modals += modalShell('modal-depense', 'Depense', depenseBody,
+    btnGhost('Annuler', "closeModal('modal-depense')") + btnRed('Enregistrer', 'saveDepense()'));
+
+  // ── Modal: Reinitialisation complete (Super Admin, confirmation par mot de passe) ──
+  const resetAllBody =
+    '<div style="background:var(--red-light);border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;color:var(--red)">⚠️ Cette action supprime DEFINITIVEMENT toutes les donnees (clients, ventes, stock, factures, depenses, autres comptes utilisateurs...). Elle est IRREVERSIBLE.</div>' +
+    fieldPassword('reset-all-pwd','Confirmez avec votre mot de passe Super Admin');
+  modals += modalShell('modal-reset-all', 'Confirmer la reinitialisation complete', resetAllBody,
+    btnGhost('Annuler', "closeModal('modal-reset-all')") + '<button class="btn btn-red" onclick="confirmResetAllData()">Je confirme — Tout supprimer</button>');
 
   el('app').insertAdjacentHTML('beforeend', modals);
 }
@@ -2461,6 +2704,96 @@ function saveDetailEdit(){
 
 
 // ════════════════════════════════════════════════════════════════════════════
+// MODULE DEPENSES
+// ════════════════════════════════════════════════════════════════════════════
+
+function renderDepenses(c){
+  let h = '<div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">';
+  h += '<div class="td-muted">Suivi des depenses operationnelles Acqua Due</div>';
+  h += '<button class="btn btn-red btn-sm" onclick="openDepenseBuilder(null)">+ Depense</button>';
+  h += '</div>';
+
+  const total = DEPENSES.reduce(function(s,d){ return s + d.montant; }, 0);
+  const totalPayee = DEPENSES.filter(function(d){return d.statut==='Payee';}).reduce(function(s,d){ return s + d.montant; }, 0);
+  const totalAttente = DEPENSES.filter(function(d){return d.statut==='En attente';}).reduce(function(s,d){ return s + d.montant; }, 0);
+
+  h += '<div class="grid3" style="margin-bottom:12px">';
+  h += '<div class="kpi kred"><div class="kpi-lbl">Total depenses</div><div class="kpi-val">'+fcfa(total)+'</div></div>';
+  h += '<div class="kpi kgreen"><div class="kpi-lbl">Payees</div><div class="kpi-val" style="font-size:18px">'+fcfa(totalPayee)+'</div></div>';
+  h += '<div class="kpi kgold"><div class="kpi-lbl">En attente</div><div class="kpi-val" style="font-size:18px">'+fcfa(totalAttente)+'</div></div>';
+  h += '</div>';
+
+  h += '<div class="card"><div class="table-wrap"><table id="tbl-depenses"></table></div></div>';
+  c.innerHTML = h;
+
+  el('tbl-depenses').innerHTML = '<thead><tr><th>Libelle</th><th>Categorie</th><th>Montant</th><th>Date</th><th>Paye par</th><th>Statut</th><th></th></tr></thead><tbody>' +
+    DEPENSES.map(function(d){
+      let actions = '<button class="btn btn-ghost btn-sm" onclick="viewDepenseDetail('+d.id+')">👁 Details</button>';
+      if(isSuperAdmin()) actions += ' <button class="btn btn-ghost btn-sm" onclick="openDepenseBuilder('+d.id+')">✏️ Modifier</button>';
+      return '<tr><td class="td-bold">'+d.libelle+'</td><td>'+tag(d.categorie,'tag-blue')+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(d.montant)+'</td><td class="td-muted">'+d.date+'</td><td class="td-muted">'+d.payePar+'</td><td>'+statusTag(d.statut)+'</td><td>'+actions+'</td></tr>';
+    }).join('') + '</tbody>';
+}
+
+function viewDepenseDetail(id){
+  const d = DEPENSES.find(function(x){return x.id===id;});
+  if(!d) return;
+  const rows = [
+    ['Libelle', '<strong>'+d.libelle+'</strong>'],
+    ['Categorie', tag(d.categorie,'tag-blue')],
+    ['Montant', '<strong style="color:var(--red)">'+fcfa(d.montant)+'</strong>'],
+    ['Date', d.date],
+    ['Paye par', d.payePar],
+    ['Justificatif', d.justificatif || '-'],
+    ['Statut', statusTag(d.statut)]
+  ];
+  if(d.lastModifiedBy) rows.push(['Derniere modification', modStampHtml(d)]);
+  openDetailModal('Detail Depense — ' + d.libelle, rows, null);
+}
+
+let DEPENSE_EDIT_ID = null;
+function openDepenseBuilder(id){
+  DEPENSE_EDIT_ID = id;
+  const existing = id ? DEPENSES.find(function(x){return x.id===id;}) : null;
+  el('dp-libelle').value = existing ? existing.libelle : '';
+  el('dp-categorie').value = existing ? existing.categorie : CATEGORIES_DEPENSES[0];
+  el('dp-montant').value = existing ? existing.montant : '';
+  el('dp-payepar').value = existing ? existing.payePar : '';
+  el('dp-justificatif').value = existing ? existing.justificatif : '';
+  el('dp-statut').value = existing ? existing.statut : 'En attente';
+  el('modal-depense-title').textContent = existing ? 'Modifier la Depense' : 'Nouvelle Depense';
+  openModal('modal-depense');
+}
+
+function saveDepense(){
+  const libelle = el('dp-libelle').value.trim();
+  if(!libelle){ alert('Entrez un libelle'); return; }
+  const montant = parseInt(el('dp-montant').value) || 0;
+
+  if(DEPENSE_EDIT_ID){
+    if(!isSuperAdmin()) return alert('Seul le Super Admin peut modifier une depense existante.');
+    const d = DEPENSES.find(function(x){return x.id===DEPENSE_EDIT_ID;});
+    d.libelle = libelle;
+    d.categorie = el('dp-categorie').value;
+    d.montant = montant;
+    d.payePar = el('dp-payepar').value;
+    d.justificatif = el('dp-justificatif').value;
+    d.statut = el('dp-statut').value;
+    stampModification(d);
+    logAction('Depense modifiee', libelle + ' — ' + fcfa(montant), 'gold');
+  } else {
+    DEPENSES.unshift({
+      id: Date.now(), libelle: libelle, categorie: el('dp-categorie').value, montant: montant,
+      date: new Date().toLocaleDateString('fr-FR'), payePar: el('dp-payepar').value || CU.nom,
+      justificatif: el('dp-justificatif').value, statut: el('dp-statut').value
+    });
+    logAction('Depense ajoutee', libelle + ' — ' + fcfa(montant), 'red');
+  }
+  closeModal('modal-depense');
+  go('depenses');
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
 // ACTIONS — form submit handlers
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -2497,25 +2830,30 @@ function addMembre(){
     alert('Cet email existe deja.');
     return;
   }
-
-  // Create login account
-  const newUser = {
-    id: Date.now(), nom: nom, email: email, pass: 'Welcome@2026',
-    role: role, departement: dept, ini: ini(nom), col: AVC[USERS.length % 5],
-    actif: true, ville: ville, tentatives: 0, verrouille: false,
-    doitChangerPass: true, dernierLogin: null, sessions: []
-  };
-  USERS.push(newUser);
-
-  // Add to relevant performance table
-  if(dept === 'Commercial'){
-    COMM_PERF.push({ nom: nom, ville: ville, zone: zone, obj: parseInt(el('me-objectif').value) || 600000, ventes: 0, nb: 0, tx: 5 });
+  if(role === 'admin' && !isSuperAdmin()){
+    alert('Seul le Super Admin peut creer un compte Admin.');
+    return;
   }
-  logAction('Membre ajoute', nom + ' — ' + dept + ' — ' + ville + ' (compte cree: ' + email + ')', 'blue');
-  closeModal('modal-membre');
-  updateAllBadges();
-  go(dept === 'Commercial' ? 'comm' : dept === 'Marketing' ? 'mkt' : 'com');
-  alert('Membre ajoute. Identifiants de connexion:\\nEmail: ' + email + '\\nMot de passe temporaire: Welcome@2026\\n(Changement obligatoire a la premiere connexion)');
+
+  // Persist the login account via the database API (not in-memory only)
+  apiPost('/api/users', { nom:nom, email:email, pass:'Welcome@2026', role:role, departement:dept, ini:ini(nom), col:AVC[USERS.length%5], ville:ville }).then(function(result){
+    if(!result.ok){
+      alert(result.data.error || "Erreur lors de la creation du compte.");
+      return;
+    }
+
+    const todayStr = new Date().toLocaleDateString('fr-FR');
+    if(dept === 'Commercial'){
+      COMM_PERF.push({ nom: nom, ville: ville, zone: zone, obj: parseInt(el('me-objectif').value) || 600000, ventes: 0, nb: 0, tx: 5, dateEnregistrement: todayStr, historiqueModifs: [] });
+    }
+    logAction('Membre ajoute', nom + ' — ' + dept + ' — ' + ville + ' (compte cree: ' + email + ')', 'blue');
+    closeModal('modal-membre');
+    loadUsersFromDb().then(function(){
+      updateAllBadges();
+      go(dept === 'Commercial' ? 'comm' : dept === 'Marketing' ? 'mkt' : 'com');
+    });
+    alert('Membre ajoute. Identifiants de connexion:\nEmail: ' + email + '\nMot de passe temporaire: Welcome@2026\n(Changement obligatoire a la premiere connexion)');
+  });
 }
 
 function addTache(){
@@ -2722,48 +3060,6 @@ function addInventaire(){
   go('inventaires');
 }
 
-function addDevis(){
-  const client = el('dv-client').value.trim();
-  if(!client){ alert('Entrez un client'); return; }
-  const skuRaw = el('dv-sku').value;
-  const sku = skuRaw.split(' — ')[0];
-  const produitNom = skuRaw.split(' — ')[1] || sku;
-  const qte = parseInt(el('dv-qte').value) || 1;
-  const id = "DEV-2026-" + Math.floor(Math.random()*900+100);
-  DEVIS.unshift({
-    id: id, client: client, produits: qte + 'x ' + sku, montant: parseInt(el('dv-montant').value) || 0,
-    date: new Date().toLocaleDateString('fr-FR'), statut: 'Envoye', validite: el('dv-validite').value,
-    sku: sku, qte: qte, entrepot: el('dv-entrepot').value, reservationFaite: false
-  });
-  logAction('Devis cree', id + ' — ' + client, 'blue');
-  closeModal('modal-devis');
-  go('facturation');
-}
-
-function addFacture(){
-  const client = el('ft-client').value.trim();
-  if(!client){ alert('Entrez un client'); return; }
-  const skuRaw = el('ft-sku').value;
-  const sku = skuRaw.split(' — ')[0];
-  const qte = parseInt(el('ft-qte').value) || 1;
-  const entrepot = el('ft-entrepot').value;
-  const statut = el('ft-statut').value;
-  const id = "FACT-2026-" + Math.floor(Math.random()*9000+1000);
-  const f = {
-    id: id, client: client, produits: qte + 'x ' + sku, montant: parseInt(el('ft-montant').value) || 0,
-    date: new Date().toLocaleDateString('fr-FR'), statut: statut, mode_paiement: el('ft-mode').value,
-    sku: sku, qte: qte, entrepot: entrepot, sortieAppliquee: false
-  };
-  FACTURES.unshift(f);
-  if(statut === 'Payee'){
-    // Direct cash sale, no prior reservation: consume real stock immediately
-    triggerFactureExpediee(f);
-  }
-  logAction('Facture generee', id + ' — ' + client + ' — ' + fcfa(f.montant), 'green');
-  closeModal('modal-facture');
-  go('facturation');
-}
-
 
 // ════════════════════════════════════════════════════════════════════════════
 // FORGOT PASSWORD FLOW — sends real email via Resend through /api/forgot-password
@@ -2941,7 +3237,7 @@ function loadUsersFromDb(){
           role: u.role, departement: u.departement, ini: u.ini, col: u.col,
           actif: u.actif, ville: u.ville, tentatives: u.tentatives,
           verrouille: u.verrouille, doitChangerPass: u.doit_changer_pass,
-          dernierLogin: u.dernier_login, sessions: []
+          dernierLogin: u.dernier_login, dateEnregistrement: u.created_at, sessions: []
         };
       });
     }
@@ -3218,6 +3514,23 @@ function confirmResetCode(){
 
 // ── Initialize DB on first load (creates tables if needed) ──
 fetch('/api/init-db').catch(function(){ /* silent - table creation is idempotent, retried on next load */ });
+
+// ── DB-backed: full data reset (Super Admin, with password confirmation) ────
+function confirmResetAllData(){
+  const pwd = el('reset-all-pwd').value;
+  if(!pwd){ alert('Entrez votre mot de passe pour confirmer.'); return; }
+
+  apiPost('/api/reset-data', { email: CU.email, password: pwd, confirm: 'RESET' }).then(function(result){
+    if(!result.ok){
+      alert(result.data.error || "Erreur lors de la reinitialisation.");
+      return;
+    }
+    alert('Toutes les donnees ont ete reinitialisees. Seul votre compte Super Admin subsiste. La page va se recharger.');
+    window.location.reload();
+  }).catch(function(){
+    alert("Erreur reseau lors de la reinitialisation.");
+  });
+}
 
 
 

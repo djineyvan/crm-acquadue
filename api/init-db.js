@@ -126,29 +126,17 @@ module.exports = async function handler(req, res) {
       id SERIAL PRIMARY KEY, nom TEXT, debut TEXT, fin TEXT, motif TEXT, statut TEXT DEFAULT 'En attente'
     )`;
 
-    // ── Seed users only if table is empty (idempotent) ──
+    // ── Seed ONLY the super admin account if table is empty (idempotent) ──
+    // Test/demo accounts are no longer auto-seeded — the Super Admin creates
+    // every other team member manually from a clean slate.
     const existingUsers = await sql`SELECT COUNT(*) as count FROM users`;
     let seeded = false;
 
     if (parseInt(existingUsers[0].count) === 0) {
       seeded = true;
-      const seedUsers = [
-        ['Yvan Leunkeu Djine','yvan@acquadue.ne','Admin@2026','superadmin','Direction','YL','av-red','Niamey'],
-        ['Moussa Abdou','moussa@acquadue.ne','Comm@2026','collaborateur','Commercial','MA','av-blue','Niamey'],
-        ['Fatima Oumarou','fatima@acquadue.ne','Comm@2026','collaborateur','Commercial','FO','av-green','Niamey'],
-        ['Ibrahim Issoufou','ibrahim@acquadue.ne','Comm@2026','collaborateur','Commercial','II','av-gold','Zinder'],
-        ['Aicha Mahamane','aicha@acquadue.ne','Resp@2026','responsable','Commercial','AM','av-purple','Maradi'],
-        ['Salimata Diallo','salimata@acquadue.ne','Mkt@2026','admin','Marketing','SD','av-purple','Niamey'],
-        ['Hamidou Garba','hamidou@acquadue.ne','Mkt@2026','collaborateur','Marketing','HG','av-gold','Tahoua'],
-        ['Mariama Soule','mariama@acquadue.ne','Mkt@2026','collaborateur','Marketing','MS','av-blue','Niamey'],
-        ['Abdoul Karim','abdoul@acquadue.ne','Com@2026','admin','Communication','AK','av-blue','Niamey'],
-        ['Hawa Boubacar','hawa@acquadue.ne','Com@2026','collaborateur','Communication','HB','av-green','Niamey'],
-      ];
-      for (const u of seedUsers) {
-        await sql`INSERT INTO users (nom,email,pass,role,departement,ini,col,ville)
-                   VALUES (${u[0]},${u[1]},${u[2]},${u[3]},${u[4]},${u[5]},${u[6]},${u[7]})
-                   ON CONFLICT (email) DO NOTHING`;
-      }
+      await sql`INSERT INTO users (nom,email,pass,role,departement,ini,col,ville)
+                 VALUES ('Yvan Leunkeu Djine','yvan@acquadue.ne','Admin@2026','superadmin','Direction','YL','av-red','Niamey')
+                 ON CONFLICT (email) DO NOTHING`;
     }
 
     return res.status(200).json({ success: true, seeded: seeded, message: 'Base de donnees initialisee avec succes' });
