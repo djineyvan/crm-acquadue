@@ -1211,9 +1211,20 @@ function viewTaskDetail(id){
 // ── DOCUMENTS ──────────────────────────────────────────────────────────────────
 function renderDocs(c){
   let h = '<div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">';
-  h += '<div class="td-muted">Classement: Clients, Campagnes, Contrats, Factures</div>';
+  h += '<div class="td-muted">Stockage de fichiers (PDF, Word, Excel, images) — contrats signes, factures scannees, etc.</div>';
   h += '<button class="btn btn-red btn-sm" onclick="alert(\'Fonction upload a connecter a un stockage cloud (Google Drive / S3)\')">+ Televerser</button>';
-  h += '</div><div class="card"><div class="table-wrap"><table id="tbl-docs"></table></div></div>';
+  h += '</div>';
+  h += '<div class="card" style="margin-bottom:12px;background:var(--blue-light);border-color:var(--blue)">';
+  h += '  <div style="font-weight:700;font-size:12px;color:var(--blue);margin-bottom:6px">ℹ️ Ce module ne contient PAS vos donnees deja saisies</div>';
+  h += '  <div class="td-muted" style="font-size:12px">Pour consulter vos clients, devis, factures, produits ou stocks, rendez-vous directement dans leur rubrique respective :</div>';
+  h += '  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">';
+  h += '    <button class="btn btn-ghost btn-sm" onclick="go(\'clients\')">👥 Clients</button>';
+  h += '    <button class="btn btn-ghost btn-sm" onclick="go(\'facturation\')">🧾 Devis & Factures</button>';
+  h += '    <button class="btn btn-ghost btn-sm" onclick="go(\'produits\')">📦 Produits</button>';
+  h += '    <button class="btn btn-ghost btn-sm" onclick="go(\'stock\')">🏬 Stocks</button>';
+  h += '  </div>';
+  h += '</div>';
+  h += '<div class="card"><div class="table-wrap"><table id="tbl-docs"></table></div></div>';
   c.innerHTML = h;
   el('tbl-docs').innerHTML = '<thead><tr><th>Document</th><th>Categorie</th><th>Taille</th><th>Date</th><th>Ajoute par</th></tr></thead><tbody>' +
     DOCUMENTS.map(function(d){ return '<tr><td class="td-bold">📄 '+d.nom+'</td><td>'+deptTag(d.categorie==="Clients"?"Commercial":d.categorie==="Campagnes"?"Marketing":"Direction")+' '+d.categorie+'</td><td class="td-muted">'+d.taille+'</td><td class="td-muted">'+d.date+'</td><td class="td-muted">'+d.par+'</td></tr>'; }).join('') + '</tbody>';
@@ -2300,6 +2311,7 @@ function renderControle(c){
   h += '<div id="co-z" style="display:none"><div class="card" style="border-color:var(--red)">';
   h += '  <div class="card-title" style="color:var(--red)">⚠️ Reinitialisation complete de la base</div>';
   h += '  <p class="td-muted" style="margin-bottom:12px">Cette action supprime DEFINITIVEMENT toutes les donnees metier (clients, pipeline, taches, stock, produits, devis, factures, depenses, journal d\'audit...) ainsi que TOUS les comptes utilisateurs sauf le votre. Cette action est irreversible.</p>';
+  h += '  <div style="background:var(--blue-light);border-radius:8px;padding:10px;margin-bottom:12px;font-size:11px;color:var(--blue)">💡 Recommande : telechargez une sauvegarde complete (onglet Sauvegardes) avant de continuer.</div>';
   h += '  <button class="btn btn-red" onclick="openModal(\'modal-reset-all\')">Tout reinitialiser</button>';
   h += '</div></div>';
   c.innerHTML = h;
@@ -2310,7 +2322,7 @@ function renderControle(c){
   el('tbl-backups').innerHTML = '<thead><tr><th>Type</th><th>Date</th><th>Taille</th><th>Statut</th></tr></thead><tbody>' +
     BACKUPS.map(function(b){ return '<tr><td class="td-bold">'+b.type+'</td><td class="td-muted">'+b.date+'</td><td class="td-muted">'+b.taille+'</td><td>'+statusTag(b.statut==="Reussie"?"Termine":b.statut)+'</td></tr>'; }).join('') +
     '</tbody>' ;
-  el('tbl-backups').insertAdjacentHTML('afterend', '<div style="margin-top:10px;text-align:right"><button class="btn btn-red btn-sm" onclick="runBackupNow()">Lancer une sauvegarde maintenant</button></div>');
+  el('tbl-backups').insertAdjacentHTML('afterend', '<div style="margin-top:10px;display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-ghost btn-sm" onclick="downloadFullBackup()">⬇️ Telecharger une sauvegarde complete (.json)</button><button class="btn btn-red btn-sm" onclick="runBackupNow()">Lancer une sauvegarde maintenant</button></div>');
 
   el('sensitive-matrix').innerHTML = '<table class="perm-table"><thead><tr><th>Action</th><th>Collab.</th><th>Resp.</th><th>Admin</th><th>S.Admin</th></tr></thead><tbody>' +
     [["Voir stock","voir_stock"],["Modifier stock","modifier_stock"],["Supprimer mouvement","supprimer_mouvement"],["Modifier prix d'achat","modifier_prix_achat"],["Modifier cout fournisseur","modifier_cout_fournisseur"]].map(function(row){
@@ -3767,6 +3779,19 @@ function confirmResetAllData(){
   }).catch(function(){
     alert("Erreur reseau lors de la reinitialisation.");
   });
+}
+
+// ── Download a complete JSON backup of every table in the database ──────────
+function downloadFullBackup(){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut telecharger une sauvegarde complete.');
+  const url = '/api/export-data?by=' + encodeURIComponent(CU.nom);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'sauvegarde-crm-acquadue-' + new Date().toISOString().slice(0,10) + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  logAction('Sauvegarde telechargee', CU.nom + ' a telecharge une sauvegarde complete de la base', 'blue');
 }
 
 // ── Initialize DB schema + attempt auto-login on first page load ───────────
