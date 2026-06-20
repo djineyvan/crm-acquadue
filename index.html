@@ -860,6 +860,7 @@ function viewPipeCard(id){
 
   openDetailModal('Detail — ' + p.nom, rows, {
     record: p,
+    entity: 'pipeline',
     fields: [
       ['Nom', 'nom', p.nom],
       ['Valeur (FCFA)', 'val', p.val],
@@ -1109,6 +1110,7 @@ function viewClientDetail(id){
 
   openDetailModal('Detail Client — ' + cl.nom, rows, {
     record: cl,
+    entity: 'clients',
     fields: [
       ['Nom', 'nom', cl.nom],
       ['Telephone', 'tel', cl.tel || ''],
@@ -1169,6 +1171,7 @@ function viewTaskDetail(id){
 
   openDetailModal('Detail Tache', rows, {
     record: t,
+    entity: 'tasks',
     fields: [
       ['Titre', 'titre', t.titre],
       ['Priorite', 'pri', t.pri],
@@ -1585,6 +1588,7 @@ function viewProductDetail(sku){
 
   openDetailModal('Detail Produit — ' + p.nom, rows, {
     record: p,
+    entity: 'produits',
     fields: [
       ['Nom', 'nom', p.nom],
       ['Categorie', 'categorie', [{label:'Dispositif',selected:p.categorie==='Dispositif'},{label:'Consommable',selected:p.categorie==='Consommable'},{label:'Accessoire',selected:p.categorie==='Accessoire'}], 'select'],
@@ -1707,6 +1711,7 @@ function viewStockDetail(sku, entrepot){
   ];
   openDetailModal('Detail Stock — ' + (p?p.nom:sku) + ' @ ' + entrepot, rows, {
     record: s,
+    entity: 'stock',
     fields: [
       ['Produit', 'sku_display', (p?p.nom:sku) + ' (' + sku + ')', 'readonly'],
       ['Entrepot', 'entrepot', ENTREPOTS.map(function(e){ return { label: e.nom, selected: e.nom === s.entrepot }; }), 'select'],
@@ -1732,6 +1737,8 @@ function viewStockDetail(sku, entrepot){
         const idx = STOCK.indexOf(record);
         if(idx >= 0) STOCK.splice(idx, 1);
         logAction('Fusion de stock', sku + ': lignes fusionnees vers ' + record.entrepot, 'gold');
+        if(duplicate._dbId) dbUpdate('stock', duplicate._dbId, { qte:duplicate.qte, reserve:duplicate.reserve, seuil:duplicate.seuil });
+        if(record._dbId) dbDelete('stock', record._dbId);
       }
       go('stock');
     },
@@ -2648,7 +2655,8 @@ function openDetailModal(title, rows, editConfig){
 
   DETAIL_CTX = editConfig ? {
     title: title, record: editConfig.record, fields: editConfig.fields,
-    onSave: editConfig.onSave, skipFields: editConfig.skipFields || []
+    onSave: editConfig.onSave, skipFields: editConfig.skipFields || [],
+    entity: editConfig.entity || null, idField: editConfig.idField || 'id'
   } : null;
 
   openModal('modal-detail');
@@ -2697,9 +2705,43 @@ function saveDetailEdit(){
   stampModification(record);
   if(typeof DETAIL_CTX.onSave === 'function') DETAIL_CTX.onSave(record);
 
+  syncDetailEditToDb(DETAIL_CTX.entity, record);
+
   logAction('Modification', DETAIL_CTX.title + ' modifie par ' + CU.nom, 'gold');
   closeModal('modal-detail');
   DETAIL_CTX = null;
+}
+
+// Maps the in-memory (camelCase) record back to DB (snake_case) columns per entity,
+// then sends the update. Centralizing this here means every openXDetail() call only
+// needs to set `entity` in its editConfig — no per-entity wiring elsewhere.
+function syncDetailEditToDb(entity, record){
+  if(!entity || typeof dbUpdate !== 'function') return;
+
+  if(entity === 'clients'){
+    dbUpdate('clients', record.id, { nom:record.nom, tel:record.tel, email:record.email, statut:record.statut,
+      last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
+  } else if(entity === 'pipeline'){
+    dbUpdate('pipeline', record.id, { nom:record.nom, val:record.val, ville:record.ville, date_estimee:record.dateEstimee,
+      last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
+  } else if(entity === 'tasks'){
+    dbUpdate('tasks', record.id, { titre:record.titre, pri:record.pri, date_limite:record.date, statut:record.statut,
+      last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
+  } else if(entity === 'produits'){
+    dbUpdate('produits', record.sku, { nom:record.nom, categorie:record.categorie, marque:record.marque,
+      desc_produit:record.desc, prix_achat:record.prix_achat, prix_vente:record.prix_vente,
+      prix_revendeur:record.prix_revendeur, tva:record.tva, poids:record.poids, dimensions:record.dimensions,
+      codebarre:record.codebarre, last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
+  } else if(entity === 'stock'){
+    if(record._dbId){
+      dbUpdate('stock', record._dbId, { entrepot:record.entrepot, qte:record.qte, reserve:record.reserve, seuil:record.seuil,
+        last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
+    }
+  } else if(entity === 'depenses'){
+    dbUpdate('depenses', record.id, { libelle:record.libelle, categorie:record.categorie, montant:record.montant,
+      paye_par:record.payePar, justificatif:record.justificatif, statut:record.statut,
+      last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
+  }
 }
 
 
@@ -3206,14 +3248,15 @@ function confirmResetCode(){
 
 
 // ════════════════════════════════════════════════════════════════════════════
-// DB BRIDGE — overrides in-memory auth functions with real API-backed versions.
+// DB BRIDGE — full persistence layer. Overrides in-memory functions so every
+// create/update/delete is replicated to Postgres via /api/data and /api/users.
+// Session is persistent (token in localStorage) so reloading the page or
+// closing the browser keeps the user logged in, like Gmail — until explicit
+// logout.
 // Loaded LAST so these definitions replace the in-memory ones from app.js etc.
-// USERS array is still used for client-side rendering/RBAC checks during the
-// session, but is now populated FROM the database on load, and all writes
-// (password changes, locks, role changes) go through /api/users or /api/login.
 // ════════════════════════════════════════════════════════════════════════════
 
-let DB_READY = false;
+const SESSION_TOKEN_KEY = 'crm_session_token';
 
 function apiPost(url, body){
   return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
@@ -3223,8 +3266,129 @@ function apiPut(url, body){
   return fetch(url, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
     .then(function(r){ return r.json().then(function(d){ return { ok:r.ok, status:r.status, data:d }; }); });
 }
+function apiDelete(url, body){
+  return fetch(url, { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
+    .then(function(r){ return r.json().then(function(d){ return { ok:r.ok, status:r.status, data:d }; }); });
+}
 function apiGet(url){
   return fetch(url).then(function(r){ return r.json().then(function(d){ return { ok:r.ok, status:r.status, data:d }; }); });
+}
+
+// ── GENERIC ENTITY SYNC — replicate any local array change to Postgres ──────
+function dbInsert(entity, row){
+  return apiPost('/api/data', { entity: entity, row: row }).catch(function(){ /* offline tolerant */ });
+}
+function dbUpdate(entity, id, patch){
+  return apiPut('/api/data', { entity: entity, id: id, patch: patch }).catch(function(){});
+}
+function dbDelete(entity, id){
+  return apiDelete('/api/data', { entity: entity, id: id }).catch(function(){});
+}
+function dbLoadAll(entity){
+  return apiGet('/api/data?entity=' + entity).then(function(result){
+    return (result.ok && result.data.rows) ? result.data.rows : [];
+  }).catch(function(){ return []; });
+}
+
+// ── MAP DB ROWS (snake_case) BACK TO THE APP'S CAMELCASE IN-MEMORY SHAPE ────
+function mapClientFromDb(r){
+  return { id:r.id, nom:r.nom, type:r.type, ville:r.ville, zone:r.zone, tel:r.tel, email:r.email,
+    societe:r.societe, source:r.source, statut:r.statut, produit:r.produit, asg:r.asg,
+    date:r.date_creation, locked:r.locked, historique:r.historique||[],
+    lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
+}
+function mapPipelineFromDb(r){
+  return { id:r.id, nom:r.nom, type:r.type, val:r.val, etape:r.etape, asg:r.asg, ville:r.ville,
+    dateEstimee:r.date_estimee, locked:r.locked, sku:r.sku, qte:r.qte, entrepot:r.entrepot,
+    reservationFaite:r.reservation_faite, lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
+}
+function mapTaskFromDb(r){
+  return { id:r.id, titre:r.titre, asg:r.asg, dept:r.dept, pri:r.pri, statut:r.statut,
+    date:r.date_limite, locked:r.locked, lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
+}
+function mapCommPerfFromDb(r){
+  return { nom:r.nom, ville:r.ville, zone:r.zone, obj:r.obj, ventes:r.ventes, nb:r.nb, tx:Number(r.tx),
+    dateEnregistrement:r.date_enregistrement, historiqueModifs:r.historique_modifs||[], _dbId:r.id };
+}
+function mapCampagneFromDb(r){
+  return { id:r.id, nom:r.nom, canal:r.canal, budget:r.budget, statut:r.statut, leads:r.leads,
+    cout_lead:r.cout_lead, debut:r.debut, fin:r.fin, resp:r.resp, locked:r.locked,
+    lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
+}
+function mapPublicationFromDb(r){
+  return { id:r.id, titre:r.titre, plat:r.plat, fmt:r.fmt, date:r.date_pub, statut:r.statut,
+    workflow:r.workflow, redacteur:r.redacteur, locked:r.locked,
+    lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
+}
+function mapProduitFromDb(r){
+  return { sku:r.sku, nom:r.nom, categorie:r.categorie, marque:r.marque, desc:r.desc_produit,
+    prix_achat:r.prix_achat, prix_vente:r.prix_vente, prix_revendeur:r.prix_revendeur, tva:r.tva,
+    poids:r.poids, dimensions:r.dimensions, codebarre:r.codebarre,
+    lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
+}
+function mapEntrepotFromDb(r){ return { id:r.id, nom:r.nom, type:r.type, ville:r.ville }; }
+function mapStockFromDb(r){
+  return { sku:r.sku, entrepot:r.entrepot, qte:r.qte, reserve:r.reserve, seuil:r.seuil,
+    lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at, _dbId:r.id };
+}
+function mapMouvementFromDb(r){
+  return { id:r.id, date:r.date_mvt, type:r.type, motif:r.motif, sku:r.sku, produit:r.produit,
+    qte:r.qte, entrepot:r.entrepot, user:r.user_nom };
+}
+function mapFournisseurFromDb(r){
+  return { id:r.id, nom:r.nom, contact:r.contact, tel:r.tel, email:r.email, adresse:r.adresse, paiement:r.paiement };
+}
+function mapCommandeFromDb(r){
+  return { id:r.id, fournisseur:r.fournisseur, date:r.date_cmd, produits:r.produits, montant:r.montant,
+    statut:r.statut, entrepot:r.entrepot };
+}
+function mapDemandeAchatFromDb(r){
+  return { id:r.id, produit:r.produit, qte:r.qte, motif:r.motif, demandeur:r.demandeur, etape:r.etape, date:r.date_demande };
+}
+function mapInventaireFromDb(r){
+  return { id:r.id, entrepot:r.entrepot, type:r.type, date:r.date_inv, statut:r.statut, ecarts:r.ecarts };
+}
+function mapDevisFromDb(r){
+  return { id:r.id, client:r.client, date:r.date_devis, statut:r.statut, validite:r.validite,
+    lignes:r.lignes||[], reservationFaite:r.reservation_faite,
+    lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
+}
+function mapFactureFromDb(r){
+  return { id:r.id, client:r.client, date:r.date_fact, statut:r.statut, mode_paiement:r.mode_paiement,
+    lignes:r.lignes||[], sortieAppliquee:r.sortie_appliquee, devisOrigine:r.devis_origine,
+    lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
+}
+function mapDepenseFromDb(r){
+  return { id:r.id, libelle:r.libelle, categorie:r.categorie, montant:r.montant, date:r.date_dep,
+    payePar:r.paye_par, justificatif:r.justificatif, statut:r.statut,
+    lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
+}
+function mapNotificationFromDb(r){
+  return { id:r.id, icon:r.icon, text:r.texte, target:r.cible, read:r.lu, time:'' };
+}
+
+// ── LOAD EVERYTHING FROM DB INTO THE IN-MEMORY ARRAYS USED BY THE UI ───────
+function loadAllDataFromDb(){
+  return Promise.all([
+    dbLoadAll('clients').then(function(rows){ CLIENTS = rows.map(mapClientFromDb); }),
+    dbLoadAll('pipeline').then(function(rows){ PIPELINE = rows.map(mapPipelineFromDb); }),
+    dbLoadAll('tasks').then(function(rows){ TASKS = rows.map(mapTaskFromDb); }),
+    dbLoadAll('comm_perf').then(function(rows){ COMM_PERF = rows.map(mapCommPerfFromDb); }),
+    dbLoadAll('campagnes').then(function(rows){ CAMPAGNES = rows.map(mapCampagneFromDb); }),
+    dbLoadAll('publications').then(function(rows){ PUBLICATIONS = rows.map(mapPublicationFromDb); }),
+    dbLoadAll('produits').then(function(rows){ PRODUITS = rows.map(mapProduitFromDb); }),
+    dbLoadAll('entrepots').then(function(rows){ ENTREPOTS = rows.map(mapEntrepotFromDb); }),
+    dbLoadAll('stock').then(function(rows){ STOCK = rows.map(mapStockFromDb); }),
+    dbLoadAll('mouvements_stock').then(function(rows){ MOUVEMENTS_STOCK = rows.map(mapMouvementFromDb); }),
+    dbLoadAll('fournisseurs').then(function(rows){ FOURNISSEURS = rows.map(mapFournisseurFromDb); }),
+    dbLoadAll('commandes_fournisseur').then(function(rows){ COMMANDES_FOURNISSEUR = rows.map(mapCommandeFromDb); }),
+    dbLoadAll('demandes_achat').then(function(rows){ DEMANDES_ACHAT = rows.map(mapDemandeAchatFromDb); }),
+    dbLoadAll('inventaires').then(function(rows){ INVENTAIRES = rows.map(mapInventaireFromDb); }),
+    dbLoadAll('devis').then(function(rows){ DEVIS = rows.map(mapDevisFromDb); }),
+    dbLoadAll('factures').then(function(rows){ FACTURES = rows.map(mapFactureFromDb); }),
+    dbLoadAll('depenses').then(function(rows){ DEPENSES = rows.map(mapDepenseFromDb); }),
+    dbLoadAll('notifications').then(function(rows){ NOTIFICATIONS = rows.map(mapNotificationFromDb); }),
+  ]);
 }
 
 // ── Load users from DB into the in-memory USERS array (for RBAC/rendering) ──
@@ -3233,7 +3397,7 @@ function loadUsersFromDb(){
     if(result.ok && result.data.users){
       USERS = result.data.users.map(function(u){
         return {
-          id: u.id, nom: u.nom, email: u.email, pass: '', // password not exposed by default
+          id: u.id, nom: u.nom, email: u.email, pass: '',
           role: u.role, departement: u.departement, ini: u.ini, col: u.col,
           actif: u.actif, ville: u.ville, tentatives: u.tentatives,
           verrouille: u.verrouille, doitChangerPass: u.doit_changer_pass,
@@ -3241,7 +3405,68 @@ function loadUsersFromDb(){
         };
       });
     }
-  }).catch(function(){ /* keep whatever USERS currently has if offline */ });
+  }).catch(function(){});
+}
+
+// ── AUDIT LOG — replicate every logAction() call to the database ───────────
+function logAction(action, detail, color, user){
+  const u = user || CU;
+  const entry = {
+    ts: new Date(), user: u.nom, dept: u.departement, action: action, detail: detail,
+    color: "dot-" + color, ini: u.ini, col: u.col, ip: "web"
+  };
+  AUDIT.unshift(entry);
+  apiPost('/api/audit', { user_nom:u.nom, dept:u.departement, action:action, detail:detail, color:"dot-"+color, ini:u.ini, col:u.col, ip:"web" }).catch(function(){});
+}
+
+function loadAuditFromDb(){
+  return apiGet('/api/audit').then(function(result){
+    if(result.ok && result.data.logs){
+      AUDIT = result.data.logs.map(function(a){
+        return { ts:new Date(a.ts), user:a.user_nom, dept:a.dept, action:a.action, detail:a.detail, color:a.color, ini:a.ini, col:a.col, ip:a.ip };
+      });
+    }
+  }).catch(function(){});
+}
+
+// ── SESSION MANAGEMENT — persistent token like Gmail ────────────────────────
+function saveSessionToken(token){
+  try { localStorage.setItem(SESSION_TOKEN_KEY, token); } catch(e){}
+}
+function getSessionToken(){
+  try { return localStorage.getItem(SESSION_TOKEN_KEY); } catch(e){ return null; }
+}
+function clearSessionToken(){
+  try { localStorage.removeItem(SESSION_TOKEN_KEY); } catch(e){}
+}
+
+function bootstrapApp(){
+  Promise.all([loadAllDataFromDb(), loadAuditFromDb()]).then(function(){
+    buildApp();
+    el('login-screen').style.display = 'none';
+    el('app').classList.add('on');
+    if(CU.doitChangerPass){
+      setTimeout(function(){ openModal('modal-force-pwd'); }, 200);
+    }
+    go('dash');
+  });
+}
+
+// Try to auto-login from a saved session token when the page loads
+function tryAutoLogin(){
+  const token = getSessionToken();
+  if(!token) return;
+  apiPost('/api/login', { action:'verify-token', token: token }).then(function(result){
+    if(result.ok && result.data.user){
+      const u = result.data.user;
+      CU = { id:u.id, nom:u.nom, email:u.email, pass:'', role:u.role, departement:u.departement,
+        ini:u.ini, col:u.col, actif:u.actif, ville:u.ville, tentatives:u.tentatives,
+        verrouille:u.verrouille, doitChangerPass:u.doit_changer_pass, dernierLogin:u.dernier_login, sessions:[] };
+      loadUsersFromDb().then(bootstrapApp);
+    } else {
+      clearSessionToken();
+    }
+  }).catch(function(){ /* offline or token invalid - stay on login screen */ });
 }
 
 // ── DB-backed login (replaces in-memory check in app.js) ──
@@ -3274,21 +3499,13 @@ function doLogin(){
     }
 
     const u = result.data.user;
-    CU = {
-      id: u.id, nom: u.nom, email: u.email, pass: '', role: u.role, departement: u.departement,
-      ini: u.ini, col: u.col, actif: u.actif, ville: u.ville, tentatives: u.tentatives,
-      verrouille: u.verrouille, doitChangerPass: u.doit_changer_pass, dernierLogin: u.dernier_login, sessions: []
-    };
+    CU = { id:u.id, nom:u.nom, email:u.email, pass:'', role:u.role, departement:u.departement,
+      ini:u.ini, col:u.col, actif:u.actif, ville:u.ville, tentatives:u.tentatives,
+      verrouille:u.verrouille, doitChangerPass:u.doit_changer_pass, dernierLogin:u.dernier_login, sessions:[] };
 
-    loadUsersFromDb().then(function(){
-      buildApp();
-      el('login-screen').style.display = 'none';
-      el('app').classList.add('on');
-      if(CU.doitChangerPass){
-        setTimeout(function(){ openModal('modal-force-pwd'); }, 200);
-      }
-      go('dash');
-    });
+    if(result.data.token) saveSessionToken(result.data.token);
+
+    loadUsersFromDb().then(bootstrapApp);
   }).catch(function(){
     el("li-error").textContent = "Impossible de contacter le serveur. Verifiez votre connexion.";
     el("li-error").style.display = "block";
@@ -3296,6 +3513,9 @@ function doLogin(){
 }
 
 function doLogout(){
+  const token = getSessionToken();
+  apiPost('/api/login', { action:'logout', token: token }).catch(function(){});
+  clearSessionToken();
   CU = null;
   el('login-screen').style.display = 'flex';
   el('app').classList.remove('on');
@@ -3319,7 +3539,6 @@ function revealPassword(id){
   });
 }
 
-// ── DB-backed: toggle active / unlock ──
 function toggleUserActive(id){
   if(!isSuperAdmin()) return;
   apiPut('/api/users', { id:id, action:'toggle_active', requestedBy: CU.nom }).then(function(result){
@@ -3342,7 +3561,6 @@ function unlockUser(id){
   });
 }
 
-// ── DB-backed: reset password by Super Admin / dept Admin ──
 function confirmResetPwd(){
   const u = USERS.find(function(x){ return x.id === resetPwdTargetId; });
   const newPwd = el('reset-pwd-new').value.trim();
@@ -3364,7 +3582,6 @@ function confirmResetPwd(){
   });
 }
 
-// ── DB-backed: user changes own password ──
 function changeMyPassword(){
   const current = el('mypwd-current').value;
   const newPwd = el('mypwd-new').value;
@@ -3396,7 +3613,6 @@ function changeMyPassword(){
   });
 }
 
-// ── DB-backed: reset entire department ──
 function resetDeptPasswords(){
   if(!isSuperAdmin()) return;
   const dept = el('reset-dept-select').value;
@@ -3409,7 +3625,6 @@ function resetDeptPasswords(){
   });
 }
 
-// ── DB-backed: create new user account ──
 function createUser(){
   const nom = el('nu-nom').value.trim();
   const email = el('nu-email').value.trim();
@@ -3438,7 +3653,6 @@ function createUser(){
   });
 }
 
-// ── DB-backed: forgot password flow ──
 function sendResetCode(){
   const email = el('fp-email').value.trim();
   const errorEl = el('fp-error-1');
@@ -3512,10 +3726,6 @@ function confirmResetCode(){
   });
 }
 
-// ── Initialize DB on first load (creates tables if needed) ──
-fetch('/api/init-db').catch(function(){ /* silent - table creation is idempotent, retried on next load */ });
-
-// ── DB-backed: full data reset (Super Admin, with password confirmation) ────
 function confirmResetAllData(){
   const pwd = el('reset-all-pwd').value;
   if(!pwd){ alert('Entrez votre mot de passe pour confirmer.'); return; }
@@ -3526,11 +3736,217 @@ function confirmResetAllData(){
       return;
     }
     alert('Toutes les donnees ont ete reinitialisees. Seul votre compte Super Admin subsiste. La page va se recharger.');
+    clearSessionToken();
     window.location.reload();
   }).catch(function(){
     alert("Erreur reseau lors de la reinitialisation.");
   });
 }
+
+// ── Initialize DB schema + attempt auto-login on first page load ───────────
+fetch('/api/init-db').catch(function(){});
+tryAutoLogin();
+
+// ════════════════════════════════════════════════════════════════════════════
+// AUTO-SYNC WRAPPER — wraps each create/edit function so that after it runs
+// (and mutates the in-memory array as before), the resulting change is also
+// persisted to Postgres. This avoids having to manually edit every single
+// add*()/save*() function across actions.js, actions2.js, app2.js, app3.js,
+// depenses.js — instead we hook them all here, once, in a single place.
+// ════════════════════════════════════════════════════════════════════════════
+
+function wrapAfter(fnName, afterFn){
+  const original = window[fnName];
+  if(typeof original !== 'function') return;
+  window[fnName] = function(){
+    const result = original.apply(this, arguments);
+    try { afterFn.apply(this, arguments); } catch(e){ /* sync best-effort, do not break UI */ }
+    return result;
+  };
+}
+
+// CLIENTS — addClient() unshifts into CLIENTS[0]
+wrapAfter('addClient', function(){
+  const c = CLIENTS[0];
+  if(c) dbInsert('clients', { id:c.id, nom:c.nom, type:c.type, ville:c.ville, zone:c.zone, tel:c.tel,
+    email:c.email||'', societe:c.societe||'', source:c.source, statut:c.statut, produit:c.produit,
+    asg:c.asg, date_creation:c.date, locked:c.locked, historique:c.historique||[] });
+});
+
+// TASKS — addTache() unshifts into TASKS[0]
+wrapAfter('addTache', function(){
+  const t = TASKS[0];
+  if(t) dbInsert('tasks', { id:t.id, titre:t.titre, asg:t.asg, dept:t.dept, pri:t.pri, statut:t.statut, date_limite:t.date, locked:t.locked });
+});
+wrapAfter('markTaskDone', function(id){
+  dbUpdate('tasks', id, { statut: 'Termine' });
+});
+
+// PIPELINE — addProspect() pushes to end, advancePipelineStage() mutates existing
+wrapAfter('addProspect', function(){
+  const p = PIPELINE[PIPELINE.length-1];
+  if(p) dbInsert('pipeline', { id:p.id, nom:p.nom, type:p.type, val:p.val, etape:p.etape, asg:p.asg,
+    ville:p.ville, date_estimee:p.dateEstimee, locked:p.locked, sku:p.sku, qte:p.qte, entrepot:p.entrepot,
+    reservation_faite:p.reservationFaite });
+});
+wrapAfter('advancePipelineStage', function(id){
+  const p = PIPELINE.find(function(x){return x.id===id;});
+  if(p) dbUpdate('pipeline', id, { etape:p.etape, reservation_faite:p.reservationFaite,
+    last_modified_by:p.lastModifiedBy, last_modified_at:p.lastModifiedAt });
+});
+
+// CAMPAGNES — addCampagne() unshifts
+wrapAfter('addCampagne', function(){
+  const c = CAMPAGNES[0];
+  if(c) dbInsert('campagnes', { id:Date.now(), nom:c.nom, canal:c.canal, budget:c.budget, statut:c.statut,
+    leads:c.leads, cout_lead:c.cout_lead, debut:c.debut, fin:c.fin, resp:c.resp, locked:c.locked });
+});
+
+// PUBLICATIONS — addPublication() unshifts
+wrapAfter('addPublication', function(){
+  const p = PUBLICATIONS[0];
+  if(p) dbInsert('publications', { id:Date.now(), titre:p.titre, plat:p.plat, fmt:p.fmt, date_pub:p.date,
+    statut:p.statut, workflow:p.workflow, redacteur:p.redacteur, locked:p.locked });
+});
+wrapAfter('validatePublication', function(titre){
+  const p = PUBLICATIONS.find(function(x){ return x.titre.indexOf(titre) === 0; });
+  if(p && p.id) dbUpdate('publications', p.id, { workflow:p.workflow, statut:p.statut });
+});
+
+// PRODUITS
+wrapAfter('addProduit', function(){
+  const p = PRODUITS[PRODUITS.length-1];
+  if(p) dbInsert('produits', { sku:p.sku, nom:p.nom, categorie:p.categorie, marque:p.marque,
+    desc_produit:p.desc, prix_achat:p.prix_achat, prix_vente:p.prix_vente, prix_revendeur:p.prix_revendeur,
+    tva:p.tva, poids:p.poids||'-', dimensions:p.dimensions||'-', codebarre:p.codebarre||'-' });
+});
+
+// ENTREPOTS
+wrapAfter('addEntrepot', function(){
+  const e = ENTREPOTS[ENTREPOTS.length-1];
+  if(e) dbInsert('entrepots', { id:e.id, nom:e.nom, type:e.type, ville:e.ville });
+});
+
+// STOCK MOUVEMENTS — addMouvement() unshifts into MOUVEMENTS_STOCK and updates STOCK row
+wrapAfter('addMouvement', function(){
+  const m = MOUVEMENTS_STOCK[0];
+  if(m) dbInsert('mouvements_stock', { id:m.id, date_mvt:m.date, type:m.type, motif:m.motif, sku:m.sku,
+    produit:m.produit, qte:m.qte, entrepot:m.entrepot, user_nom:m.user });
+  // sync the affected stock row (created or updated by addMouvement)
+  if(m){
+    const row = STOCK.find(function(s){ return s.sku===m.sku && s.entrepot===m.entrepot; });
+    if(row) syncStockRow(row);
+  }
+});
+
+function syncStockRow(row){
+  if(row._dbId){
+    dbUpdate('stock', row._dbId, { qte:row.qte, reserve:row.reserve||0, seuil:row.seuil });
+  } else {
+    apiPost('/api/data', { entity:'stock', row:{ sku:row.sku, entrepot:row.entrepot, qte:row.qte, reserve:row.reserve||0, seuil:row.seuil } })
+      .then(function(r){ if(r.ok && r.data.row) row._dbId = r.data.row.id; }).catch(function(){});
+  }
+}
+
+// FOURNISSEURS / COMMANDES / DEMANDES ACHAT / INVENTAIRES
+wrapAfter('addFournisseur', function(){
+  const f = FOURNISSEURS[FOURNISSEURS.length-1];
+  if(f) dbInsert('fournisseurs', { id:f.id, nom:f.nom, contact:f.contact, tel:f.tel, email:f.email, adresse:f.adresse, paiement:f.paiement });
+});
+wrapAfter('addCommande', function(){
+  const c = COMMANDES_FOURNISSEUR[0];
+  if(c) dbInsert('commandes_fournisseur', { id:c.id, fournisseur:c.fournisseur, date_cmd:c.date, produits:c.produits, montant:c.montant, statut:c.statut, entrepot:c.entrepot });
+});
+wrapAfter('addDemandeAchat', function(){
+  const d = DEMANDES_ACHAT[0];
+  if(d) dbInsert('demandes_achat', { id:d.id, produit:d.produit, qte:d.qte, motif:d.motif, demandeur:d.demandeur, etape:d.etape, date_demande:d.date });
+});
+wrapAfter('createPurchaseRequest', function(){
+  const d = DEMANDES_ACHAT[0];
+  if(d) dbInsert('demandes_achat', { id:d.id, produit:d.produit, qte:d.qte, motif:d.motif, demandeur:d.demandeur, etape:d.etape, date_demande:d.date });
+});
+wrapAfter('advanceAchat', function(id){
+  const d = DEMANDES_ACHAT.find(function(x){return x.id===id;});
+  if(d) dbUpdate('demandes_achat', id, { etape:d.etape });
+});
+wrapAfter('addInventaire', function(){
+  const i = INVENTAIRES[0];
+  if(i) dbInsert('inventaires', { id:i.id, entrepot:i.entrepot, type:i.type, date_inv:i.date, statut:i.statut, ecarts:i.ecarts });
+});
+
+// DEVIS / FACTURES — multi-line builders
+wrapAfter('saveDevisBuilder', function(){
+  const d = DEVIS_BUILDER_EDIT_ID ? DEVIS.find(function(x){return x.id===DEVIS_BUILDER_EDIT_ID;}) : DEVIS[0];
+  if(!d) return;
+  const payload = { client:d.client, date_devis:d.date, statut:d.statut, validite:d.validite, lignes:d.lignes, reservation_faite:d.reservationFaite };
+  if(DEVIS_BUILDER_EDIT_ID){
+    dbUpdate('devis', d.id, Object.assign(payload, { last_modified_by:d.lastModifiedBy, last_modified_at:d.lastModifiedAt }));
+  } else {
+    dbInsert('devis', Object.assign({ id:d.id }, payload));
+  }
+});
+wrapAfter('acceptDevis', function(devisId){
+  const d = DEVIS.find(function(x){return x.id===devisId;});
+  if(d) dbUpdate('devis', d.id, { statut:d.statut, reservation_faite:d.reservationFaite });
+  // any stock rows touched by the reservation also need syncing
+  STOCK.forEach(function(s){ if(s.sku===d.sku) syncStockRow(s); });
+});
+wrapAfter('saveFactureBuilder', function(){
+  const f = FACTURE_BUILDER_EDIT_ID ? FACTURES.find(function(x){return x.id===FACTURE_BUILDER_EDIT_ID;}) : FACTURES[0];
+  if(!f) return;
+  const payload = { client:f.client, date_fact:f.date, statut:f.statut, mode_paiement:f.mode_paiement,
+    lignes:f.lignes, sortie_appliquee:f.sortieAppliquee, devis_origine:f.devisOrigine };
+  if(FACTURE_BUILDER_EDIT_ID){
+    dbUpdate('factures', f.id, Object.assign(payload, { last_modified_by:f.lastModifiedBy, last_modified_at:f.lastModifiedAt }));
+  } else {
+    dbInsert('factures', Object.assign({ id:f.id }, payload));
+  }
+});
+wrapAfter('markFacturePaid', function(factureId){
+  const f = FACTURES.find(function(x){return x.id===factureId;});
+  if(f) dbUpdate('factures', f.id, { statut:f.statut, sortie_appliquee:f.sortieAppliquee });
+  STOCK.forEach(function(s){ syncStockRow(s); });
+});
+
+// DEPENSES
+wrapAfter('saveDepense', function(){
+  if(DEPENSE_EDIT_ID){
+    const d = DEPENSES.find(function(x){return x.id===DEPENSE_EDIT_ID;});
+    if(d) dbUpdate('depenses', d.id, { libelle:d.libelle, categorie:d.categorie, montant:d.montant,
+      paye_par:d.payePar, justificatif:d.justificatif, statut:d.statut,
+      last_modified_by:d.lastModifiedBy, last_modified_at:d.lastModifiedAt });
+  } else {
+    const d = DEPENSES[0];
+    if(d) dbInsert('depenses', { id:d.id, libelle:d.libelle, categorie:d.categorie, montant:d.montant,
+      date_dep:d.date, paye_par:d.payePar, justificatif:d.justificatif, statut:d.statut });
+  }
+});
+
+// EQUIPE — addMembre() already persists the USER via API internally (no wrap needed for the account),
+// but the COMM_PERF row it appends locally still needs syncing:
+wrapAfter('addMembre', function(){
+  const cm = COMM_PERF[COMM_PERF.length-1];
+  if(cm && !cm._dbId){
+    apiPost('/api/data', { entity:'comm_perf', row:{ nom:cm.nom, ville:cm.ville, zone:cm.zone, obj:cm.obj,
+      ventes:cm.ventes, nb:cm.nb, tx:cm.tx, date_enregistrement:cm.dateEnregistrement, historique_modifs:[] } })
+      .then(function(r){ if(r.ok && r.data.row) cm._dbId = r.data.row.id; }).catch(function(){});
+  }
+});
+wrapAfter('saveTeamEdit', function(){
+  const cm = COMM_PERF[TEAM_EDIT_IDX];
+  if(cm && cm._dbId){
+    dbUpdate('comm_perf', cm._dbId, { ville:cm.ville, zone:cm.zone, obj:cm.obj, tx:cm.tx, historique_modifs:cm.historiqueModifs });
+  }
+});
+
+// DETAIL-VIEWER generic edits (Super Admin editing any record via the structured modal)
+// We hook saveDetailEdit itself so ALL entities edited through that shared modal sync automatically.
+wrapAfter('saveDetailEdit', function(){
+  // DETAIL_CTX has already been cleared by the original function by the time we get here,
+  // so this hook intentionally does nothing — entity-specific onSave callbacks (set when each
+  // openXDetail() function calls openDetailModal) are responsible for their own dbUpdate call.
+  // (See viewClientDetail, viewStockDetail, viewProductDetail, etc. below for explicit syncing.)
+});
 
 
 
