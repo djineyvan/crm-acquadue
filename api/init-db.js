@@ -1,6 +1,9 @@
 // /api/init-db.js
 // One-time setup: creates ALL tables and seeds ONLY the super admin account.
 // Idempotent — safe to call multiple times (CREATE TABLE IF NOT EXISTS).
+// Also self-heals tables that already existed with an OLDER/different shape
+// (e.g. created by a previous version of this file) by adding any missing
+// columns via ALTER TABLE ... ADD COLUMN IF NOT EXISTS.
 
 const { getSql } = require('../lib/db');
 
@@ -30,6 +33,9 @@ module.exports = async function handler(req, res) {
       reset_code_expires TIMESTAMP,
       created_at TIMESTAMP DEFAULT NOW()
     )`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code TEXT`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code_expires TIMESTAMP`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()`;
 
     // ── SESSION TOKENS (persistent login, "remember me" like Gmail) ─────────
     await sql`CREATE TABLE IF NOT EXISTS sessions (
@@ -57,6 +63,11 @@ module.exports = async function handler(req, res) {
       last_modified_by TEXT, last_modified_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT NOW()
     )`;
+    await sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS historique JSONB DEFAULT '[]'`;
+    await sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_modified_by TEXT`;
+    await sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_modified_at TIMESTAMP`;
+    await sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS source TEXT`;
+    await sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS societe TEXT`;
 
     // ── PIPELINE (opportunites commerciales) ─────────────────────────────────
     await sql`CREATE TABLE IF NOT EXISTS pipeline (
@@ -68,6 +79,12 @@ module.exports = async function handler(req, res) {
       last_modified_by TEXT, last_modified_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT NOW()
     )`;
+    await sql`ALTER TABLE pipeline ADD COLUMN IF NOT EXISTS sku TEXT`;
+    await sql`ALTER TABLE pipeline ADD COLUMN IF NOT EXISTS qte INT DEFAULT 1`;
+    await sql`ALTER TABLE pipeline ADD COLUMN IF NOT EXISTS entrepot TEXT`;
+    await sql`ALTER TABLE pipeline ADD COLUMN IF NOT EXISTS reservation_faite BOOLEAN DEFAULT false`;
+    await sql`ALTER TABLE pipeline ADD COLUMN IF NOT EXISTS last_modified_by TEXT`;
+    await sql`ALTER TABLE pipeline ADD COLUMN IF NOT EXISTS last_modified_at TIMESTAMP`;
 
     // ── TACHES ────────────────────────────────────────────────────────────────
     await sql`CREATE TABLE IF NOT EXISTS tasks (
@@ -77,6 +94,8 @@ module.exports = async function handler(req, res) {
       last_modified_by TEXT, last_modified_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT NOW()
     )`;
+    await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_modified_by TEXT`;
+    await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_modified_at TIMESTAMP`;
 
     // ── EQUIPE COMMERCIALE (performance + historique modifications justifiees) ─
     await sql`CREATE TABLE IF NOT EXISTS comm_perf (
@@ -87,6 +106,8 @@ module.exports = async function handler(req, res) {
       historique_modifs JSONB DEFAULT '[]',
       created_at TIMESTAMP DEFAULT NOW()
     )`;
+    await sql`ALTER TABLE comm_perf ADD COLUMN IF NOT EXISTS historique_modifs JSONB DEFAULT '[]'`;
+    await sql`ALTER TABLE comm_perf ADD COLUMN IF NOT EXISTS date_enregistrement TEXT`;
 
     // ── MARKETING ─────────────────────────────────────────────────────────────
     await sql`CREATE TABLE IF NOT EXISTS campagnes (
@@ -97,6 +118,8 @@ module.exports = async function handler(req, res) {
       last_modified_by TEXT, last_modified_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT NOW()
     )`;
+    await sql`ALTER TABLE campagnes ADD COLUMN IF NOT EXISTS last_modified_by TEXT`;
+    await sql`ALTER TABLE campagnes ADD COLUMN IF NOT EXISTS last_modified_at TIMESTAMP`;
 
     // ── COMMUNICATION ─────────────────────────────────────────────────────────
     await sql`CREATE TABLE IF NOT EXISTS publications (
@@ -106,6 +129,8 @@ module.exports = async function handler(req, res) {
       last_modified_by TEXT, last_modified_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT NOW()
     )`;
+    await sql`ALTER TABLE publications ADD COLUMN IF NOT EXISTS last_modified_by TEXT`;
+    await sql`ALTER TABLE publications ADD COLUMN IF NOT EXISTS last_modified_at TIMESTAMP`;
 
     // ── PRODUITS ──────────────────────────────────────────────────────────────
     await sql`CREATE TABLE IF NOT EXISTS produits (
@@ -116,6 +141,21 @@ module.exports = async function handler(req, res) {
       last_modified_by TEXT, last_modified_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT NOW()
     )`;
+    // Self-heal: this table may already exist from an older version of this
+    // file without these exact columns (this was the cause of the 500 error
+    // "column desc_produit does not exist"). Add anything missing:
+    await sql`ALTER TABLE produits ADD COLUMN IF NOT EXISTS desc_produit TEXT`;
+    await sql`ALTER TABLE produits ADD COLUMN IF NOT EXISTS categorie TEXT`;
+    await sql`ALTER TABLE produits ADD COLUMN IF NOT EXISTS marque TEXT DEFAULT 'Lorenzetti'`;
+    await sql`ALTER TABLE produits ADD COLUMN IF NOT EXISTS prix_achat INT DEFAULT 0`;
+    await sql`ALTER TABLE produits ADD COLUMN IF NOT EXISTS prix_vente INT DEFAULT 0`;
+    await sql`ALTER TABLE produits ADD COLUMN IF NOT EXISTS prix_revendeur INT DEFAULT 0`;
+    await sql`ALTER TABLE produits ADD COLUMN IF NOT EXISTS tva INT DEFAULT 19`;
+    await sql`ALTER TABLE produits ADD COLUMN IF NOT EXISTS poids TEXT`;
+    await sql`ALTER TABLE produits ADD COLUMN IF NOT EXISTS dimensions TEXT`;
+    await sql`ALTER TABLE produits ADD COLUMN IF NOT EXISTS codebarre TEXT`;
+    await sql`ALTER TABLE produits ADD COLUMN IF NOT EXISTS last_modified_by TEXT`;
+    await sql`ALTER TABLE produits ADD COLUMN IF NOT EXISTS last_modified_at TIMESTAMP`;
 
     // ── ENTREPOTS ─────────────────────────────────────────────────────────────
     await sql`CREATE TABLE IF NOT EXISTS entrepots (
@@ -131,6 +171,9 @@ module.exports = async function handler(req, res) {
       last_modified_by TEXT, last_modified_at TIMESTAMP,
       UNIQUE(sku, entrepot)
     )`;
+    await sql`ALTER TABLE stock ADD COLUMN IF NOT EXISTS reserve INT DEFAULT 0`;
+    await sql`ALTER TABLE stock ADD COLUMN IF NOT EXISTS last_modified_by TEXT`;
+    await sql`ALTER TABLE stock ADD COLUMN IF NOT EXISTS last_modified_at TIMESTAMP`;
 
     // ── MOUVEMENTS DE STOCK ───────────────────────────────────────────────────
     await sql`CREATE TABLE IF NOT EXISTS mouvements_stock (
@@ -174,6 +217,10 @@ module.exports = async function handler(req, res) {
       last_modified_by TEXT, last_modified_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT NOW()
     )`;
+    await sql`ALTER TABLE devis ADD COLUMN IF NOT EXISTS lignes JSONB DEFAULT '[]'`;
+    await sql`ALTER TABLE devis ADD COLUMN IF NOT EXISTS reservation_faite BOOLEAN DEFAULT false`;
+    await sql`ALTER TABLE devis ADD COLUMN IF NOT EXISTS last_modified_by TEXT`;
+    await sql`ALTER TABLE devis ADD COLUMN IF NOT EXISTS last_modified_at TIMESTAMP`;
 
     await sql`CREATE TABLE IF NOT EXISTS factures (
       id TEXT PRIMARY KEY,
@@ -182,6 +229,11 @@ module.exports = async function handler(req, res) {
       last_modified_by TEXT, last_modified_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT NOW()
     )`;
+    await sql`ALTER TABLE factures ADD COLUMN IF NOT EXISTS lignes JSONB DEFAULT '[]'`;
+    await sql`ALTER TABLE factures ADD COLUMN IF NOT EXISTS sortie_appliquee BOOLEAN DEFAULT false`;
+    await sql`ALTER TABLE factures ADD COLUMN IF NOT EXISTS devis_origine TEXT`;
+    await sql`ALTER TABLE factures ADD COLUMN IF NOT EXISTS last_modified_by TEXT`;
+    await sql`ALTER TABLE factures ADD COLUMN IF NOT EXISTS last_modified_at TIMESTAMP`;
 
     // ── DEPENSES ──────────────────────────────────────────────────────────────
     await sql`CREATE TABLE IF NOT EXISTS depenses (
@@ -191,6 +243,8 @@ module.exports = async function handler(req, res) {
       last_modified_by TEXT, last_modified_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT NOW()
     )`;
+    await sql`ALTER TABLE depenses ADD COLUMN IF NOT EXISTS last_modified_by TEXT`;
+    await sql`ALTER TABLE depenses ADD COLUMN IF NOT EXISTS last_modified_at TIMESTAMP`;
 
     // ── NOTIFICATIONS ─────────────────────────────────────────────────────────
     await sql`CREATE TABLE IF NOT EXISTS notifications (
@@ -227,7 +281,7 @@ module.exports = async function handler(req, res) {
                  ON CONFLICT (email) DO NOTHING`;
     }
 
-    return res.status(200).json({ success: true, seeded: seeded, message: 'Base de donnees initialisee avec succes (toutes les tables creees)' });
+    return res.status(200).json({ success: true, seeded: seeded, message: 'Base de donnees initialisee et reparee avec succes (toutes colonnes verifiees)' });
 
   } catch (err) {
     return res.status(500).json({ error: err.message });
