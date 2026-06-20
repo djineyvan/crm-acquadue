@@ -1881,6 +1881,40 @@ function renderInventaires(c){
 
 // ── VENTES & FACTURATION (multi-produits) ────────────────────────────────────
 
+// Auto-link devis/factures to the Clients module: if a client with this exact
+// name already exists, update its produit/statut/date; otherwise create a new
+// client record automatically. This keeps "Clients & Prospects" in sync with
+// every sale, without requiring the user to manage two separate forms.
+function ensureClientExists(nomClient, produitLabel, statutSouhaite){
+  if(!nomClient) return;
+  let cl = CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === nomClient.trim().toLowerCase(); });
+  const todayStr = new Date().toLocaleDateString('fr-FR');
+
+  if(cl){
+    // Existing client: refresh status/product, never downgrade an already-active client by accident
+    if(produitLabel) cl.produit = produitLabel;
+    if(statutSouhaite) cl.statut = statutSouhaite;
+    stampModification(cl);
+    if(typeof dbUpdate === 'function'){
+      dbUpdate('clients', cl.id, { produit: cl.produit, statut: cl.statut, last_modified_by: cl.lastModifiedBy, last_modified_at: cl.lastModifiedAt });
+    }
+  } else {
+    cl = {
+      id: Date.now(), nom: nomClient, type: 'B2C', ville: CU ? CU.ville : 'Niamey', zone: '',
+      tel: '', email: '', societe: '', source: 'Devis/Facturation', statut: statutSouhaite || 'Client actif',
+      produit: produitLabel || '-', asg: CU ? CU.nom : '-', date: todayStr, locked: false, historique: []
+    };
+    CLIENTS.unshift(cl);
+    if(typeof dbInsert === 'function'){
+      dbInsert('clients', { id:cl.id, nom:cl.nom, type:cl.type, ville:cl.ville, zone:cl.zone, tel:cl.tel,
+        email:cl.email, societe:cl.societe, source:cl.source, statut:cl.statut, produit:cl.produit,
+        asg:cl.asg, date_creation:cl.date, locked:cl.locked, historique:[] });
+    }
+    logAction('Client cree automatiquement', nomClient + ' — depuis Devis/Facturation', 'blue');
+  }
+  return cl;
+}
+
 function lignesTotalMontant(lignes){
   return lignes.reduce(function(sum, l){ return sum + (l.qte * l.prixUnitaire); }, 0);
 }
@@ -2058,6 +2092,7 @@ function saveDevisBuilder(){
       validite: el('db-validite').value, lignes: JSON.parse(JSON.stringify(DEVIS_BUILDER_LIGNES)), reservationFaite: false
     });
     logAction('Devis cree', id + ' — ' + client, 'blue');
+    ensureClientExists(client, lignesLabel(DEVIS_BUILDER_LIGNES), 'Offre envoyee');
   }
   closeModal('modal-devis-builder');
   go('facturation');
@@ -2160,6 +2195,7 @@ function saveFactureBuilder(){
     };
     FACTURES.unshift(newFact);
     logAction('Facture generee', id + ' — ' + client + (FACTURE_BUILDER_DEVIS_ORIGINE ? ' (depuis devis ' + FACTURE_BUILDER_DEVIS_ORIGINE + ')' : ''), 'green');
+    ensureClientExists(client, lignesLabel(FACTURE_BUILDER_LIGNES), 'Client actif');
   }
   closeModal('modal-facture-builder');
   go('facturation');
