@@ -186,6 +186,37 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    // ── Step 3: SELF-HEAL PRIMARY KEY — tables created by a much older version
+    // of this file may be missing a real PRIMARY KEY constraint on their id
+    // column. Without it, /api/data's "INSERT ... ON CONFLICT (id)" fails with
+    // Postgres error 42P10 ("no unique or exclusion constraint matching ON
+    // CONFLICT"), which surfaces to the browser as a generic 500 error on
+    // every create action (fournisseurs, factures, etc.). Detect and add the
+    // missing constraint automatically. ──
+    for (const table of Object.keys(PRIMARY_KEYS)) {
+      const pk = PRIMARY_KEYS[table];
+      try {
+        const hasPk = await sql.query(
+          "SELECT 1 FROM information_schema.table_constraints tc " +
+          "JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name " +
+          "WHERE tc.table_name = $1 AND tc.constraint_type = 'PRIMARY KEY' AND kcu.column_name = $2",
+          [table, pk]
+        );
+        if (!hasPk || hasPk.length === 0) {
+          // De-duplicate existing rows on this column first (keep the most recent),
+          // otherwise adding a PK/UNIQUE constraint would fail on duplicate values.
+          await sql.query(
+            'DELETE FROM ' + table + ' a USING ' + table + ' b ' +
+            'WHERE a.' + pk + ' = b.' + pk + ' AND a.ctid < b.ctid'
+          );
+          await sql.query('ALTER TABLE ' + table + ' ADD CONSTRAINT ' + table + '_' + pk + '_pkey PRIMARY KEY (' + pk + ')');
+          healed.push(table + ': added missing PRIMARY KEY on ' + pk);
+        }
+      } catch (e) {
+        healed.push(table + '.PRIMARY_KEY -> ' + e.message);
+      }
+    }
+
     // ── Seed ONLY the super admin account if table is empty (idempotent) ──
     const existingUsers = await sql`SELECT COUNT(*) as count FROM users`;
     let seeded = false;

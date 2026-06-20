@@ -742,16 +742,23 @@ function fillEntrepotSelect(id){
   sel.innerHTML = ENTREPOTS.map(function(e){ return "<option>" + e.nom + "</option>"; }).join("");
 }
 
+function fillFournisseurSelect(id){
+  const sel = el(id);
+  if(!sel) return;
+  sel.innerHTML = FOURNISSEURS.map(function(f){ return "<option>" + f.nom + "</option>"; }).join("");
+}
+
 function openModal(id){
   el(id).classList.add('open');
   fillVilleSelect('m-ville-1'); fillVilleSelect('m-ville-2'); fillVilleSelect('m-ville-3');
   fillAssigneeSelect('m-asg-1'); fillAssigneeSelect('m-asg-2');
-  // Refresh product/warehouse dropdowns every time a modal opens — these lists
-  // change as the Super Admin adds products/warehouses, so they must never be
+  // Refresh product/warehouse/fournisseur dropdowns every time a modal opens —
+  // these lists change as the Super Admin adds entries, so they must never be
   // left stale from whenever buildModals2() first ran (e.g. at login).
   fillProduitSelect('mv-sku');
   fillEntrepotSelect('mv-entrepot');
   fillEntrepotSelect('cm-entrepot');
+  fillFournisseurSelect('cm-fournisseur');
   fillProduitNomSelect('da-produit');
   fillEntrepotSelect('iv-entrepot');
   fillProduitSelect('pr-sku');
@@ -1662,7 +1669,7 @@ function renderStock(c){
   h += '<div id="st-a" style="display:none"><div class="card"><div id="alertes-view"></div></div></div>';
   h += '<div id="st-p" style="display:none"><div class="card"><div id="previsions-view"></div></div></div>';
   h += '<div id="st-e" style="display:none">';
-  h += '  <div style="margin-bottom:9px;text-align:right">' + (canModifyStock() ? '<button class="btn btn-red btn-sm" onclick="openModal(\'modal-entrepot\')">+ Entrepot</button>' : '') + '</div>';
+  h += '  <div style="margin-bottom:9px;text-align:right">' + (canModifyStock() ? '<button class="btn btn-red btn-sm" onclick="openEntrepotCreate()">+ Entrepot</button>' : '') + '</div>';
   h += '  <div class="card"><div id="entrepots-view"></div></div>';
   h += '</div>';
   c.innerHTML = h;
@@ -1714,20 +1721,82 @@ function renderStock(c){
 
   el('entrepots-view').innerHTML = ENTREPOTS.length === 0
     ? '<div class="empty-state"><div class="empty-state-icon">🏬</div>Aucun entrepot cree encore. Ajoutez votre premier entrepot pour commencer a gerer le stock.</div>'
-    : '<table><thead><tr><th>Nom</th><th>Type</th><th>Ville</th><th>Produits stockes</th></tr></thead><tbody>' +
+    : '<table><thead><tr><th>Nom</th><th>Type</th><th>Ville</th><th>Produits stockes</th><th></th></tr></thead><tbody>' +
       ENTREPOTS.map(function(e){
         const nbProduits = STOCK.filter(function(s){return s.entrepot===e.nom;}).length;
-        return '<tr><td class="td-bold">'+e.nom+'</td><td>'+tag(e.type,'tag-blue')+'</td><td class="td-muted">'+e.ville+'</td><td class="td-muted">'+nbProduits+' reference(s)</td></tr>';
+        let actions = '';
+        if(isSuperAdmin()){
+          actions = '<button class="btn btn-ghost btn-sm" onclick="openEntrepotEdit('+e.id+')">✏️ Modifier</button> <button class="btn btn-ghost btn-sm" onclick="deleteEntrepot('+e.id+')">🗑 Supprimer</button>';
+        }
+        return '<tr><td class="td-bold">'+e.nom+'</td><td>'+tag(e.type,'tag-blue')+'</td><td class="td-muted">'+e.ville+'</td><td class="td-muted">'+nbProduits+' reference(s)</td><td>'+actions+'</td></tr>';
       }).join('') + '</tbody></table>';
 }
 
+function openEntrepotCreate(){
+  ENTREPOT_EDIT_ID = null;
+  el('en-nom').value = '';
+  el('en-type').value = 'Principal';
+  el('en-ville').value = 'Niamey';
+  el('modal-entrepot-title') && (el('modal-entrepot-title').textContent = 'Nouvel Entrepot');
+  openModal('modal-entrepot');
+}
+
+let ENTREPOT_EDIT_ID = null;
+function openEntrepotEdit(id){
+  if(!isSuperAdmin()) return;
+  const e = ENTREPOTS.find(function(x){return x.id===id;});
+  if(!e) return;
+  ENTREPOT_EDIT_ID = id;
+  el('en-nom').value = e.nom;
+  el('en-type').value = e.type;
+  el('en-ville').value = e.ville;
+  el('modal-entrepot-title') && (el('modal-entrepot-title').textContent = 'Modifier l\'entrepot');
+  openModal('modal-entrepot');
+}
+
+function deleteEntrepot(id){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer un entrepot.');
+  const e = ENTREPOTS.find(function(x){return x.id===id;});
+  if(!e) return;
+  const inUse = STOCK.some(function(s){return s.entrepot===e.nom && (s.qte>0 || (s.reserve||0)>0);});
+  if(inUse){
+    alert('Impossible de supprimer "'+e.nom+'" : cet entrepot contient encore du stock (reel ou reserve). Videz le stock avant de le supprimer.');
+    return;
+  }
+  if(!confirm('Confirmer la suppression de l\'entrepot "'+e.nom+'" ?')) return;
+  const idx = ENTREPOTS.indexOf(e);
+  ENTREPOTS.splice(idx,1);
+  logAction('Entrepot supprime', e.nom, 'red');
+  if(typeof dbDelete === 'function') dbDelete('entrepots', e.id);
+  go('stock');
+}
+
 function addEntrepot(){
-  if(!canModifyStock()) return alert("Vous n'avez pas la permission de creer un entrepot.");
+  if(!canModifyStock()) return alert("Vous n'avez pas la permission de creer/modifier un entrepot.");
   const nom = el('en-nom').value.trim();
   if(!nom){ alert('Entrez un nom'); return; }
-  if(ENTREPOTS.find(function(e){return e.nom===nom;})){ alert('Un entrepot avec ce nom existe deja.'); return; }
-  ENTREPOTS.push({ id: Date.now(), nom: nom, type: el('en-type').value, ville: el('en-ville').value });
-  logAction('Entrepot cree', nom + ' — ' + el('en-type').value + ' — ' + el('en-ville').value, 'blue');
+
+  if(ENTREPOT_EDIT_ID){
+    const e = ENTREPOTS.find(function(x){return x.id===ENTREPOT_EDIT_ID;});
+    if(!e) return;
+    const ancienNom = e.nom;
+    if(nom !== ancienNom && ENTREPOTS.find(function(x){return x.nom===nom && x.id!==e.id;})){
+      alert('Un entrepot avec ce nom existe deja.'); return;
+    }
+    e.nom = nom; e.type = el('en-type').value; e.ville = el('en-ville').value;
+    // Keep stock/mouvements/pipeline/devis/factures pointing at the renamed warehouse
+    if(nom !== ancienNom){
+      STOCK.forEach(function(s){ if(s.entrepot===ancienNom) s.entrepot = nom; });
+      MOUVEMENTS_STOCK.forEach(function(m){ if(m.entrepot===ancienNom) m.entrepot = nom; });
+    }
+    logAction('Entrepot modifie', ancienNom + ' → ' + nom, 'gold');
+    if(typeof dbUpdate === 'function') dbUpdate('entrepots', e.id, { nom:e.nom, type:e.type, ville:e.ville });
+    ENTREPOT_EDIT_ID = null;
+  } else {
+    if(ENTREPOTS.find(function(e){return e.nom===nom;})){ alert('Un entrepot avec ce nom existe deja.'); return; }
+    ENTREPOTS.push({ id: Date.now(), nom: nom, type: el('en-type').value, ville: el('en-ville').value });
+    logAction('Entrepot cree', nom + ' — ' + el('en-type').value + ' — ' + el('en-ville').value, 'blue');
+  }
   closeModal('modal-entrepot');
   go('stock');
 }
@@ -1812,7 +1881,7 @@ function renderApprov(c){
   h += '<button class="tab" onclick="switchTab(this,\'ap\',\'c\')">Commandes</button>';
   h += '</div></div>';
   h += '<div id="ap-f">';
-  h += '  <div style="margin-bottom:9px;text-align:right"><button class="btn btn-red btn-sm" onclick="openModal(\'modal-fournisseur\')">+ Fournisseur</button></div>';
+  h += '  <div style="margin-bottom:9px;text-align:right"><button class="btn btn-red btn-sm" onclick="openFournisseurCreate()">+ Fournisseur</button></div>';
   h += '  <div class="card"><div class="table-wrap"><table id="tbl-fourn"></table></div></div>';
   h += '</div>';
   h += '<div id="ap-c" style="display:none">';
@@ -1821,8 +1890,14 @@ function renderApprov(c){
   h += '</div>';
   c.innerHTML = h;
 
-  el('tbl-fourn').innerHTML = '<thead><tr><th>Fournisseur</th><th>Contact</th><th>Telephone</th><th>Email</th><th>Conditions</th></tr></thead><tbody>' +
-    FOURNISSEURS.map(function(f){ return '<tr><td class="td-bold">'+f.nom+'</td><td class="td-muted">'+f.contact+'</td><td class="td-muted">'+f.tel+'</td><td class="td-muted">'+f.email+'</td><td>'+tag(f.paiement,'tag-blue')+'</td></tr>'; }).join('') + '</tbody>';
+  el('tbl-fourn').innerHTML = '<thead><tr><th>Fournisseur</th><th>Contact</th><th>Telephone</th><th>Email</th><th>Conditions</th><th></th></tr></thead><tbody>' +
+    FOURNISSEURS.map(function(f){
+      let actions = '';
+      if(isSuperAdmin()){
+        actions = '<button class="btn btn-ghost btn-sm" onclick="openFournisseurEdit('+f.id+')">✏️ Modifier</button> <button class="btn btn-ghost btn-sm" onclick="deleteFournisseur('+f.id+')">🗑 Supprimer</button>';
+      }
+      return '<tr><td class="td-bold">'+f.nom+'</td><td class="td-muted">'+f.contact+'</td><td class="td-muted">'+f.tel+'</td><td class="td-muted">'+f.email+'</td><td>'+tag(f.paiement,'tag-blue')+'</td><td>'+actions+'</td></tr>';
+    }).join('') + '</tbody>';
 
   el('tbl-commandes').innerHTML = '<thead><tr><th>Fournisseur</th><th>Date</th><th>Produits</th><th>Montant</th><th>Entrepot</th><th>Statut</th></tr></thead><tbody>' +
     COMMANDES_FOURNISSEUR.map(function(cmd){ return '<tr><td class="td-bold">'+cmd.fournisseur+'</td><td class="td-muted">'+cmd.date+'</td><td class="td-muted">'+cmd.produits+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(cmd.montant)+'</td><td class="td-muted">'+cmd.entrepot+'</td><td>'+statusTag(cmd.statut)+'</td></tr>'; }).join('') + '</tbody>';
@@ -2594,12 +2669,13 @@ function buildModals(){
 function buildModals2(){
   let modals = '';
 
-  // ── Modal: Nouvel Entrepot ──
+  // ── Modal: Entrepot (creation et edition) ──
   const entrepotBody =
+    '<h3 id="modal-entrepot-title" style="font-family:Syne,sans-serif;font-size:14px;margin-bottom:12px">Nouvel Entrepot</h3>' +
     fieldText('en-nom','Nom de l\'entrepot','Ex: Stock Principal Niamey') +
     fieldRow(fieldSelect('en-type','Type',['Principal','Depot regional','Point de vente']), fieldSelect('en-ville','Ville', VILLES_NIGER));
-  modals += modalShell('modal-entrepot', 'Nouvel Entrepot', entrepotBody,
-    btnGhost('Annuler', "closeModal('modal-entrepot')") + btnRed('Creer', 'addEntrepot()'));
+  modals += modalShell('modal-entrepot', 'Entrepot', entrepotBody,
+    btnGhost('Annuler', "closeModal('modal-entrepot')") + btnRed('Enregistrer', 'addEntrepot()'));
 
   // ── Modal: Nouveau Produit ──
   const produitBody =
@@ -2619,12 +2695,13 @@ function buildModals2(){
   modals += modalShell('modal-mouvement', 'Nouveau Mouvement de Stock', mouvementBody,
     btnGhost('Annuler', "closeModal('modal-mouvement')") + btnRed('Enregistrer', 'addMouvement()'));
 
-  // ── Modal: Nouveau Fournisseur ──
+  // ── Modal: Fournisseur (creation et edition) ──
   const fournisseurBody =
+    '<h3 id="modal-fournisseur-title" style="font-family:Syne,sans-serif;font-size:14px;margin-bottom:12px">Nouveau Fournisseur</h3>' +
     fieldRow(fieldText('fo-nom','Nom du fournisseur'), fieldText('fo-contact','Personne de contact')) +
     fieldRow(fieldText('fo-tel','Telephone'), fieldText('fo-email','Email')) +
     fieldRow(fieldText('fo-adresse','Adresse'), fieldSelect('fo-paiement','Conditions de paiement',['A la livraison','15 jours net','30 jours net','60 jours net']));
-  modals += modalShell('modal-fournisseur', 'Nouveau Fournisseur', fournisseurBody,
+  modals += modalShell('modal-fournisseur', 'Fournisseur', fournisseurBody,
     btnGhost('Annuler', "closeModal('modal-fournisseur')") + btnRed('Enregistrer', 'addFournisseur()'));
 
   // ── Modal: Nouvelle Commande fournisseur ──
@@ -3145,14 +3222,63 @@ function addMouvement(){
   go('stock');
 }
 
+let FOURNISSEUR_EDIT_ID = null;
+
+function openFournisseurCreate(){
+  FOURNISSEUR_EDIT_ID = null;
+  el('fo-nom').value = ''; el('fo-contact').value = ''; el('fo-tel').value = '';
+  el('fo-email').value = ''; el('fo-adresse').value = ''; el('fo-paiement').value = 'A la livraison';
+  el('modal-fournisseur-title') && (el('modal-fournisseur-title').textContent = 'Nouveau Fournisseur');
+  openModal('modal-fournisseur');
+}
+
+function openFournisseurEdit(id){
+  if(!isSuperAdmin()) return;
+  const f = FOURNISSEURS.find(function(x){return x.id===id;});
+  if(!f) return;
+  FOURNISSEUR_EDIT_ID = id;
+  el('fo-nom').value = f.nom; el('fo-contact').value = f.contact; el('fo-tel').value = f.tel;
+  el('fo-email').value = f.email; el('fo-adresse').value = f.adresse; el('fo-paiement').value = f.paiement;
+  el('modal-fournisseur-title') && (el('modal-fournisseur-title').textContent = 'Modifier le Fournisseur');
+  openModal('modal-fournisseur');
+}
+
+function deleteFournisseur(id){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer un fournisseur.');
+  const f = FOURNISSEURS.find(function(x){return x.id===id;});
+  if(!f) return;
+  const inUse = COMMANDES_FOURNISSEUR.some(function(c){return c.fournisseur===f.nom;});
+  if(inUse){
+    if(!confirm('Ce fournisseur a des commandes existantes. Le supprimer quand meme ? (les commandes existantes resteront mais ne seront plus liees a un fournisseur actif)')) return;
+  } else {
+    if(!confirm('Confirmer la suppression du fournisseur "'+f.nom+'" ?')) return;
+  }
+  const idx = FOURNISSEURS.indexOf(f);
+  FOURNISSEURS.splice(idx,1);
+  logAction('Fournisseur supprime', f.nom, 'red');
+  if(typeof dbDelete === 'function') dbDelete('fournisseurs', f.id);
+  go('approv');
+}
+
 function addFournisseur(){
   const nom = el('fo-nom').value.trim();
   if(!nom){ alert('Entrez un nom'); return; }
-  FOURNISSEURS.push({
-    id: Date.now(), nom: nom, contact: el('fo-contact').value, tel: el('fo-tel').value,
-    email: el('fo-email').value, adresse: el('fo-adresse').value, paiement: el('fo-paiement').value
-  });
-  logAction('Fournisseur ajoute', nom, 'blue');
+
+  if(FOURNISSEUR_EDIT_ID){
+    const f = FOURNISSEURS.find(function(x){return x.id===FOURNISSEUR_EDIT_ID;});
+    if(!f) return;
+    f.nom = nom; f.contact = el('fo-contact').value; f.tel = el('fo-tel').value;
+    f.email = el('fo-email').value; f.adresse = el('fo-adresse').value; f.paiement = el('fo-paiement').value;
+    logAction('Fournisseur modifie', nom, 'gold');
+    if(typeof dbUpdate === 'function') dbUpdate('fournisseurs', f.id, { nom:f.nom, contact:f.contact, tel:f.tel, email:f.email, adresse:f.adresse, paiement:f.paiement });
+    FOURNISSEUR_EDIT_ID = null;
+  } else {
+    FOURNISSEURS.push({
+      id: Date.now(), nom: nom, contact: el('fo-contact').value, tel: el('fo-tel').value,
+      email: el('fo-email').value, adresse: el('fo-adresse').value, paiement: el('fo-paiement').value
+    });
+    logAction('Fournisseur ajoute', nom, 'blue');
+  }
   closeModal('modal-fournisseur');
   go('approv');
 }

@@ -92,9 +92,23 @@ module.exports = async function handler(req, res) {
         const v = row[c];
         return (typeof v === 'object' && v !== null) ? JSON.stringify(v) : v;
       });
-      const query = 'INSERT INTO ' + meta.table + ' (' + cols.join(',') + ') VALUES (' + placeholders + ') ' +
+      const queryWithConflict = 'INSERT INTO ' + meta.table + ' (' + cols.join(',') + ') VALUES (' + placeholders + ') ' +
                     'ON CONFLICT (' + meta.idCol + ') DO NOTHING RETURNING *';
-      const result = await sql.query(query, values);
+      let result;
+      try {
+        result = await sql.query(queryWithConflict, values);
+      } catch (conflictErr) {
+        // Postgres 42P10: no unique/exclusion constraint matching ON CONFLICT.
+        // This happens on tables created by an older schema version that never
+        // got a PRIMARY KEY (normally self-healed by /api/init-db, but fall
+        // back gracefully here too instead of surfacing a raw 500).
+        if (conflictErr.code === '42P10' || /no unique or exclusion constraint/i.test(conflictErr.message)) {
+          const queryNoConflict = 'INSERT INTO ' + meta.table + ' (' + cols.join(',') + ') VALUES (' + placeholders + ') RETURNING *';
+          result = await sql.query(queryNoConflict, values);
+        } else {
+          throw conflictErr;
+        }
+      }
       return res.status(201).json({ success: true, row: result[0] || row });
     }
 
