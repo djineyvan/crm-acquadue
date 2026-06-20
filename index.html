@@ -2028,23 +2028,29 @@ function openDevisBuilder(devisId){
 }
 
 function renderDevisBuilderLignes(){
-  fillVilleSelect; // no-op reference kept for lint clarity
   const skuOptions = PRODUITS.map(function(p){ return p.sku+' — '+p.nom; });
+  const entrepotOptions = ENTREPOTS.map(function(e){ return e.nom; });
   let h = DEVIS_BUILDER_LIGNES.map(function(l, i){
-    return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center">' +
+    return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1.4fr auto;gap:6px;margin-bottom:6px;align-items:center">' +
       '<div class="td-bold" style="font-size:12px">'+l.nom+' ('+l.sku+')</div>' +
       '<div style="font-size:12px">Qte: <strong>'+l.qte+'</strong></div>' +
       '<div style="font-size:12px">'+fcfa(l.prixUnitaire)+'</div>' +
       '<div style="font-size:12px;font-weight:700">'+fcfa(l.qte*l.prixUnitaire)+'</div>' +
+      '<div class="td-muted" style="font-size:11px">📦 '+(l.entrepot||'-')+'</div>' +
       '<button class="btn btn-ghost btn-sm" onclick="removeDevisBuilderLigne('+i+')">🗑</button>' +
     '</div>';
   }).join('') || '<div class="td-muted" style="margin-bottom:8px">Aucun produit ajoute encore.</div>';
 
-  h += '<div style="display:grid;grid-template-columns:2fr 1fr auto;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">' +
-    '<select class="form-select" id="db-add-sku">' + skuOptions.map(function(o){return '<option>'+o+'</option>';}).join('') + '</select>' +
-    '<input class="form-input" id="db-add-qte" type="number" min="1" value="1" placeholder="Qte"/>' +
-    '<button class="btn btn-ghost btn-sm" onclick="addDevisBuilderLigne()">+ Ajouter</button>' +
-  '</div>';
+  if(entrepotOptions.length === 0){
+    h += '<div style="background:var(--red-light);color:var(--red);border-radius:8px;padding:9px;font-size:11px;margin-top:8px">⚠️ Aucun entrepot n\'existe encore. Creez-en un dans Stocks → Entrepots avant d\'ajouter un produit ici.</div>';
+  } else {
+    h += '<div style="display:grid;grid-template-columns:2fr 1fr 1.4fr auto;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">' +
+      '<select class="form-select" id="db-add-sku">' + skuOptions.map(function(o){return '<option>'+o+'</option>';}).join('') + '</select>' +
+      '<input class="form-input" id="db-add-qte" type="number" min="1" value="1" placeholder="Qte"/>' +
+      '<select class="form-select" id="db-add-entrepot">' + entrepotOptions.map(function(o){return '<option>'+o+'</option>';}).join('') + '</select>' +
+      '<button class="btn btn-ghost btn-sm" onclick="addDevisBuilderLigne()">+ Ajouter</button>' +
+    '</div>';
+  }
 
   h += '<div style="margin-top:10px;text-align:right;font-size:14px;font-weight:700;color:var(--red)">Total: ' + fcfa(lignesTotalMontant(DEVIS_BUILDER_LIGNES)) + '</div>';
 
@@ -2056,14 +2062,17 @@ function addDevisBuilderLigne(){
   const sku = skuRaw.split(' — ')[0];
   const nom = skuRaw.split(' — ')[1] || sku;
   const qte = parseInt(el('db-add-qte').value) || 1;
+  const entrepotEl = el('db-add-entrepot');
+  const entrepot = entrepotEl ? entrepotEl.value : (ENTREPOTS[0] ? ENTREPOTS[0].nom : '');
+  if(!entrepot){ alert('Creez d\'abord un entrepot dans Stocks avant d\'ajouter un produit.'); return; }
   const p = PRODUITS.find(function(x){return x.sku===sku;});
   if(!p) return;
 
-  const existingLigne = DEVIS_BUILDER_LIGNES.find(function(l){return l.sku===sku;});
+  const existingLigne = DEVIS_BUILDER_LIGNES.find(function(l){return l.sku===sku && l.entrepot===entrepot;});
   if(existingLigne){
     existingLigne.qte += qte;
   } else {
-    DEVIS_BUILDER_LIGNES.push({ sku: sku, nom: nom, qte: qte, prixUnitaire: p.prix_vente, entrepot: 'Stock Principal Niamey' });
+    DEVIS_BUILDER_LIGNES.push({ sku: sku, nom: nom, qte: qte, prixUnitaire: p.prix_vente, entrepot: entrepot });
   }
   renderDevisBuilderLignes();
 }
@@ -2131,21 +2140,28 @@ function openFactureBuilder(factureId, fromDevisId){
 
 function renderFactureBuilderLignes(){
   const skuOptions = PRODUITS.map(function(p){ return p.sku+' — '+p.nom; });
+  const entrepotOptions = ENTREPOTS.map(function(e){ return e.nom; });
   let h = FACTURE_BUILDER_LIGNES.map(function(l, i){
-    return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center">' +
+    return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1.4fr auto;gap:6px;margin-bottom:6px;align-items:center">' +
       '<div class="td-bold" style="font-size:12px">'+l.nom+' ('+l.sku+')</div>' +
       '<div style="font-size:12px">Qte: <strong>'+l.qte+'</strong></div>' +
       '<div style="font-size:12px">'+fcfa(l.prixUnitaire)+'</div>' +
       '<div style="font-size:12px;font-weight:700">'+fcfa(l.qte*l.prixUnitaire)+'</div>' +
+      '<div class="td-muted" style="font-size:11px">📦 '+(l.entrepot||'-')+'</div>' +
       '<button class="btn btn-ghost btn-sm" onclick="removeFactureBuilderLigne('+i+')">🗑</button>' +
     '</div>';
   }).join('') || '<div class="td-muted" style="margin-bottom:8px">Aucun produit ajoute encore.</div>';
 
-  h += '<div style="display:grid;grid-template-columns:2fr 1fr auto;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">' +
-    '<select class="form-select" id="fb-add-sku">' + skuOptions.map(function(o){return '<option>'+o+'</option>';}).join('') + '</select>' +
-    '<input class="form-input" id="fb-add-qte" type="number" min="1" value="1" placeholder="Qte"/>' +
-    '<button class="btn btn-ghost btn-sm" onclick="addFactureBuilderLigne()">+ Ajouter</button>' +
-  '</div>';
+  if(entrepotOptions.length === 0){
+    h += '<div style="background:var(--red-light);color:var(--red);border-radius:8px;padding:9px;font-size:11px;margin-top:8px">⚠️ Aucun entrepot n\'existe encore. Creez-en un dans Stocks → Entrepots avant d\'ajouter un produit ici.</div>';
+  } else {
+    h += '<div style="display:grid;grid-template-columns:2fr 1fr 1.4fr auto;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">' +
+      '<select class="form-select" id="fb-add-sku">' + skuOptions.map(function(o){return '<option>'+o+'</option>';}).join('') + '</select>' +
+      '<input class="form-input" id="fb-add-qte" type="number" min="1" value="1" placeholder="Qte"/>' +
+      '<select class="form-select" id="fb-add-entrepot">' + entrepotOptions.map(function(o){return '<option>'+o+'</option>';}).join('') + '</select>' +
+      '<button class="btn btn-ghost btn-sm" onclick="addFactureBuilderLigne()">+ Ajouter</button>' +
+    '</div>';
+  }
 
   h += '<div style="margin-top:10px;text-align:right;font-size:14px;font-weight:700;color:var(--red)">Total: ' + fcfa(lignesTotalMontant(FACTURE_BUILDER_LIGNES)) + '</div>';
 
@@ -2157,14 +2173,17 @@ function addFactureBuilderLigne(){
   const sku = skuRaw.split(' — ')[0];
   const nom = skuRaw.split(' — ')[1] || sku;
   const qte = parseInt(el('fb-add-qte').value) || 1;
+  const entrepotEl = el('fb-add-entrepot');
+  const entrepot = entrepotEl ? entrepotEl.value : (ENTREPOTS[0] ? ENTREPOTS[0].nom : '');
+  if(!entrepot){ alert('Creez d\'abord un entrepot dans Stocks avant d\'ajouter un produit.'); return; }
   const p = PRODUITS.find(function(x){return x.sku===sku;});
   if(!p) return;
 
-  const existingLigne = FACTURE_BUILDER_LIGNES.find(function(l){return l.sku===sku;});
+  const existingLigne = FACTURE_BUILDER_LIGNES.find(function(l){return l.sku===sku && l.entrepot===entrepot;});
   if(existingLigne){
     existingLigne.qte += qte;
   } else {
-    FACTURE_BUILDER_LIGNES.push({ sku: sku, nom: nom, qte: qte, prixUnitaire: p.prix_vente, entrepot: 'Stock Principal Niamey' });
+    FACTURE_BUILDER_LIGNES.push({ sku: sku, nom: nom, qte: qte, prixUnitaire: p.prix_vente, entrepot: entrepot });
   }
   renderFactureBuilderLignes();
 }
