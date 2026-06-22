@@ -46,7 +46,7 @@ const COLUMNS = {
   comm_perf: ['id','nom','ville','zone','obj','ventes','nb','tx','date_enregistrement','historique_modifs'],
   campagnes: ['id','nom','canal','budget','statut','leads','cout_lead','debut','fin','resp','locked','last_modified_by','last_modified_at'],
   publications: ['id','titre','plat','fmt','date_pub','statut','workflow','redacteur','locked','last_modified_by','last_modified_at'],
-  produits: ['sku','nom','categorie','marque','desc_produit','prix_achat','prix_vente','prix_revendeur','tva','poids','dimensions','codebarre','last_modified_by','last_modified_at'],
+  produits: ['sku','nom','categorie','marque','desc_produit','prix_achat','prix_vente','prix_revendeur','tva','poids','dimensions','codebarre','remise_seuil','remise_pct','last_modified_by','last_modified_at'],
   entrepots: ['id','nom','type','ville'],
   stock: ['id','sku','entrepot','qte','reserve','seuil','last_modified_by','last_modified_at'],
   mouvements_stock: ['id','date_mvt','type','motif','sku','produit','qte','entrepot','user_nom'],
@@ -60,7 +60,7 @@ const COLUMNS = {
   notifications: ['id','icon','texte','cible','lu'],
   rh_presence: ['id','nom','date_p','arrivee','depart','statut'],
   rh_conges: ['id','nom','debut','fin','motif','statut'],
-  documents: ['id','nom','categorie','taille','date_doc','par_qui'],
+  documents: ['id','nom','categorie','taille','date_doc','par_qui','data','mime_type'],
 };
 
 module.exports = async function handler(req, res) {

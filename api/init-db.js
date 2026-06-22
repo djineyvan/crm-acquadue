@@ -58,6 +58,7 @@ const COLUMN_TYPES = {
     sku: 'TEXT', nom: 'TEXT', categorie: 'TEXT', marque: "TEXT DEFAULT 'Lorenzetti'", desc_produit: 'TEXT',
     prix_achat: 'INT DEFAULT 0', prix_vente: 'INT DEFAULT 0', prix_revendeur: 'INT DEFAULT 0',
     tva: 'INT DEFAULT 19', poids: 'TEXT', dimensions: 'TEXT', codebarre: 'TEXT',
+    remise_seuil: 'INT DEFAULT 0', remise_pct: 'NUMERIC DEFAULT 0',
     last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP', created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   entrepots: {
@@ -114,7 +115,8 @@ const COLUMN_TYPES = {
     id: 'BIGINT', nom: 'TEXT', debut: 'TEXT', fin: 'TEXT', motif: 'TEXT', statut: "TEXT DEFAULT 'En attente'"
   },
   documents: {
-    id: 'SERIAL', nom: 'TEXT', categorie: 'TEXT', taille: 'TEXT', date_doc: 'TEXT', par_qui: 'TEXT'
+    id: 'BIGINT', nom: 'TEXT', categorie: 'TEXT', taille: 'TEXT', date_doc: 'TEXT', par_qui: 'TEXT',
+    data: 'TEXT', mime_type: 'TEXT'
   },
   users: {
     id: 'SERIAL', nom: 'TEXT NOT NULL', email: 'TEXT UNIQUE NOT NULL', pass: 'TEXT NOT NULL',

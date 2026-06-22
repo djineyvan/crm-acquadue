@@ -412,7 +412,8 @@ function statusTag(s){
     "Brouillon":"tag-grey","En attente validation":"tag-gold",
     "Envoye":"tag-blue","Accepte":"tag-green","Expire":"tag-red","Refuse par client":"tag-red",
     "Payee":"tag-green","Impayee":"tag-red","Partiellement payee":"tag-gold","Annulee":"tag-grey",
-    "Envoyee":"tag-blue","Confirmee":"tag-blue","Partiellement recue":"tag-gold","Recue":"tag-green"
+    "Envoyee":"tag-blue","Confirmee":"tag-blue","Partiellement recue":"tag-gold","Recue":"tag-green",
+    "Facture":"tag-green"
   };
   return tag(s, map[s] || "tag-grey");
 }
@@ -466,12 +467,33 @@ function canSeeRecord(dept, owner){
 }
 
 // Can the current user EDIT a record? PER DIRECTIVE: only the Super Admin can
-// modify any existing data entered into the system. Everyone else has read-only
-// access to records (they can still create NEW entries via the "+" buttons,
-// but cannot edit/correct an entry once it exists).
+// modify any existing data entered into the system, AT ANY TIME. Other roles
+// may edit ONLY a record they own/created, and ONLY if it was created TODAY —
+// any record from a previous day becomes Super-Admin-only to edit, even for
+// its original creator. Everyone can still create NEW entries via "+" buttons.
+function isSameDayAsToday(dateStr){
+  if(!dateStr) return false;
+  // Records store dates as dd/mm/yyyy (fr-FR locale) or ISO timestamps; handle both.
+  let d;
+  if(dateStr.indexOf('/') >= 0){
+    const parts = dateStr.split(' ')[0].split('/'); // strip any time portion, keep dd/mm/yyyy
+    if(parts.length !== 3) return false;
+    d = new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]));
+  } else {
+    d = new Date(dateStr);
+  }
+  if(isNaN(d.getTime())) return false;
+  const today = new Date();
+  return d.getFullYear()===today.getFullYear() && d.getMonth()===today.getMonth() && d.getDate()===today.getDate();
+}
+
 function canEditRecord(record, dept, owner){
   if(!CU) return false;
-  return CU.role === "superadmin";
+  if(CU.role === "superadmin") return true;
+  // Non-superadmin: only their own record, and only if created today
+  const isOwner = owner === CU.nom;
+  const createdToday = record && isSameDayAsToday(record.date || record.dateCreation || record.date_creation);
+  return isOwner && createdToday;
 }
 
 // Stamp a record with who modified it and when (called after every edit by the Super Admin)
@@ -917,6 +939,8 @@ function viewPipeCard(id){
   openDetailModal('Detail — ' + p.nom, rows, {
     record: p,
     entity: 'pipeline',
+    dept: 'Commercial',
+    owner: p.asg,
     fields: [
       ['Nom', 'nom', p.nom],
       ['Valeur (FCFA)', 'val', p.val],
@@ -1124,7 +1148,7 @@ function validatePublication(titre){
 function renderClients(c){
   let h = '<div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">';
   h += '<div class="tabs"><button class="tab active" onclick="switchTab(this,\'tl\',\'a\')">Tous</button><button class="tab" onclick="switchTab(this,\'tl\',\'b\')">B2C</button><button class="tab" onclick="switchTab(this,\'tl\',\'c\')">B2B</button></div>';
-  h += '<button class="btn btn-red btn-sm" onclick="openModal(\'modal-client\')">+ Client</button>';
+  h += '<button class="btn btn-red btn-sm" onclick="openClientCreate()">+ Client</button>';
   h += '</div>';
   h += '<div id="tl-a"><div class="card"><div class="table-wrap"><table id="tbl-cli"></table></div></div></div>';
   h += '<div id="tl-b" style="display:none"><div class="card"><div class="table-wrap"><table id="tbl-b2c"></table></div></div></div>';
@@ -1167,11 +1191,33 @@ function viewClientDetail(id){
   openDetailModal('Detail Client — ' + cl.nom, rows, {
     record: cl,
     entity: 'clients',
+    dept: 'Commercial',
+    owner: cl.asg,
     fields: [
       ['Nom', 'nom', cl.nom],
+      ['Type', 'type', [{label:'B2C',selected:cl.type==='B2C'},{label:'B2B',selected:cl.type==='B2B'}], 'select'],
       ['Telephone', 'tel', cl.tel || ''],
       ['Email', 'email', cl.email || ''],
-      ['Statut', 'statut', cl.statut]
+      ['Ville', 'ville', cl.ville],
+      ['Zone / Quartier', 'zone', cl.zone || ''],
+      ['Source', 'source', [
+        {label:'Prospection terrain',selected:cl.source==='Prospection terrain'},
+        {label:'Bouche a oreille',selected:cl.source==='Bouche a oreille'},
+        {label:'Recommandation',selected:cl.source==='Recommandation'},
+        {label:'Reseaux sociaux',selected:cl.source==='Reseaux sociaux'},
+        {label:'Salon professionnel',selected:cl.source==='Salon professionnel'},
+        {label:'Devis/Facturation',selected:cl.source==='Devis/Facturation'}
+      ], 'select'],
+      ['Produit', 'produit', cl.produit],
+      ['Commercial assigne', 'asg', USERS.filter(function(u){return u.departement==='Commercial';}).map(function(u){ return {label:u.nom, selected:u.nom===cl.asg}; }), 'select'],
+      ['Statut', 'statut', [
+        {label:'Prospect froid',selected:cl.statut==='Prospect froid'},
+        {label:'Prospect chaud',selected:cl.statut==='Prospect chaud'},
+        {label:'Demonstration faite',selected:cl.statut==='Demonstration faite'},
+        {label:'Offre envoyee',selected:cl.statut==='Offre envoyee'},
+        {label:'Client actif',selected:cl.statut==='Client actif'},
+        {label:'Client perdu',selected:cl.statut==='Client perdu'}
+      ], 'select']
     ],
     onSave: function(){ go('clients'); }
   });
@@ -1228,6 +1274,8 @@ function viewTaskDetail(id){
   openDetailModal('Detail Tache', rows, {
     record: t,
     entity: 'tasks',
+    dept: t.dept,
+    owner: t.asg,
     fields: [
       ['Titre', 'titre', t.titre],
       ['Priorite', 'pri', t.pri],
@@ -1241,8 +1289,8 @@ function viewTaskDetail(id){
 // ── DOCUMENTS ──────────────────────────────────────────────────────────────────
 function renderDocs(c){
   let h = '<div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">';
-  h += '<div class="td-muted">Stockage de fichiers (PDF, Word, Excel, images) — contrats signes, factures scannees, etc.</div>';
-  h += '<button class="btn btn-red btn-sm" onclick="alert(\'Fonction upload a connecter a un stockage cloud (Google Drive / S3)\')">+ Televerser</button>';
+  h += '<div class="td-muted">Stockage de fichiers (PDF, Word, Excel, images) — contrats signes, factures scannees, etc. Limite: 4 Mo par fichier.</div>';
+  h += '<div><input type="file" id="doc-file-input" style="display:none" onchange="handleDocUpload(this)"/><button class="btn btn-red btn-sm" onclick="document.getElementById(\'doc-file-input\').click()">+ Televerser</button></div>';
   h += '</div>';
   h += '<div class="card" style="margin-bottom:12px;background:var(--blue-light);border-color:var(--blue)">';
   h += '  <div style="font-weight:700;font-size:12px;color:var(--blue);margin-bottom:6px">ℹ️ Ce module ne contient PAS vos donnees deja saisies</div>';
@@ -1256,8 +1304,66 @@ function renderDocs(c){
   h += '</div>';
   h += '<div class="card"><div class="table-wrap"><table id="tbl-docs"></table></div></div>';
   c.innerHTML = h;
-  el('tbl-docs').innerHTML = '<thead><tr><th>Document</th><th>Categorie</th><th>Taille</th><th>Date</th><th>Ajoute par</th></tr></thead><tbody>' +
-    DOCUMENTS.map(function(d){ return '<tr><td class="td-bold">📄 '+d.nom+'</td><td>'+deptTag(d.categorie==="Clients"?"Commercial":d.categorie==="Campagnes"?"Marketing":"Direction")+' '+d.categorie+'</td><td class="td-muted">'+d.taille+'</td><td class="td-muted">'+d.date+'</td><td class="td-muted">'+d.par+'</td></tr>'; }).join('') + '</tbody>';
+  el('tbl-docs').innerHTML = DOCUMENTS.length === 0
+    ? '<tbody><tr><td class="empty-state" style="padding:30px;text-align:center"><div class="empty-state-icon">📁</div>Aucun document televerse encore.</td></tr></tbody>'
+    : '<thead><tr><th>Document</th><th>Categorie</th><th>Taille</th><th>Date</th><th>Ajoute par</th><th></th></tr></thead><tbody>' +
+    DOCUMENTS.map(function(d){
+      let actions = '<button class="btn btn-ghost btn-sm" onclick="downloadDocument('+d.id+')">⬇️ Telecharger</button>';
+      if(isSuperAdmin()) actions += ' <button class="btn btn-ghost btn-sm" onclick="deleteDocument('+d.id+')">🗑 Supprimer</button>';
+      return '<tr><td class="td-bold">📄 '+d.nom+'</td><td>'+deptTag(d.categorie==="Clients"?"Commercial":d.categorie==="Campagnes"?"Marketing":"Direction")+' '+d.categorie+'</td><td class="td-muted">'+d.taille+'</td><td class="td-muted">'+d.date+'</td><td class="td-muted">'+d.par+'</td><td>'+actions+'</td></tr>';
+    }).join('') + '</tbody>';
+}
+
+const MAX_DOC_SIZE = 4 * 1024 * 1024; // 4 MB — stored as base64 in Postgres (text column)
+
+function handleDocUpload(input){
+  const file = input.files[0];
+  if(!file) return;
+  if(file.size > MAX_DOC_SIZE){
+    alert('Fichier trop volumineux (max 4 Mo). Choisissez un fichier plus petit.');
+    input.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(e){
+    const base64Data = e.target.result; // data:mime;base64,xxxx
+    const sizeLabel = file.size < 1024*1024 ? Math.round(file.size/1024) + ' Ko' : (file.size/1024/1024).toFixed(1) + ' Mo';
+    const doc = {
+      id: Date.now(), nom: file.name, categorie: 'Autre', taille: sizeLabel,
+      date: new Date().toLocaleDateString('fr-FR'), par: CU.nom, data: base64Data, mimeType: file.type
+    };
+    DOCUMENTS.unshift(doc);
+    logAction('Document televerse', file.name + ' (' + sizeLabel + ')', 'blue');
+    if(typeof dbInsert === 'function'){
+      dbInsert('documents', { id:doc.id, nom:doc.nom, categorie:doc.categorie, taille:doc.taille, date_doc:doc.date, par_qui:doc.par, data:doc.data, mime_type:doc.mimeType });
+    }
+    go('docs');
+  };
+  reader.onerror = function(){ alert('Erreur lors de la lecture du fichier.'); };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function downloadDocument(id){
+  const doc = DOCUMENTS.find(function(x){return x.id===id;});
+  if(!doc) return;
+  if(!doc.data){ alert('Le contenu de ce document n\'est plus disponible (peut-etre televerse avant la mise a jour du stockage).'); return; }
+  const a = document.createElement('a');
+  a.href = doc.data;
+  a.download = doc.nom;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+function deleteDocument(id){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer un document.');
+  const doc = DOCUMENTS.find(function(x){return x.id===id;});
+  if(!doc) return;
+  if(!confirm('Confirmer la suppression de "'+doc.nom+'" ?')) return;
+  const idx = DOCUMENTS.indexOf(doc);
+  DOCUMENTS.splice(idx,1);
+  logAction('Document supprime', doc.nom, 'red');
+  if(typeof dbDelete === 'function') dbDelete('documents', doc.id);
+  go('docs');
 }
 
 // ── RAPPORTS ───────────────────────────────────────────────────────────────────
@@ -1289,8 +1395,102 @@ function renderRapports(c){
 }
 
 function exportReport(format){
-  alert("Export " + format.toUpperCase() + " en cours de generation...\\n\\nCette fonctionnalite necessite une bibliotheque cote serveur (ex: jsPDF, SheetJS) pour generer le fichier final.");
+  if(format === 'csv' || format === 'excel'){
+    exportReportCSV();
+  } else if(format === 'pdf'){
+    exportReportPDF();
+  }
   logAction("Export rapport", "Format: " + format.toUpperCase(), "blue");
+}
+
+function csvEscape(val){
+  const s = String(val == null ? '' : val);
+  if(s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0){
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function downloadTextFile(filename, content, mime){
+  const blob = new Blob([content], { type: mime || 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+}
+
+// Real CSV export (works for both the "CSV" and "Excel" buttons — Excel opens CSV natively)
+function exportReportCSV(){
+  let lines = [];
+  lines.push('RAPPORT COMMERCIAL ET MARKETING — ' + new Date().toLocaleDateString('fr-FR'));
+  lines.push('');
+  lines.push('--- COMMERCIAL ---');
+  lines.push(['Commercial','Ville','Zone','Ventes (FCFA)','Objectif (FCFA)','Atteinte (%)','Commission (FCFA)'].map(csvEscape).join(','));
+  COMM_PERF.forEach(function(cm){
+    const p = cm.obj>0 ? Math.round(cm.ventes/cm.obj*100) : 0;
+    const comm = Math.round(cm.ventes*cm.tx/100);
+    lines.push([cm.nom, cm.ville, cm.zone, cm.ventes, cm.obj, p, comm].map(csvEscape).join(','));
+  });
+  lines.push('');
+  lines.push('--- MARKETING ---');
+  lines.push(['Campagne','Canal','Budget (FCFA)','Leads','Statut'].map(csvEscape).join(','));
+  CAMPAGNES.forEach(function(cp){
+    lines.push([cp.nom, cp.canal, cp.budget, cp.leads, cp.statut].map(csvEscape).join(','));
+  });
+  lines.push('');
+  lines.push('--- CLIENTS ---');
+  lines.push(['Nom','Type','Ville','Statut','Produit','Commercial','Date'].map(csvEscape).join(','));
+  CLIENTS.forEach(function(cl){
+    lines.push([cl.nom, cl.type, cl.ville, cl.statut, cl.produit, cl.asg, cl.date].map(csvEscape).join(','));
+  });
+  // BOM for correct accented-character display when opened in Excel
+  downloadTextFile('rapport-acquadue-' + new Date().toISOString().slice(0,10) + '.csv', '\uFEFF' + lines.join('\n'), 'text/csv;charset=utf-8');
+}
+
+// Real PDF export via the browser's native print-to-PDF — no server library needed.
+// Opens a clean, print-formatted version of the report in a new window/tab;
+// the user picks "Save as PDF" in the print dialog (works in every browser).
+function exportReportPDF(){
+  const tv = COMM_PERF.reduce(function(s,x){return s+x.ventes;},0);
+  const tc = COMM_PERF.reduce(function(s,x){return s+Math.round(x.ventes*x.tx/100);},0);
+  const tl = CAMPAGNES.reduce(function(s,x){return s+x.leads;},0);
+  const tb = CAMPAGNES.reduce(function(s,x){return s+x.budget;},0);
+
+  const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Rapport Acqua Due</title><style>' +
+    'body{font-family:Arial,sans-serif;color:#1a2535;padding:24px;}' +
+    'h1{color:#C8102E;font-size:20px;margin-bottom:4px}' +
+    'h2{font-size:14px;margin-top:24px;border-bottom:2px solid #C8102E;padding-bottom:4px}' +
+    'table{width:100%;border-collapse:collapse;margin-top:8px;font-size:11px}' +
+    'th{background:#1a2535;color:white;text-align:left;padding:6px}' +
+    'td{padding:6px;border-bottom:1px solid #e0e8f0}' +
+    '.kpi{display:inline-block;margin-right:24px;margin-top:8px}' +
+    '.kpi-val{font-size:18px;font-weight:800;color:#C8102E}' +
+    '.kpi-lbl{font-size:10px;color:#6b7e90;text-transform:uppercase}' +
+    '@media print{body{padding:0}}' +
+    '</style></head><body>' +
+    '<h1>Rapport Commercial & Marketing — Acqua Due by Lorenzetti</h1>' +
+    '<div style="color:#6b7e90;font-size:11px">Genere le ' + new Date().toLocaleDateString('fr-FR') + ' a ' + new Date().toLocaleTimeString('fr-FR') + '</div>' +
+    '<div class="kpi"><div class="kpi-lbl">CA Total</div><div class="kpi-val">' + fcfa(tv) + '</div></div>' +
+    '<div class="kpi"><div class="kpi-lbl">Commissions</div><div class="kpi-val">' + fcfa(tc) + '</div></div>' +
+    '<div class="kpi"><div class="kpi-lbl">Leads</div><div class="kpi-val">' + tl + '</div></div>' +
+    '<div class="kpi"><div class="kpi-lbl">Budget Marketing</div><div class="kpi-val">' + fcfa(tb) + '</div></div>' +
+    '<h2>Performance Commerciale</h2><table><thead><tr><th>Commercial</th><th>Ville</th><th>Ventes</th><th>Objectif</th><th>%</th><th>Commission</th></tr></thead><tbody>' +
+    COMM_PERF.map(function(cm){ const p=cm.obj>0?Math.round(cm.ventes/cm.obj*100):0; return '<tr><td>'+cm.nom+'</td><td>'+cm.ville+'</td><td>'+fcfa(cm.ventes)+'</td><td>'+fcfa(cm.obj)+'</td><td>'+p+'%</td><td>'+fcfa(Math.round(cm.ventes*cm.tx/100))+'</td></tr>'; }).join('') +
+    '</tbody></table>' +
+    '<h2>Campagnes Marketing</h2><table><thead><tr><th>Campagne</th><th>Canal</th><th>Budget</th><th>Leads</th><th>Statut</th></tr></thead><tbody>' +
+    CAMPAGNES.map(function(cp){ return '<tr><td>'+cp.nom+'</td><td>'+cp.canal+'</td><td>'+fcfa(cp.budget)+'</td><td>'+cp.leads+'</td><td>'+cp.statut+'</td></tr>'; }).join('') +
+    '</tbody></table>' +
+    '<h2>Clients & Prospects</h2><table><thead><tr><th>Nom</th><th>Type</th><th>Ville</th><th>Statut</th><th>Produit</th></tr></thead><tbody>' +
+    CLIENTS.map(function(cl){ return '<tr><td>'+cl.nom+'</td><td>'+cl.type+'</td><td>'+cl.ville+'</td><td>'+cl.statut+'</td><td>'+cl.produit+'</td></tr>'; }).join('') +
+    '</tbody></table>' +
+    '<scr' + 'ipt>window.onload=function(){window.print();}</scr' + 'ipt>' +
+    '</body></html>';
+
+  const win = window.open('', '_blank');
+  if(!win){ alert('Veuillez autoriser les fenetres popup pour generer le PDF.'); return; }
+  win.document.write(html);
+  win.document.close();
 }
 
 // ── UTILISATEURS & ACCES (Super Admin features) ──────────────────────────────
@@ -1667,7 +1867,9 @@ function viewProductDetail(sku){
       ['TVA (%)', 'tva', p.tva],
       ['Poids', 'poids', p.poids || ''],
       ['Dimensions', 'dimensions', p.dimensions || ''],
-      ['Code-barres', 'codebarre', p.codebarre || '']
+      ['Code-barres', 'codebarre', p.codebarre || ''],
+      ['A partir de X unites (remise)', 'remiseSeuil', p.remiseSeuil || 0],
+      ['Remise par unite (%)', 'remisePct', p.remisePct || 0]
     ],
     onSave: function(){ go('produits'); }
   });
@@ -2145,11 +2347,21 @@ function renderInventaires(c){
 
 // ── VENTES & FACTURATION (multi-produits) ────────────────────────────────────
 
+// Calcule le prix unitaire effectif d'une ligne en appliquant la remise degressive
+// du produit si la quantite atteint le seuil configure (ex: 2+ unites = -10%/unite).
+function prixApresRemise(produit, qte, prixBase){
+  if(!produit || !produit.remiseSeuil || !produit.remisePct) return prixBase;
+  if(qte >= produit.remiseSeuil){
+    return Math.round(prixBase * (1 - produit.remisePct/100));
+  }
+  return prixBase;
+}
+
 // Auto-link devis/factures to the Clients module: if a client with this exact
 // name already exists, update its produit/statut/date; otherwise create a new
 // client record automatically. This keeps "Clients & Prospects" in sync with
 // every sale, without requiring the user to manage two separate forms.
-function ensureClientExists(nomClient, produitLabel, statutSouhaite){
+function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType){
   if(!nomClient) return;
   let cl = CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === nomClient.trim().toLowerCase(); });
   const todayStr = new Date().toLocaleDateString('fr-FR');
@@ -2164,7 +2376,7 @@ function ensureClientExists(nomClient, produitLabel, statutSouhaite){
     }
   } else {
     cl = {
-      id: Date.now(), nom: nomClient, type: 'B2C', ville: CU ? CU.ville : 'Niamey', zone: '',
+      id: Date.now(), nom: nomClient, type: clientType || 'B2C', ville: CU ? CU.ville : 'Niamey', zone: '',
       tel: '', email: '', societe: '', source: 'Devis/Facturation', statut: statutSouhaite || 'Client actif',
       produit: produitLabel || '-', asg: CU ? CU.nom : '-', date: todayStr, locked: false, historique: []
     };
@@ -2224,6 +2436,9 @@ function renderFacturation(c){
       if(d.statut === "Accepte"){
         actions += ' <button class="btn btn-red btn-sm" onclick="convertDevisToFacture(\''+d.id+'\')">→ Facturer</button>';
       }
+      if(isSuperAdmin()){
+        actions += ' <button class="btn btn-ghost btn-sm" onclick="deleteDevis(\''+d.id+'\')">🗑 Supprimer</button>';
+      }
       return '<tr><td class="td-bold">'+d.id+'</td><td>'+d.client+'</td><td class="td-muted">'+lignesLabel(d.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+d.date+'</td><td>'+statusTag(d.statut)+(d.reservationFaite?' <span class="locked-badge">📦 Reserve</span>':'')+'</td><td>'+actions+'</td></tr>';
     }).join('') + '</tbody>';
 
@@ -2236,6 +2451,9 @@ function renderFacturation(c){
       }
       if(f.statut === "Impayee"){
         actions += ' <button class="btn btn-red btn-sm" onclick="markFacturePaid(\''+f.id+'\')">✓ Marquer payee / Expedier</button>';
+      }
+      if(isSuperAdmin()){
+        actions += ' <button class="btn btn-ghost btn-sm" onclick="deleteFacture(\''+f.id+'\')">🗑 Supprimer</button>';
       }
       return '<tr><td class="td-bold">'+f.id+'</td><td>'+f.client+'</td><td class="td-muted">'+lignesLabel(f.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+f.date+'</td><td class="td-muted">'+f.mode_paiement+'</td><td>'+statusTag(f.statut)+(f.sortieAppliquee?' <span class="locked-badge">📤 Stock sorti</span>':'')+'</td><td>'+actions+'</td></tr>';
     }).join('') + '</tbody>';
@@ -2339,8 +2557,9 @@ function addDevisBuilderLigne(){
   const existingLigne = DEVIS_BUILDER_LIGNES.find(function(l){return l.sku===sku && l.entrepot===entrepot;});
   if(existingLigne){
     existingLigne.qte += qte;
+    existingLigne.prixUnitaire = prixApresRemise(p, existingLigne.qte, p.prix_vente);
   } else {
-    DEVIS_BUILDER_LIGNES.push({ sku: sku, nom: nom, qte: qte, prixUnitaire: p.prix_vente, entrepot: entrepot });
+    DEVIS_BUILDER_LIGNES.push({ sku: sku, nom: nom, qte: qte, prixUnitaire: prixApresRemise(p, qte, p.prix_vente), entrepot: entrepot });
   }
   renderDevisBuilderLignes();
 }
@@ -2455,8 +2674,9 @@ function addFactureBuilderLigne(){
   const existingLigne = FACTURE_BUILDER_LIGNES.find(function(l){return l.sku===sku && l.entrepot===entrepot;});
   if(existingLigne){
     existingLigne.qte += qte;
+    existingLigne.prixUnitaire = prixApresRemise(p, existingLigne.qte, p.prix_vente);
   } else {
-    FACTURE_BUILDER_LIGNES.push({ sku: sku, nom: nom, qte: qte, prixUnitaire: p.prix_vente, entrepot: entrepot });
+    FACTURE_BUILDER_LIGNES.push({ sku: sku, nom: nom, qte: qte, prixUnitaire: prixApresRemise(p, qte, p.prix_vente), entrepot: entrepot });
   }
   renderFactureBuilderLignes();
 }
@@ -2487,7 +2707,17 @@ function saveFactureBuilder(){
     };
     FACTURES.unshift(newFact);
     logAction('Facture generee', id + ' — ' + client + (FACTURE_BUILDER_DEVIS_ORIGINE ? ' (depuis devis ' + FACTURE_BUILDER_DEVIS_ORIGINE + ')' : ''), 'green');
-    ensureClientExists(client, lignesLabel(FACTURE_BUILDER_LIGNES), 'Client actif');
+    ensureClientExists(client, lignesLabel(FACTURE_BUILDER_LIGNES), 'Client actif', el('fb-client-type') ? el('fb-client-type').value : 'B2C');
+
+    // Fix: mark the source devis as "Facture" so it stops appearing as
+    // pending/actionable in the Devis list once it has been invoiced.
+    if(FACTURE_BUILDER_DEVIS_ORIGINE){
+      const sourceDevis = DEVIS.find(function(x){return x.id===FACTURE_BUILDER_DEVIS_ORIGINE;});
+      if(sourceDevis){
+        sourceDevis.statut = 'Facture';
+        if(typeof dbUpdate === 'function') dbUpdate('devis', sourceDevis.id, { statut: 'Facture' });
+      }
+    }
   }
   closeModal('modal-facture-builder');
   go('facturation');
@@ -2532,6 +2762,50 @@ function markFacturePaid(factureId){
   logAction('Facture payee et expediee', f.id + ' — ' + f.client, 'green');
   go('facturation');
 }
+
+function deleteDevis(devisId){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer un devis.');
+  const d = DEVIS.find(function(x){return x.id===devisId;});
+  if(!d) return;
+  if(d.reservationFaite){
+    if(!confirm('Ce devis a du stock reserve. Le supprimer va liberer cette reservation. Continuer ?')) return;
+    (d.lignes||[]).forEach(function(ligne){
+      const row = STOCK.find(function(s){return s.sku===ligne.sku && s.entrepot===ligne.entrepot;});
+      if(row){ row.reserve = Math.max(0, (row.reserve||0) - ligne.qte); if(typeof syncStockRow==='function') syncStockRow(row); }
+    });
+  } else {
+    if(!confirm('Confirmer la suppression du devis "'+d.id+'" ?')) return;
+  }
+  const idx = DEVIS.indexOf(d);
+  DEVIS.splice(idx,1);
+  logAction('Devis supprime', d.id + ' — ' + d.client, 'red');
+  if(typeof dbDelete === 'function') dbDelete('devis', d.id);
+  go('facturation');
+}
+
+function deleteFacture(factureId){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer une facture.');
+  const f = FACTURES.find(function(x){return x.id===factureId;});
+  if(!f) return;
+  if(f.sortieAppliquee){
+    if(!confirm('Cette facture a deja fait sortir du stock reel. La supprimer va RESTITUER ce stock (entree de retour). Continuer ?')) return;
+    (f.lignes||[]).forEach(function(ligne){
+      const row = STOCK.find(function(s){return s.sku===ligne.sku && s.entrepot===ligne.entrepot;}) || ensureStockRow(ligne.sku, ligne.entrepot);
+      row.qte += ligne.qte;
+      const p = PRODUITS.find(function(x){return x.sku===ligne.sku;});
+      MOUVEMENTS_STOCK.unshift({ id:Date.now()+Math.floor(Math.random()*1000), date:new Date().toLocaleDateString('fr-FR'), type:'Entree', motif:'Retour client', sku:ligne.sku, produit:p?p.nom:ligne.sku, qte:ligne.qte, entrepot:ligne.entrepot, user:CU.nom });
+      if(typeof syncStockRow==='function') syncStockRow(row);
+    });
+  } else {
+    if(!confirm('Confirmer la suppression de la facture "'+f.id+'" ?')) return;
+  }
+  const idx = FACTURES.indexOf(f);
+  FACTURES.splice(idx,1);
+  logAction('Facture supprimee', f.id + ' — ' + f.client, 'red');
+  if(typeof dbDelete === 'function') dbDelete('factures', f.id);
+  go('facturation');
+}
+
 
 // ── TABLEAU DE BORD DIRECTION GENERALE (Super Admin / Admin only) ───────────
 function renderDirection(c){
@@ -2739,7 +3013,7 @@ function buildModals(){
   // ── Modal: Ajouter (chooser) ──
   modals += modalShell('modal-add', 'Ajouter',
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
-      '<button class="btn btn-ghost" style="padding:16px;flex-direction:column;gap:3px;height:auto" onclick="closeModal(\'modal-add\');openModal(\'modal-client\')">👥<br>Client</button>' +
+      '<button class="btn btn-ghost" style="padding:16px;flex-direction:column;gap:3px;height:auto" onclick="closeModal(\'modal-add\');openClientCreate()">👥<br>Client</button>' +
       '<button class="btn btn-ghost" style="padding:16px;flex-direction:column;gap:3px;height:auto" onclick="closeModal(\'modal-add\');openModal(\'modal-tache\')">✅<br>Tache</button>' +
       '<button class="btn btn-ghost" style="padding:16px;flex-direction:column;gap:3px;height:auto" onclick="closeModal(\'modal-add\');openModal(\'modal-prospect\')">🔄<br>Prospect</button>' +
       '<button class="btn btn-ghost" style="padding:16px;flex-direction:column;gap:3px;height:auto" onclick="closeModal(\'modal-add\');openModal(\'modal-campagne\')">📣<br>Campagne</button>' +
@@ -2751,7 +3025,8 @@ function buildModals(){
     fieldRow(fieldText('cl-tel','Telephone','+227 XX XX XX XX'), fieldSelect('m-ville-1','Ville — Niger',[])) +
     fieldRow(fieldText('cl-zone','Quartier / Zone','Plateau, Centre...'), fieldSelect('cl-source','Source',['Prospection terrain','Bouche a oreille','Recommandation','Reseaux sociaux','Salon professionnel'])) +
     fieldRow(fieldSelect('cl-statut','Statut',['Prospect froid','Prospect chaud','Demonstration faite','Offre envoyee','Client actif','Client perdu']), fieldSelect('m-asg-1','Commercial assigne',[])) +
-    fieldSelect('cl-produit','Produit',['Dispositif seul — 30.000 FCFA','Dispositif + 3 bougies — 70.000 FCFA','Bougie seule — 20.000 FCFA','Pack 2 bougies — 35.000 FCFA','Pack 3 bougies — 50.000 FCFA']) +
+    '<div class="form-label" style="margin-top:8px">Produit(s) d\'interet</div>' +
+    '<div id="client-builder-lignes"></div>' +
     fieldTextarea('cl-notes','Notes');
   modals += modalShell('modal-client', 'Nouveau Client / Prospect', clientBody,
     btnGhost('Annuler', "closeModal('modal-client')") + btnRed('Enregistrer', 'addClient()'));
@@ -2881,6 +3156,7 @@ function buildModals2(){
     fieldRow(fieldSelect('pd-cat','Categorie',['Dispositif','Consommable','Accessoire']), fieldText('pd-marque','Marque','Lorenzetti')) +
     fieldRow(fieldText('pd-prix-achat','Prix d\'achat (FCFA)'), fieldText('pd-prix-vente','Prix de vente (FCFA)')) +
     fieldRow(fieldText('pd-prix-revendeur','Prix revendeur (FCFA)'), fieldText('pd-tva','TVA (%)','19')) +
+    fieldRow(fieldText('pd-remise-seuil','A partir de X unites (remise)','2'), fieldText('pd-remise-pct','Remise par unite (%)','0')) +
     fieldTextarea('pd-desc','Description');
   modals += modalShell('modal-produit', 'Nouveau Produit', produitBody,
     btnGhost('Annuler', "closeModal('modal-produit')") + btnRed('Enregistrer', 'addProduit()'));
@@ -2952,7 +3228,7 @@ function fieldClientPicker(selectId, textId){
   const factureBuilderBody =
     '<h3 id="modal-facture-title" style="font-family:Syne,sans-serif;font-size:14px;margin-bottom:12px">Nouvelle Facture</h3>' +
     fieldClientPicker('fb-client-select','fb-client') +
-    fieldSelect('fb-mode','Mode de paiement',['Especes','Virement','Cheque','Mobile Money','Carte bancaire']) +
+    fieldRow(fieldSelect('fb-client-type','Type de client (nouveau client)',['B2C','B2B']), fieldSelect('fb-mode','Mode de paiement',['Especes','Virement','Cheque','Mobile Money','Carte bancaire'])) +
     '<div class="form-label" style="margin-top:10px">Produits</div>' +
     '<div id="facture-builder-lignes"></div>';
   modals += modalShell('modal-facture-builder', 'Facture', factureBuilderBody,
@@ -3024,8 +3300,13 @@ function openDetailModal(title, rows, editConfig){
   }
 
   let footer = btnGhost('Fermer', "closeModal('modal-detail')");
-  if(editConfig && isSuperAdmin()){
-    footer = btnGhost('Fermer', "closeModal('modal-detail')") + btnRed('✏️ Modifier', 'switchToEditMode()');
+  if(editConfig && editConfig.record){
+    const dept = editConfig.dept || null;
+    const owner = editConfig.owner || null;
+    const allowed = isSuperAdmin() || (dept !== null && owner !== null && canEditRecord(editConfig.record, dept, owner));
+    if(allowed){
+      footer = btnGhost('Fermer', "closeModal('modal-detail')") + btnRed('✏️ Modifier', 'switchToEditMode()');
+    }
   }
 
   const existing = el('modal-detail');
@@ -3100,7 +3381,8 @@ function syncDetailEditToDb(entity, record){
   if(!entity || typeof dbUpdate !== 'function') return;
 
   if(entity === 'clients'){
-    dbUpdate('clients', record.id, { nom:record.nom, tel:record.tel, email:record.email, statut:record.statut,
+    dbUpdate('clients', record.id, { nom:record.nom, type:record.type, tel:record.tel, email:record.email,
+      ville:record.ville, zone:record.zone, source:record.source, produit:record.produit, asg:record.asg, statut:record.statut,
       last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
   } else if(entity === 'pipeline'){
     dbUpdate('pipeline', record.id, { nom:record.nom, val:record.val, ville:record.ville, date_estimee:record.dateEstimee,
@@ -3112,7 +3394,8 @@ function syncDetailEditToDb(entity, record){
     dbUpdate('produits', record.sku, { nom:record.nom, categorie:record.categorie, marque:record.marque,
       desc_produit:record.desc, prix_achat:record.prix_achat, prix_vente:record.prix_vente,
       prix_revendeur:record.prix_revendeur, tva:record.tva, poids:record.poids, dimensions:record.dimensions,
-      codebarre:record.codebarre, last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
+      codebarre:record.codebarre, remise_seuil:record.remiseSeuil, remise_pct:record.remisePct,
+      last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
   } else if(entity === 'stock'){
     if(record._dbId){
       dbUpdate('stock', record._dbId, { entrepot:record.entrepot, qte:record.qte, reserve:record.reserve, seuil:record.seuil,
@@ -3220,24 +3503,78 @@ function saveDepense(){
 // ACTIONS — form submit handlers
 // ════════════════════════════════════════════════════════════════════════════
 
+let CLIENT_BUILDER_LIGNES = [];
+
+function openClientCreate(){
+  CLIENT_BUILDER_LIGNES = [];
+  el('cl-nom').value = '';
+  el('cl-type').value = 'B2C';
+  el('cl-tel').value = '';
+  el('cl-zone').value = '';
+  el('cl-source').value = 'Prospection terrain';
+  el('cl-statut').value = 'Prospect froid';
+  el('cl-notes').value = '';
+  renderClientBuilderLignes();
+  openModal('modal-client'); // refreshes ville/asg selects
+}
+
+function renderClientBuilderLignes(){
+  const skuOptions = PRODUITS.map(function(p){ return p.sku+' — '+p.nom; });
+  let h = CLIENT_BUILDER_LIGNES.map(function(l, i){
+    return '<div style="display:grid;grid-template-columns:2fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center">' +
+      '<div class="td-bold" style="font-size:12px">'+l.nom+' ('+l.sku+')</div>' +
+      '<div style="font-size:12px">Qte: <strong>'+l.qte+'</strong></div>' +
+      '<button class="btn btn-ghost btn-sm" onclick="removeClientBuilderLigne('+i+')">🗑</button>' +
+    '</div>';
+  }).join('') || '<div class="td-muted" style="margin-bottom:8px;font-size:12px">Aucun produit ajoute. Le client peut etre cree sans produit precis (simple prospect).</div>';
+
+  if(skuOptions.length > 0){
+    h += '<div style="display:grid;grid-template-columns:2fr 1fr auto;gap:6px;margin-top:6px;padding-top:8px;border-top:1px solid var(--border)">' +
+      '<select class="form-select" id="cl-add-sku">' + skuOptions.map(function(o){return '<option>'+o+'</option>';}).join('') + '</select>' +
+      '<input class="form-input" id="cl-add-qte" type="number" min="1" value="1" placeholder="Qte"/>' +
+      '<button class="btn btn-ghost btn-sm" onclick="addClientBuilderLigne()">+ Ajouter</button>' +
+    '</div>';
+  }
+  el('client-builder-lignes').innerHTML = h;
+}
+
+function addClientBuilderLigne(){
+  const skuRaw = el('cl-add-sku').value;
+  const sku = skuRaw.split(' — ')[0];
+  const nom = skuRaw.split(' — ')[1] || sku;
+  const qte = parseInt(el('cl-add-qte').value) || 1;
+  const existingLigne = CLIENT_BUILDER_LIGNES.find(function(l){return l.sku===sku;});
+  if(existingLigne){ existingLigne.qte += qte; } else { CLIENT_BUILDER_LIGNES.push({ sku:sku, nom:nom, qte:qte }); }
+  renderClientBuilderLignes();
+}
+function removeClientBuilderLigne(idx){
+  CLIENT_BUILDER_LIGNES.splice(idx,1);
+  renderClientBuilderLignes();
+}
+
 function addClient(){
   const nom = el('cl-nom').value.trim();
   if(!nom){ alert('Entrez un nom'); return; }
   const ville = el('m-ville-1').value;
   const zone = el('cl-zone').value;
+  const produitLabel = CLIENT_BUILDER_LIGNES.length > 0
+    ? CLIENT_BUILDER_LIGNES.map(function(l){ return l.qte+'x '+l.sku; }).join(', ')
+    : '-';
   const client = {
     id: Date.now(), nom: nom, type: el('cl-type').value.split(' ')[0],
     ville: ville, zone: zone || ville, tel: el('cl-tel').value, email:'',
     societe:'', source: el('cl-source').value,
-    statut: el('cl-statut').value, produit: el('cl-produit').value,
+    statut: el('cl-statut').value, produit: produitLabel,
     asg: el('m-asg-1').value, date: new Date().toLocaleDateString('fr-FR'),
     locked: false, historique: []
   };
   CLIENTS.unshift(client);
-  logAction('Client ajoute', nom + ' — ' + ville + (zone ? ' / ' + zone : '') + ' — ' + client.produit, 'green');
+  logAction('Client ajoute', nom + ' — ' + ville + (zone ? ' / ' + zone : '') + ' — ' + produitLabel, 'green');
   closeModal('modal-client');
   updateAllBadges();
   go('clients');
+  // Reset the form immediately so the NEXT client entry starts from a clean slate
+  CLIENT_BUILDER_LIGNES = [];
 }
 
 function addMembre(){
@@ -3390,7 +3727,8 @@ function addProduit(){
     sku: sku, nom: nom, categorie: el('pd-cat').value, marque: el('pd-marque').value || 'Lorenzetti',
     desc: el('pd-desc').value, prix_achat: parseInt(el('pd-prix-achat').value) || 0,
     prix_vente: parseInt(el('pd-prix-vente').value) || 0, prix_revendeur: parseInt(el('pd-prix-revendeur').value) || 0,
-    tva: parseInt(el('pd-tva').value) || 19, poids:'-', dimensions:'-', codebarre:'-'
+    tva: parseInt(el('pd-tva').value) || 19, poids:'-', dimensions:'-', codebarre:'-',
+    remiseSeuil: parseInt(el('pd-remise-seuil').value) || 0, remisePct: parseFloat(el('pd-remise-pct').value) || 0
   });
   logAction('Produit ajoute au catalogue', sku + ' — ' + nom, 'blue');
   closeModal('modal-produit');
@@ -3692,14 +4030,64 @@ function apiGet(url){
 }
 
 // ── GENERIC ENTITY SYNC — replicate any local array change to Postgres ──────
+// ── SYNC FAILURE TRACKING — surfaces silent save failures instead of letting
+// data quietly exist only in memory (which looked fine on screen but vanished
+// on reload because it was never actually written to Postgres). ──
+let SYNC_FAILURES = 0;
+
+function showSyncWarning(){
+  let banner = document.getElementById('sync-warning-banner');
+  if(!banner){
+    banner = document.createElement('div');
+    banner.id = 'sync-warning-banner';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#dc2626;color:white;text-align:center;padding:10px;font-size:13px;font-weight:700;z-index:9999;cursor:pointer';
+    banner.onclick = function(){ window.location.reload(); };
+    document.body.appendChild(banner);
+  }
+  banner.textContent = '⚠️ Erreur de sauvegarde (' + SYNC_FAILURES + ') — vos dernieres modifications n\'ont peut-etre pas ete enregistrees. Cliquez pour recharger et verifier.';
+}
+
 function dbInsert(entity, row){
-  return apiPost('/api/data', { entity: entity, row: row }).catch(function(){ /* offline tolerant */ });
+  return apiPost('/api/data', { entity: entity, row: row }).then(function(result){
+    if(!result.ok){
+      SYNC_FAILURES++;
+      console.error('DB INSERT FAILED for ' + entity + ':', result.data && result.data.error);
+      showSyncWarning();
+    }
+    return result;
+  }).catch(function(err){
+    SYNC_FAILURES++;
+    console.error('DB INSERT NETWORK ERROR for ' + entity + ':', err);
+    showSyncWarning();
+  });
 }
 function dbUpdate(entity, id, patch){
-  return apiPut('/api/data', { entity: entity, id: id, patch: patch }).catch(function(){});
+  return apiPut('/api/data', { entity: entity, id: id, patch: patch }).then(function(result){
+    if(!result.ok){
+      SYNC_FAILURES++;
+      console.error('DB UPDATE FAILED for ' + entity + ' #' + id + ':', result.data && result.data.error);
+      showSyncWarning();
+    }
+    return result;
+  }).catch(function(err){
+    SYNC_FAILURES++;
+    console.error('DB UPDATE NETWORK ERROR for ' + entity + ' #' + id + ':', err);
+    showSyncWarning();
+  });
 }
 function dbDelete(entity, id){
-  return apiDelete('/api/data', { entity: entity, id: id }).catch(function(){});
+  return apiDelete('/api/data', { entity: entity, id: id }).then(function(result){
+    if(!result.ok){
+      SYNC_FAILURES++;
+      console.error('DB DELETE FAILED for ' + entity + ' #' + id + ':', result.data && result.data.error);
+      showSyncWarning();
+    }
+    return result;
+  }).catch(function(err){
+    SYNC_FAILURES++;
+    console.error('DB DELETE NETWORK ERROR for ' + entity + ' #' + id + ':', err);
+    showSyncWarning();
+  });
 }
 function dbLoadAll(entity){
   return apiGet('/api/data?entity=' + entity).then(function(result){
@@ -3741,6 +4129,7 @@ function mapProduitFromDb(r){
   return { sku:r.sku, nom:r.nom, categorie:r.categorie, marque:r.marque, desc:r.desc_produit,
     prix_achat:r.prix_achat, prix_vente:r.prix_vente, prix_revendeur:r.prix_revendeur, tva:r.tva,
     poids:r.poids, dimensions:r.dimensions, codebarre:r.codebarre,
+    remiseSeuil:r.remise_seuil, remisePct:r.remise_pct!=null?Number(r.remise_pct):0,
     lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapEntrepotFromDb(r){ return { id:r.id, nom:r.nom, type:r.type, ville:r.ville }; }
@@ -3806,7 +4195,21 @@ function loadAllDataFromDb(){
     dbLoadAll('factures').then(function(rows){ FACTURES = rows.map(mapFactureFromDb); }),
     dbLoadAll('depenses').then(function(rows){ DEPENSES = rows.map(mapDepenseFromDb); }),
     dbLoadAll('notifications').then(function(rows){ NOTIFICATIONS = rows.map(mapNotificationFromDb); }),
+    dbLoadAll('documents').then(function(rows){ DOCUMENTS = rows.map(mapDocumentFromDb); }),
+    dbLoadAll('rh_presence').then(function(rows){ RH_PRESENCE = rows.map(mapRhPresenceFromDb); }),
+    dbLoadAll('rh_conges').then(function(rows){ RH_CONGES = rows.map(mapRhCongesFromDb); }),
   ]);
+}
+
+function mapDocumentFromDb(r){
+  return { id:r.id, nom:r.nom, categorie:r.categorie, taille:r.taille, date:r.date_doc, par:r.par_qui,
+    data:r.data, mimeType:r.mime_type };
+}
+function mapRhPresenceFromDb(r){
+  return { id:r.id, nom:r.nom, date:r.date_p, arrivee:r.arrivee, depart:r.depart, statut:r.statut };
+}
+function mapRhCongesFromDb(r){
+  return { id:r.id, nom:r.nom, debut:r.debut, fin:r.fin, motif:r.motif, statut:r.statut };
 }
 
 // ── Load users from DB into the in-memory USERS array (for RBAC/rendering) ──
@@ -4250,7 +4653,8 @@ wrapAfter('addProduit', function(){
   const p = PRODUITS[PRODUITS.length-1];
   if(p) dbInsert('produits', { sku:p.sku, nom:p.nom, categorie:p.categorie, marque:p.marque,
     desc_produit:p.desc, prix_achat:p.prix_achat, prix_vente:p.prix_vente, prix_revendeur:p.prix_revendeur,
-    tva:p.tva, poids:p.poids||'-', dimensions:p.dimensions||'-', codebarre:p.codebarre||'-' });
+    tva:p.tva, poids:p.poids||'-', dimensions:p.dimensions||'-', codebarre:p.codebarre||'-',
+    remise_seuil:p.remiseSeuil||0, remise_pct:p.remisePct||0 });
 });
 
 // ENTREPOTS
@@ -4357,6 +4761,9 @@ wrapAfter('markFacturePaid', function(factureId){
 });
 
 // DEPENSES
+wrapAfter('approveConge', function(id){ dbUpdate('rh_conges', id, { statut:'Approuve' }); });
+wrapAfter('rejectConge', function(id){ dbUpdate('rh_conges', id, { statut:'Refuse' }); });
+
 wrapAfter('saveDepense', function(){
   if(DEPENSE_EDIT_ID){
     const d = DEPENSES.find(function(x){return x.id===DEPENSE_EDIT_ID;});
