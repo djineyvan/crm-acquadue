@@ -190,6 +190,31 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    // ── Step 2.5: SELF-HEAL COLUMN TYPE — tables created by a much older
+    // version of this file may have their id column typed as a plain INT
+    // (max ~2.1 billion), but the app generates ids with Date.now() (13-digit
+    // numbers like 1782159708899), which overflows INT and causes
+    // 'value "..." is out of range for type integer' 500 errors on every
+    // insert. Detect and widen these columns to BIGINT automatically. ──
+    for (const table of Object.keys(PRIMARY_KEYS)) {
+      const pk = PRIMARY_KEYS[table];
+      const declaredType = (COLUMN_TYPES[table][pk] || '').toUpperCase();
+      if (declaredType.indexOf('BIGINT') === 0) {
+        try {
+          const colInfo = await sql.query(
+            "SELECT data_type FROM information_schema.columns WHERE table_name = $1 AND column_name = $2",
+            [table, pk]
+          );
+          if (colInfo.length > 0 && colInfo[0].data_type === 'integer') {
+            await sql.query('ALTER TABLE ' + table + ' ALTER COLUMN ' + pk + ' TYPE BIGINT');
+            healed.push(table + '.' + pk + ': widened INT -> BIGINT (fixes Date.now() id overflow)');
+          }
+        } catch (e) {
+          healed.push(table + '.' + pk + '_type -> ' + e.message);
+        }
+      }
+    }
+
     // ── Step 3: SELF-HEAL PRIMARY KEY — tables created by a much older version
     // of this file may be missing a real PRIMARY KEY constraint on their id
     // column. Without it, /api/data's "INSERT ... ON CONFLICT (id)" fails with
