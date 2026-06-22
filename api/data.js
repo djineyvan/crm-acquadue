@@ -51,7 +51,7 @@ const COLUMNS = {
   stock: ['id','sku','entrepot','qte','reserve','seuil','last_modified_by','last_modified_at'],
   mouvements_stock: ['id','date_mvt','type','motif','sku','produit','qte','entrepot','user_nom'],
   fournisseurs: ['id','nom','contact','tel','email','adresse','paiement'],
-  commandes_fournisseur: ['id','fournisseur','date_cmd','produits','montant','statut','entrepot'],
+  commandes_fournisseur: ['id','fournisseur','date_cmd','produits','montant','statut','entrepot','lignes','stock_receptionne','last_modified_by','last_modified_at'],
   demandes_achat: ['id','produit','qte','motif','demandeur','etape','date_demande'],
   inventaires: ['id','entrepot','type','date_inv','statut','ecarts'],
   devis: ['id','client','date_devis','statut','validite','lignes','reservation_faite','last_modified_by','last_modified_at'],

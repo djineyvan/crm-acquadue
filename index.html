@@ -748,6 +748,27 @@ function fillFournisseurSelect(id){
   sel.innerHTML = FOURNISSEURS.map(function(f){ return "<option>" + f.nom + "</option>"; }).join("");
 }
 
+function fillClientSelect(id){
+  const sel = el(id);
+  if(!sel) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— Nouveau client —</option>' + CLIENTS.map(function(c){ return "<option>" + c.nom + "</option>"; }).join("");
+  if(current) sel.value = current;
+}
+
+function toggleNewClientField(selectId, textId){
+  const sel = el(selectId);
+  const txt = el(textId);
+  if(!sel || !txt) return;
+  if(sel.value){
+    txt.value = sel.value;
+    txt.style.display = 'none';
+  } else {
+    txt.value = '';
+    txt.style.display = 'block';
+  }
+}
+
 function openModal(id){
   el(id).classList.add('open');
   fillVilleSelect('m-ville-1'); fillVilleSelect('m-ville-2'); fillVilleSelect('m-ville-3');
@@ -763,6 +784,8 @@ function openModal(id){
   fillEntrepotSelect('iv-entrepot');
   fillProduitSelect('pr-sku');
   fillEntrepotSelect('pr-entrepot');
+  fillClientSelect('db-client-select');
+  fillClientSelect('fb-client-select');
 }
 function closeModal(id){ const m = el(id); if(m) m.classList.remove('open'); }
 
@@ -1885,7 +1908,7 @@ function renderApprov(c){
   h += '  <div class="card"><div class="table-wrap"><table id="tbl-fourn"></table></div></div>';
   h += '</div>';
   h += '<div id="ap-c" style="display:none">';
-  h += '  <div style="margin-bottom:9px;text-align:right"><button class="btn btn-red btn-sm" onclick="openModal(\'modal-commande\')">+ Commande</button></div>';
+  h += '  <div style="margin-bottom:9px;text-align:right"><button class="btn btn-red btn-sm" onclick="openCommandeBuilder(null)">+ Commande</button></div>';
   h += '  <div class="card"><div class="table-wrap"><table id="tbl-commandes"></table></div></div>';
   h += '</div>';
   c.innerHTML = h;
@@ -1899,8 +1922,174 @@ function renderApprov(c){
       return '<tr><td class="td-bold">'+f.nom+'</td><td class="td-muted">'+f.contact+'</td><td class="td-muted">'+f.tel+'</td><td class="td-muted">'+f.email+'</td><td>'+tag(f.paiement,'tag-blue')+'</td><td>'+actions+'</td></tr>';
     }).join('') + '</tbody>';
 
-  el('tbl-commandes').innerHTML = '<thead><tr><th>Fournisseur</th><th>Date</th><th>Produits</th><th>Montant</th><th>Entrepot</th><th>Statut</th></tr></thead><tbody>' +
-    COMMANDES_FOURNISSEUR.map(function(cmd){ return '<tr><td class="td-bold">'+cmd.fournisseur+'</td><td class="td-muted">'+cmd.date+'</td><td class="td-muted">'+cmd.produits+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(cmd.montant)+'</td><td class="td-muted">'+cmd.entrepot+'</td><td>'+statusTag(cmd.statut)+'</td></tr>'; }).join('') + '</tbody>';
+  el('tbl-commandes').innerHTML = '<thead><tr><th>Fournisseur</th><th>Date</th><th>Produits</th><th>Montant</th><th>Entrepot</th><th>Statut</th><th></th></tr></thead><tbody>' +
+    COMMANDES_FOURNISSEUR.map(function(cmd){
+      const lignes = cmd.lignes || [];
+      const montant = lignes.length ? lignesTotalMontant(lignes) : (cmd.montant||0);
+      const produitsLabel = lignes.length ? lignesLabel(lignes) : (cmd.produits || '-');
+      let actions = '<button class="btn btn-ghost btn-sm" onclick="viewCommandeDetail('+cmd.id+')">👁 Details</button>';
+      if(isSuperAdmin()){
+        actions += ' <button class="btn btn-ghost btn-sm" onclick="openCommandeBuilder('+cmd.id+')">✏️ Modifier</button> <button class="btn btn-ghost btn-sm" onclick="deleteCommande('+cmd.id+')">🗑 Supprimer</button>';
+      }
+      if(cmd.statut !== 'Recue'){
+        actions += ' <button class="btn btn-red btn-sm" onclick="receptionnerCommande('+cmd.id+')">📦 Receptionner</button>';
+      }
+      return '<tr><td class="td-bold">'+cmd.fournisseur+'</td><td class="td-muted">'+cmd.date+'</td><td class="td-muted">'+produitsLabel+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+cmd.entrepot+'</td><td>'+statusTag(cmd.statut)+(cmd.stockReceptionne?' <span class="locked-badge">📥 Stock entre</span>':'')+'</td><td>'+actions+'</td></tr>';
+    }).join('') + '</tbody>';
+}
+
+function viewCommandeDetail(id){
+  const cmd = COMMANDES_FOURNISSEUR.find(function(x){return x.id===id;});
+  if(!cmd) return;
+  const lignes = cmd.lignes || [];
+  const rows = [
+    ['Fournisseur', '<strong>'+cmd.fournisseur+'</strong>'],
+    ['Date', cmd.date],
+    ['Entrepot de destination', cmd.entrepot],
+    ['Produits', lignes.length ? lignesTableHtml(lignes) : (cmd.produits||'-')],
+    ['Statut', statusTag(cmd.statut)],
+    ['Stock receptionne', cmd.stockReceptionne ? '<span style="color:var(--green);font-weight:700">✓ Oui — stock entre dans l\'entrepot</span>' : '<span class="td-muted">Pas encore</span>']
+  ];
+  if(cmd.lastModifiedBy) rows.push(['Derniere modification', modStampHtml(cmd)]);
+  openDetailModal('Detail Commande — ' + cmd.fournisseur, rows, null);
+}
+
+// ── COMMANDE BUILDER — multi-produits, creation ET edition (Super Admin pour edition) ──
+let COMMANDE_BUILDER_LIGNES = [];
+let COMMANDE_BUILDER_EDIT_ID = null;
+
+function openCommandeBuilder(commandeId){
+  COMMANDE_BUILDER_EDIT_ID = commandeId || null;
+  const existing = commandeId ? COMMANDES_FOURNISSEUR.find(function(x){return x.id===commandeId;}) : null;
+  COMMANDE_BUILDER_LIGNES = existing && existing.lignes ? JSON.parse(JSON.stringify(existing.lignes)) : [];
+
+  openModal('modal-commande'); // refreshes fournisseur/entrepot selects first
+
+  el('cm-fournisseur').value = existing ? existing.fournisseur : (FOURNISSEURS[0] ? FOURNISSEURS[0].nom : '');
+  el('cm-entrepot').value = existing ? existing.entrepot : (ENTREPOTS[0] ? ENTREPOTS[0].nom : '');
+  el('cm-statut').value = existing ? existing.statut : 'Brouillon';
+  renderCommandeBuilderLignes();
+  el('modal-commande-title').textContent = existing ? 'Modifier la Commande — ' + existing.fournisseur : 'Nouvelle Commande Fournisseur';
+  el('modal-commande-save-btn').textContent = existing ? 'Enregistrer les modifications' : 'Enregistrer';
+}
+
+function renderCommandeBuilderLignes(){
+  const skuOptions = PRODUITS.map(function(p){ return p.sku+' — '+p.nom; });
+  let h = COMMANDE_BUILDER_LIGNES.map(function(l, i){
+    return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center">' +
+      '<div class="td-bold" style="font-size:12px">'+l.nom+' ('+l.sku+')</div>' +
+      '<div style="font-size:12px">Qte: <strong>'+l.qte+'</strong></div>' +
+      '<div style="font-size:12px">'+fcfa(l.prixUnitaire)+'</div>' +
+      '<div style="font-size:12px;font-weight:700">'+fcfa(l.qte*l.prixUnitaire)+'</div>' +
+      '<button class="btn btn-ghost btn-sm" onclick="removeCommandeBuilderLigne('+i+')">🗑</button>' +
+    '</div>';
+  }).join('') || '<div class="td-muted" style="margin-bottom:8px">Aucun produit ajoute encore.</div>';
+
+  if(skuOptions.length === 0){
+    h += '<div style="background:var(--red-light);color:var(--red);border-radius:8px;padding:9px;font-size:11px;margin-top:8px">⚠️ Aucun produit n\'existe encore. Creez-en un dans Produits avant de commander.</div>';
+  } else {
+    h += '<div style="display:grid;grid-template-columns:2fr 1fr auto;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">' +
+      '<select class="form-select" id="cm-add-sku">' + skuOptions.map(function(o){return '<option>'+o+'</option>';}).join('') + '</select>' +
+      '<input class="form-input" id="cm-add-qte" type="number" min="1" value="1" placeholder="Qte"/>' +
+      '<button class="btn btn-ghost btn-sm" onclick="addCommandeBuilderLigne()">+ Ajouter</button>' +
+    '</div>';
+  }
+
+  h += '<div style="margin-top:10px;text-align:right;font-size:14px;font-weight:700;color:var(--red)">Total: ' + fcfa(lignesTotalMontant(COMMANDE_BUILDER_LIGNES)) + '</div>';
+  el('commande-builder-lignes').innerHTML = h;
+}
+
+function addCommandeBuilderLigne(){
+  const skuRaw = el('cm-add-sku').value;
+  const sku = skuRaw.split(' — ')[0];
+  const nom = skuRaw.split(' — ')[1] || sku;
+  const qte = parseInt(el('cm-add-qte').value) || 1;
+  const p = PRODUITS.find(function(x){return x.sku===sku;});
+  if(!p) return;
+  // Use prix_achat (cost from supplier), not prix_vente, for purchase orders
+  const existingLigne = COMMANDE_BUILDER_LIGNES.find(function(l){return l.sku===sku;});
+  if(existingLigne){
+    existingLigne.qte += qte;
+  } else {
+    COMMANDE_BUILDER_LIGNES.push({ sku: sku, nom: nom, qte: qte, prixUnitaire: p.prix_achat });
+  }
+  renderCommandeBuilderLignes();
+}
+
+function removeCommandeBuilderLigne(idx){
+  COMMANDE_BUILDER_LIGNES.splice(idx, 1);
+  renderCommandeBuilderLignes();
+}
+
+function saveCommandeBuilder(){
+  const fournisseur = el('cm-fournisseur').value;
+  const entrepot = el('cm-entrepot').value;
+  const statut = el('cm-statut').value;
+  if(!fournisseur){ alert('Selectionnez ou creez un fournisseur.'); return; }
+  if(!entrepot){ alert('Selectionnez ou creez un entrepot.'); return; }
+  if(COMMANDE_BUILDER_LIGNES.length === 0){ alert('Ajoutez au moins un produit.'); return; }
+
+  if(COMMANDE_BUILDER_EDIT_ID){
+    if(!isSuperAdmin()) return alert('Seul le Super Admin peut modifier une commande existante.');
+    const cmd = COMMANDES_FOURNISSEUR.find(function(x){return x.id===COMMANDE_BUILDER_EDIT_ID;});
+    cmd.fournisseur = fournisseur; cmd.entrepot = entrepot; cmd.statut = statut;
+    cmd.lignes = JSON.parse(JSON.stringify(COMMANDE_BUILDER_LIGNES));
+    stampModification(cmd);
+    logAction('Commande modifiee', fournisseur + ' — ' + lignesLabel(cmd.lignes), 'gold');
+  } else {
+    COMMANDES_FOURNISSEUR.unshift({
+      id: Date.now(), fournisseur: fournisseur, date: new Date().toLocaleDateString('fr-FR'),
+      lignes: JSON.parse(JSON.stringify(COMMANDE_BUILDER_LIGNES)), statut: statut, entrepot: entrepot,
+      stockReceptionne: false
+    });
+    logAction('Commande fournisseur creee', fournisseur + ' — ' + lignesLabel(COMMANDE_BUILDER_LIGNES), 'blue');
+  }
+  closeModal('modal-commande');
+  go('approv');
+}
+
+function deleteCommande(id){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer une commande.');
+  const cmd = COMMANDES_FOURNISSEUR.find(function(x){return x.id===id;});
+  if(!cmd) return;
+  if(cmd.stockReceptionne){
+    if(!confirm('Cette commande a deja ete receptionnee (stock entre). La supprimer ne retirera PAS le stock deja entre. Continuer ?')) return;
+  } else {
+    if(!confirm('Confirmer la suppression de cette commande ?')) return;
+  }
+  const idx = COMMANDES_FOURNISSEUR.indexOf(cmd);
+  COMMANDES_FOURNISSEUR.splice(idx,1);
+  logAction('Commande supprimee', cmd.fournisseur, 'red');
+  if(typeof dbDelete === 'function') dbDelete('commandes_fournisseur', cmd.id);
+  go('approv');
+}
+
+// Reception d'une commande: fait REELLEMENT entrer le stock (le lien manquant signale par l'utilisateur)
+function receptionnerCommande(id){
+  const cmd = COMMANDES_FOURNISSEUR.find(function(x){return x.id===id;});
+  if(!cmd) return;
+  if(cmd.stockReceptionne){ alert('Cette commande a deja ete receptionnee.'); return; }
+  const lignes = cmd.lignes || [];
+  if(lignes.length === 0){ alert('Cette commande n\'a pas de lignes de produits a receptionner.'); return; }
+
+  lignes.forEach(function(ligne){
+    const row = ensureStockRow(ligne.sku, cmd.entrepot);
+    row.qte += ligne.qte;
+    const p = PRODUITS.find(function(x){return x.sku===ligne.sku;});
+    MOUVEMENTS_STOCK.unshift({
+      id: Date.now() + Math.floor(Math.random()*1000), date: new Date().toLocaleDateString('fr-FR'), type: 'Entree',
+      motif: 'Achat fournisseur', sku: ligne.sku, produit: p?p.nom:ligne.sku, qte: ligne.qte,
+      entrepot: cmd.entrepot, user: CU?CU.nom:'Systeme'
+    });
+    if(typeof dbInsert === 'function') dbInsert('mouvements_stock', { id:MOUVEMENTS_STOCK[0].id, date_mvt:MOUVEMENTS_STOCK[0].date, type:'Entree', motif:'Achat fournisseur', sku:ligne.sku, produit:p?p.nom:ligne.sku, qte:ligne.qte, entrepot:cmd.entrepot, user_nom:CU?CU.nom:'Systeme' });
+    if(typeof syncStockRow === 'function') syncStockRow(row);
+  });
+
+  cmd.statut = 'Recue';
+  cmd.stockReceptionne = true;
+  logAction('Commande receptionnee', cmd.fournisseur + ' — stock entre: ' + lignesLabel(lignes) + ' a ' + cmd.entrepot, 'green');
+  if(typeof dbUpdate === 'function') dbUpdate('commandes_fournisseur', cmd.id, { statut:'Recue' });
+  go('approv');
 }
 
 // ── ACHATS (workflow Demande -> Validation -> Commande -> Reception -> Paiement) ─
@@ -2094,12 +2283,16 @@ function openDevisBuilder(devisId){
   const existing = devisId ? DEVIS.find(function(x){return x.id===devisId;}) : null;
   DEVIS_BUILDER_LIGNES = existing ? JSON.parse(JSON.stringify(existing.lignes)) : [];
 
+  openModal('modal-devis-builder'); // refreshes db-client-select options first
+
+  const matchingClient = existing ? CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === existing.client.trim().toLowerCase(); }) : null;
+  el('db-client-select').value = matchingClient ? matchingClient.nom : '';
   el('db-client').value = existing ? existing.client : '';
+  el('db-client').style.display = matchingClient ? 'none' : 'block';
   el('db-validite').value = existing ? existing.validite : '30 jours';
   renderDevisBuilderLignes();
   el('modal-devis-title').textContent = existing ? 'Modifier le Devis — ' + existing.id : 'Nouveau Devis';
   el('modal-devis-save-btn').textContent = existing ? 'Enregistrer les modifications' : 'Creer le devis';
-  openModal('modal-devis-builder');
 }
 
 function renderDevisBuilderLignes(){
@@ -2193,18 +2386,23 @@ function openFactureBuilder(factureId, fromDevisId){
 
   const existingFact = factureId ? FACTURES.find(function(x){return x.id===factureId;}) : null;
   const sourceDevis = fromDevisId ? DEVIS.find(function(x){return x.id===fromDevisId;}) : null;
+  const clientName = existingFact ? existingFact.client : (sourceDevis ? sourceDevis.client : '');
+
+  openModal('modal-facture-builder'); // refreshes fb-client-select options first
+
+  const matchingClient = clientName ? CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === clientName.trim().toLowerCase(); }) : null;
+  el('fb-client-select').value = matchingClient ? matchingClient.nom : '';
+  el('fb-client').value = clientName;
+  el('fb-client').style.display = matchingClient ? 'none' : 'block';
 
   if(existingFact){
     FACTURE_BUILDER_LIGNES = JSON.parse(JSON.stringify(existingFact.lignes));
-    el('fb-client').value = existingFact.client;
     el('fb-mode').value = existingFact.mode_paiement;
   } else if(sourceDevis){
     FACTURE_BUILDER_LIGNES = JSON.parse(JSON.stringify(sourceDevis.lignes));
-    el('fb-client').value = sourceDevis.client;
     el('fb-mode').value = 'Especes';
   } else {
     FACTURE_BUILDER_LIGNES = [];
-    el('fb-client').value = '';
     el('fb-mode').value = 'Especes';
   }
 
@@ -2706,12 +2904,14 @@ function buildModals2(){
 
   // ── Modal: Nouvelle Commande fournisseur ──
   const commandeBody =
+    '<h3 id="modal-commande-title" style="font-family:Syne,sans-serif;font-size:14px;margin-bottom:12px">Nouvelle Commande Fournisseur</h3>' +
     fieldSelect('cm-fournisseur','Fournisseur', FOURNISSEURS.map(function(f){return f.nom;})) +
-    fieldText('cm-produits','Produits commandes','Ex: 50x PUR-001, 100x FIL-001') +
-    fieldRow(fieldText('cm-montant','Montant total (FCFA)'), fieldSelect('cm-entrepot','Entrepot de destination', ENTREPOTS.map(function(e){return e.nom;}))) +
-    fieldSelect('cm-statut','Statut',['Brouillon','Envoyee','Confirmee','Partiellement recue','Recue']);
-  modals += modalShell('modal-commande', 'Nouvelle Commande Fournisseur', commandeBody,
-    btnGhost('Annuler', "closeModal('modal-commande')") + btnRed('Enregistrer', 'addCommande()'));
+    fieldSelect('cm-entrepot','Entrepot de destination', ENTREPOTS.map(function(e){return e.nom;})) +
+    fieldSelect('cm-statut','Statut',['Brouillon','Envoyee','Confirmee','Partiellement recue','Recue']) +
+    '<div class="form-label" style="margin-top:10px">Produits commandes</div>' +
+    '<div id="commande-builder-lignes"></div>';
+  modals += modalShell('modal-commande', 'Commande Fournisseur', commandeBody,
+    btnGhost('Annuler', "closeModal('modal-commande')") + '<button class="btn btn-red" id="modal-commande-save-btn" onclick="saveCommandeBuilder()">Enregistrer</button>');
 
   // ── Modal: Demande d'achat ──
   const demandeBody =
@@ -2727,10 +2927,21 @@ function buildModals2(){
   modals += modalShell('modal-inventaire', 'Planifier un Inventaire', inventaireBody,
     btnGhost('Annuler', "closeModal('modal-inventaire')") + btnRed('Planifier', 'addInventaire()'));
 
+function fieldClientPicker(selectId, textId){
+  const opts = CLIENTS.map(function(c){ return c.nom; });
+  return '<div class="form-group"><label class="form-label">Client</label>' +
+    '<select class="form-select" id="'+selectId+'" onchange="toggleNewClientField(\''+selectId+'\',\''+textId+'\')" style="margin-bottom:6px">' +
+    '<option value="">— Nouveau client —</option>' +
+    opts.map(function(o){ return '<option>'+o+'</option>'; }).join('') +
+    '</select>' +
+    '<input class="form-input" id="'+textId+'" placeholder="Nom du nouveau client"/>' +
+    '</div>';
+}
+
   // ── Modal: Devis Builder (multi-produits, creation ET edition) ──
   const devisBuilderBody =
     '<h3 id="modal-devis-title" style="font-family:Syne,sans-serif;font-size:14px;margin-bottom:12px">Nouveau Devis</h3>' +
-    fieldText('db-client','Client') +
+    fieldClientPicker('db-client-select','db-client') +
     fieldSelect('db-validite','Validite',['15 jours','30 jours','60 jours']) +
     '<div class="form-label" style="margin-top:10px">Produits</div>' +
     '<div id="devis-builder-lignes"></div>';
@@ -2740,7 +2951,7 @@ function buildModals2(){
   // ── Modal: Facture Builder (multi-produits, creation directe OU depuis devis, edition) ──
   const factureBuilderBody =
     '<h3 id="modal-facture-title" style="font-family:Syne,sans-serif;font-size:14px;margin-bottom:12px">Nouvelle Facture</h3>' +
-    fieldText('fb-client','Client') +
+    fieldClientPicker('fb-client-select','fb-client') +
     fieldSelect('fb-mode','Mode de paiement',['Especes','Virement','Cheque','Mobile Money','Carte bancaire']) +
     '<div class="form-label" style="margin-top:10px">Produits</div>' +
     '<div id="facture-builder-lignes"></div>';
@@ -3283,19 +3494,6 @@ function addFournisseur(){
   go('approv');
 }
 
-function addCommande(){
-  const fournisseur = el('cm-fournisseur').value;
-  const produits = el('cm-produits').value.trim();
-  if(!produits){ alert('Decrivez les produits commandes'); return; }
-  COMMANDES_FOURNISSEUR.unshift({
-    id: Date.now(), fournisseur: fournisseur, date: new Date().toLocaleDateString('fr-FR'),
-    produits: produits, montant: parseInt(el('cm-montant').value) || 0,
-    statut: el('cm-statut').value, entrepot: el('cm-entrepot').value
-  });
-  logAction('Commande fournisseur creee', fournisseur + ' — ' + produits, 'blue');
-  closeModal('modal-commande');
-  go('approv');
-}
 
 function addDemandeAchat(){
   const produit = el('da-produit').value;
@@ -3559,7 +3757,8 @@ function mapFournisseurFromDb(r){
 }
 function mapCommandeFromDb(r){
   return { id:r.id, fournisseur:r.fournisseur, date:r.date_cmd, produits:r.produits, montant:r.montant,
-    statut:r.statut, entrepot:r.entrepot };
+    statut:r.statut, entrepot:r.entrepot, lignes:r.lignes||[], stockReceptionne:r.stock_receptionne,
+    lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at, _dbSynced:true };
 }
 function mapDemandeAchatFromDb(r){
   return { id:r.id, produit:r.produit, qte:r.qte, motif:r.motif, demandeur:r.demandeur, etape:r.etape, date:r.date_demande };
@@ -4086,9 +4285,25 @@ wrapAfter('addFournisseur', function(){
   const f = FOURNISSEURS[FOURNISSEURS.length-1];
   if(f) dbInsert('fournisseurs', { id:f.id, nom:f.nom, contact:f.contact, tel:f.tel, email:f.email, adresse:f.adresse, paiement:f.paiement });
 });
-wrapAfter('addCommande', function(){
-  const c = COMMANDES_FOURNISSEUR[0];
-  if(c) dbInsert('commandes_fournisseur', { id:c.id, fournisseur:c.fournisseur, date_cmd:c.date, produits:c.produits, montant:c.montant, statut:c.statut, entrepot:c.entrepot });
+wrapAfter('saveCommandeBuilder', function(){
+  const cmd = COMMANDE_BUILDER_EDIT_ID ? COMMANDES_FOURNISSEUR.find(function(x){return x.id===COMMANDE_BUILDER_EDIT_ID;}) : COMMANDES_FOURNISSEUR[0];
+  if(!cmd) return;
+  const montant = typeof lignesTotalMontant === 'function' ? lignesTotalMontant(cmd.lignes||[]) : 0;
+  const produitsLabel = typeof lignesLabel === 'function' ? lignesLabel(cmd.lignes||[]) : '';
+  const payload = { fournisseur:cmd.fournisseur, date_cmd:cmd.date, produits:produitsLabel, montant:montant, statut:cmd.statut, entrepot:cmd.entrepot, lignes:cmd.lignes||[] };
+  if(cmd._dbSynced){
+    dbUpdate('commandes_fournisseur', cmd.id, payload);
+  } else {
+    dbInsert('commandes_fournisseur', Object.assign({ id:cmd.id }, payload));
+    cmd._dbSynced = true;
+  }
+});
+wrapAfter('receptionnerCommande', function(id){
+  const cmd = COMMANDES_FOURNISSEUR.find(function(x){return x.id===id;});
+  if(cmd) dbUpdate('commandes_fournisseur', cmd.id, { statut:cmd.statut, stock_receptionne:cmd.stockReceptionne });
+});
+wrapAfter('deleteCommande', function(id){
+  dbDelete('commandes_fournisseur', id);
 });
 wrapAfter('addDemandeAchat', function(){
   const d = DEMANDES_ACHAT[0];

@@ -77,7 +77,9 @@ const COLUMN_TYPES = {
   },
   commandes_fournisseur: {
     id: 'BIGINT', fournisseur: 'TEXT', date_cmd: 'TEXT', produits: 'TEXT', montant: 'INT',
-    statut: "TEXT DEFAULT 'Brouillon'", entrepot: 'TEXT', created_at: 'TIMESTAMP DEFAULT NOW()'
+    statut: "TEXT DEFAULT 'Brouillon'", entrepot: 'TEXT', lignes: "JSONB DEFAULT '[]'",
+    stock_receptionne: 'BOOLEAN DEFAULT false', last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP',
+    created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   demandes_achat: {
     id: 'BIGINT', produit: 'TEXT', qte: 'INT', motif: 'TEXT', demandeur: 'TEXT',
