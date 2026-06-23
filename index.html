@@ -3312,6 +3312,13 @@ function fieldClientPicker(selectId, textId){
   modals += modalShell('modal-reset-all', 'Confirmer la reinitialisation complete', resetAllBody,
     btnGhost('Annuler', "closeModal('modal-reset-all')") + '<button class="btn btn-red" onclick="confirmResetAllData()">Je confirme — Tout supprimer</button>');
 
+  // ── Modal: Restaurer une sauvegarde (Super Admin, confirmation par mot de passe) ──
+  const restoreBody =
+    '<div style="background:var(--red-light);border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;color:var(--red)">⚠️ Cette action remplace TOUTES les donnees actuelles (clients, ventes, stock, factures, depenses...) par celles de la sauvegarde du <strong id="restore-target-date"></strong>. Les comptes utilisateurs et mots de passe ne sont PAS modifies. Cette action est IRREVERSIBLE.</div>' +
+    fieldPassword('restore-pwd','Confirmez avec votre mot de passe Super Admin');
+  modals += modalShell('modal-restore', 'Confirmer la restauration', restoreBody,
+    btnGhost('Annuler', "closeModal('modal-restore')") + '<button class="btn btn-red" onclick="confirmRestoreBackup()">Je confirme — Restaurer cette sauvegarde</button>');
+
   el('app').insertAdjacentHTML('beforeend', modals);
 }
 
@@ -4667,7 +4674,10 @@ function refreshBackupHistory(){
         backups.map(function(b){
           const dateStr = new Date(b.created_at).toLocaleString('fr-FR');
           let actions = '<button class="btn btn-ghost btn-sm" onclick="downloadBackupSnapshot('+b.id+')">⬇️ Telecharger</button>';
-          if(isSuperAdmin()) actions += ' <button class="btn btn-ghost btn-sm" onclick="deleteBackupSnapshot('+b.id+')">🗑 Supprimer</button>';
+          if(isSuperAdmin()){
+            actions += ' <button class="btn btn-red btn-sm" onclick="openRestoreConfirm('+b.id+',\''+dateStr.replace(/'/g,"")+'\')">↺ Restaurer</button>';
+            actions += ' <button class="btn btn-ghost btn-sm" onclick="deleteBackupSnapshot('+b.id+')">🗑 Supprimer</button>';
+          }
           return '<tr><td class="td-bold">'+b.type+'</td><td class="td-muted">'+dateStr+'</td><td class="td-muted">'+b.taille+'</td><td>'+statusTag('Termine')+'</td><td>'+actions+'</td></tr>';
         }).join('') + '</tbody>';
   }).catch(function(){
@@ -4718,6 +4728,37 @@ function deleteBackupSnapshot(id){
     refreshBackupHistory();
   }).catch(function(){
     alert('Erreur reseau lors de la suppression.');
+  });
+}
+
+// ── Restore a backup snapshot back into the live tables ──────────────────────
+let RESTORE_TARGET_BACKUP_ID = null;
+
+function openRestoreConfirm(backupId, dateLabel){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut restaurer une sauvegarde.');
+  RESTORE_TARGET_BACKUP_ID = backupId;
+  const dateEl = el('restore-target-date');
+  if(dateEl) dateEl.textContent = dateLabel || ('#' + backupId);
+  const pwdEl = el('restore-pwd');
+  if(pwdEl) pwdEl.value = '';
+  openModal('modal-restore');
+}
+
+function confirmRestoreBackup(){
+  if(!RESTORE_TARGET_BACKUP_ID) return;
+  const pwd = el('restore-pwd').value;
+  if(!pwd){ alert('Entrez votre mot de passe pour confirmer.'); return; }
+
+  apiPost('/api/restore-backup', { email: CU.email, password: pwd, backupId: RESTORE_TARGET_BACKUP_ID, confirm: 'RESTORE' }).then(function(result){
+    if(!result.ok){
+      alert(result.data.error || 'Erreur lors de la restauration.');
+      return;
+    }
+    alert('Restauration reussie (' + (result.data.restored_tables ? result.data.restored_tables.length : 0) + ' tables). La page va se recharger pour afficher les donnees restaurees.');
+    RESTORE_TARGET_BACKUP_ID = null;
+    window.location.reload();
+  }).catch(function(){
+    alert('Erreur reseau lors de la restauration.');
   });
 }
 
