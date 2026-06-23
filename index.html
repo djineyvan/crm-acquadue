@@ -2281,11 +2281,44 @@ function deleteCommande(id){
   if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer une commande.');
   const cmd = COMMANDES_FOURNISSEUR.find(function(x){return String(x.id)===String(id);});
   if(!cmd) return;
+
   if(cmd.stockReceptionne){
-    if(!confirm('Cette commande a deja ete receptionnee (stock entre). La supprimer ne retirera PAS le stock deja entre. Continuer ?')) return;
+    if(!confirm('Cette commande a deja ete receptionnee. La supprimer va RETIRER automatiquement le stock physique correspondant (annulation complete de la reception). Continuer ?')) return;
+
+    const lignes = cmd.lignes || [];
+    let insufficientStock = [];
+    lignes.forEach(function(ligne){
+      const row = STOCK.find(function(s){return s.sku===ligne.sku && s.entrepot===cmd.entrepot;});
+      const dispoActuel = row ? (row.qte - (row.reserve||0)) : 0;
+      if(!row || dispoActuel < ligne.qte){
+        insufficientStock.push((PRODUITS.find(function(p){return p.sku===ligne.sku;})||{}).nom || ligne.sku);
+      }
+    });
+
+    if(insufficientStock.length > 0){
+      if(!confirm('Attention: le stock disponible est insuffisant pour retirer integralement ' + insufficientStock.join(', ') + ' (probablement deja revendu depuis). Le stock sera ramene a 0 pour ces produits plutot que negatif. Continuer ?')) return;
+    }
+
+    lignes.forEach(function(ligne){
+      const row = STOCK.find(function(s){return s.sku===ligne.sku && s.entrepot===cmd.entrepot;});
+      if(!row) return;
+      const before = row.qte;
+      row.qte = Math.max(0, row.qte - ligne.qte);
+      const actuallyRemoved = before - row.qte;
+      const p = PRODUITS.find(function(x){return x.sku===ligne.sku;});
+      MOUVEMENTS_STOCK.unshift({
+        id: Date.now() + Math.floor(Math.random()*1000), date: new Date().toLocaleDateString('fr-FR'),
+        type: 'Sortie', motif: 'Annulation reception', sku: ligne.sku, produit: p?p.nom:ligne.sku,
+        qte: actuallyRemoved, entrepot: cmd.entrepot, user: CU.nom
+      });
+      if(typeof dbInsert === 'function') dbInsert('mouvements_stock', { id:MOUVEMENTS_STOCK[0].id, date_mvt:MOUVEMENTS_STOCK[0].date, type:'Sortie', motif:'Annulation reception', sku:ligne.sku, produit:p?p.nom:ligne.sku, qte:actuallyRemoved, entrepot:cmd.entrepot, user_nom:CU.nom });
+      if(typeof syncStockRow === 'function') syncStockRow(row);
+    });
+    logAction('Stock retire (annulation reception)', cmd.fournisseur + ' — ' + lignesLabel(lignes), 'red');
   } else {
     if(!confirm('Confirmer la suppression de cette commande ?')) return;
   }
+
   const idx = COMMANDES_FOURNISSEUR.indexOf(cmd);
   COMMANDES_FOURNISSEUR.splice(idx,1);
   logAction('Commande supprimee', cmd.fournisseur, 'red');
@@ -2948,9 +2981,8 @@ function renderControle(c){
   el('tbl-sessions').innerHTML = '<thead><tr><th>Utilisateur</th><th>Appareil</th><th>IP</th><th>Debut session</th><th></th></tr></thead><tbody>' +
     SESSIONS_ACTIVES.map(function(s,i){ return '<tr><td class="td-bold">'+s.user+'</td><td class="td-muted">'+s.appareil+'</td><td class="td-muted">'+s.ip+'</td><td class="td-muted">'+s.debut+'</td><td><button class="btn btn-ghost btn-sm" onclick="forceDisconnect('+i+')">Deconnecter</button></td></tr>'; }).join('') + '</tbody>';
 
-  el('tbl-backups').innerHTML = '<thead><tr><th>Type</th><th>Date</th><th>Taille</th><th>Statut</th></tr></thead><tbody>' +
-    BACKUPS.map(function(b){ return '<tr><td class="td-bold">'+b.type+'</td><td class="td-muted">'+b.date+'</td><td class="td-muted">'+b.taille+'</td><td>'+statusTag(b.statut==="Reussie"?"Termine":b.statut)+'</td></tr>'; }).join('') +
-    '</tbody>' ;
+  el('tbl-backups').innerHTML = '<tbody><tr><td colspan="5" class="td-muted" style="padding:14px;text-align:center">Chargement de l\'historique des sauvegardes...</td></tr></tbody>';
+  refreshBackupHistory();
   el('tbl-backups').insertAdjacentHTML('afterend', '<div style="margin-top:10px;display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-ghost btn-sm" onclick="downloadFullBackup()">⬇️ Telecharger une sauvegarde complete (.json)</button><button class="btn btn-red btn-sm" onclick="runBackupNow()">Lancer une sauvegarde maintenant</button></div>');
 
   el('sensitive-matrix').innerHTML = '<table class="perm-table"><thead><tr><th>Action</th><th>Collab.</th><th>Resp.</th><th>Admin</th><th>S.Admin</th></tr></thead><tbody>' +
@@ -2967,12 +2999,6 @@ function forceDisconnect(idx){
     SESSIONS_ACTIVES.splice(idx,1);
     go('controle');
   }
-}
-
-function runBackupNow(){
-  BACKUPS.unshift({ type:"Manuelle", date:new Date().toLocaleString('fr-FR'), taille:(Math.random()*2+3).toFixed(1)+" MB", statut:"Reussie" });
-  logAction("Sauvegarde manuelle lancee", "Declenchee par "+CU.nom, "green");
-  go('controle');
 }
 
 function resetDeptPasswords(){
@@ -4298,7 +4324,27 @@ function bootstrapApp(){
       setTimeout(function(){ openModal('modal-force-pwd'); }, 200);
     }
     go('dash');
+    maybeRunDailyBackup();
   });
+}
+
+// Triggers an automatic backup once per calendar day, the first time a
+// Super Admin logs in that day. Silent — never interrupts the user, only
+// logs the outcome. Non-superadmins never trigger this (they typically
+// can't see the backup history anyway, kept consistent with that rule).
+function maybeRunDailyBackup(){
+  if(!isSuperAdmin()) return;
+  apiGet('/api/backup').then(function(result){
+    if(!result.ok || !result.data.backups) return;
+    const today = new Date().toLocaleDateString('fr-FR');
+    const alreadyDoneToday = result.data.backups.some(function(b){
+      return b.type === 'Automatique' && new Date(b.created_at).toLocaleDateString('fr-FR') === today;
+    });
+    if(alreadyDoneToday) return;
+    apiPost('/api/backup', { type: 'Automatique' }).then(function(r){
+      if(r.ok) logAction('Sauvegarde automatique', 'Sauvegarde quotidienne effectuee (' + (r.data.backup ? r.data.backup.taille : '') + ')', 'green');
+    }).catch(function(){});
+  }).catch(function(){});
 }
 
 // Try to auto-login from a saved session token when the page loads
@@ -4603,6 +4649,76 @@ function downloadFullBackup(){
   a.click();
   document.body.removeChild(a);
   logAction('Sauvegarde telechargee', CU.nom + ' a telecharge une sauvegarde complete de la base', 'blue');
+}
+
+// ── Real backup history (stored in DB, distinct from the file-download export above) ──
+function refreshBackupHistory(){
+  apiGet('/api/backup').then(function(result){
+    const tbl = el('tbl-backups');
+    if(!tbl) return; // user may have navigated away before this resolved
+    if(!result.ok || !result.data.backups){
+      tbl.innerHTML = '<tbody><tr><td colspan="5" class="td-muted" style="padding:14px;text-align:center">Impossible de charger l\'historique des sauvegardes.</td></tr></tbody>';
+      return;
+    }
+    const backups = result.data.backups;
+    tbl.innerHTML = backups.length === 0
+      ? '<tbody><tr><td colspan="5" class="td-muted" style="padding:14px;text-align:center">Aucune sauvegarde encore. Cliquez sur "Lancer une sauvegarde maintenant" pour creer la premiere.</td></tr></tbody>'
+      : '<thead><tr><th>Type</th><th>Date</th><th>Taille</th><th>Statut</th><th></th></tr></thead><tbody>' +
+        backups.map(function(b){
+          const dateStr = new Date(b.created_at).toLocaleString('fr-FR');
+          let actions = '<button class="btn btn-ghost btn-sm" onclick="downloadBackupSnapshot('+b.id+')">⬇️ Telecharger</button>';
+          if(isSuperAdmin()) actions += ' <button class="btn btn-ghost btn-sm" onclick="deleteBackupSnapshot('+b.id+')">🗑 Supprimer</button>';
+          return '<tr><td class="td-bold">'+b.type+'</td><td class="td-muted">'+dateStr+'</td><td class="td-muted">'+b.taille+'</td><td>'+statusTag('Termine')+'</td><td>'+actions+'</td></tr>';
+        }).join('') + '</tbody>';
+  }).catch(function(){
+    const tbl = el('tbl-backups');
+    if(tbl) tbl.innerHTML = '<tbody><tr><td colspan="5" class="td-muted" style="padding:14px;text-align:center">Erreur reseau lors du chargement de l\'historique.</td></tr></tbody>';
+  });
+}
+
+function runBackupNow(){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut declencher une sauvegarde.');
+  apiPost('/api/backup', { type: 'Manuelle' }).then(function(result){
+    if(!result.ok){
+      alert(result.data.error || 'Erreur lors de la sauvegarde.');
+      return;
+    }
+    logAction('Sauvegarde manuelle lancee', 'Declenchee par ' + CU.nom + ' (' + (result.data.backup?result.data.backup.taille:'') + ')', 'green');
+    refreshBackupHistory();
+  }).catch(function(){
+    alert('Erreur reseau lors de la sauvegarde.');
+  });
+}
+
+function downloadBackupSnapshot(id){
+  apiGet('/api/backup?id=' + id).then(function(result){
+    if(!result.ok || !result.data.backup){
+      alert('Impossible de recuperer cette sauvegarde.');
+      return;
+    }
+    const b = result.data.backup;
+    const blob = new Blob([JSON.stringify(b.payload, null, 2)], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sauvegarde-crm-' + b.type.toLowerCase() + '-' + new Date(b.created_at).toISOString().slice(0,10) + '.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }).catch(function(){
+    alert('Erreur reseau lors du telechargement.');
+  });
+}
+
+function deleteBackupSnapshot(id){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer une sauvegarde de l\'historique.');
+  if(!confirm('Supprimer cette sauvegarde de l\'historique ? (le reste de vos donnees n\'est pas affecte)')) return;
+  apiDelete('/api/backup', { id: id }).then(function(result){
+    if(!result.ok){ alert(result.data.error || 'Erreur lors de la suppression.'); return; }
+    logAction('Sauvegarde supprimee de l\'historique', 'ID #' + id, 'red');
+    refreshBackupHistory();
+  }).catch(function(){
+    alert('Erreur reseau lors de la suppression.');
+  });
 }
 
 // ── Initialize DB schema + attempt auto-login on first page load ───────────
