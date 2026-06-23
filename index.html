@@ -918,7 +918,7 @@ function advancePipelineStage(id){
   }
   // Keep Clients & Prospects in sync at every stage change, not just at creation.
   if(typeof ensureClientExists === 'function' && typeof pipelineEtapeToClientStatut === 'function'){
-    ensureClientExists(p.nom, p.qte + 'x ' + p.sku, pipelineEtapeToClientStatut(nextStage), p.type);
+    ensureClientExists(p.nom, p.qte + 'x ' + p.sku, pipelineEtapeToClientStatut(nextStage), p.type, p.ville);
   }
   closeModal('modal-detail');
   go('pipe');
@@ -942,7 +942,7 @@ function markPipelineLost(id){
   stampModification(p);
   logAction('Opportunite perdue', p.nom + ' — etape precedente: ' + etapePrecedente, 'red');
   if(typeof ensureClientExists === 'function' && typeof pipelineEtapeToClientStatut === 'function'){
-    ensureClientExists(p.nom, p.qte + 'x ' + p.sku, pipelineEtapeToClientStatut('Perdu'), p.type);
+    ensureClientExists(p.nom, p.qte + 'x ' + p.sku, pipelineEtapeToClientStatut('Perdu'), p.type, p.ville);
   }
   closeModal('modal-detail');
   go('pipe');
@@ -1729,7 +1729,7 @@ function triggerPipelineWon(pipelineEntry){
   // a client record automatically, same as a paid invoice does.
   if(typeof ensureClientExists === 'function'){
     const produitLabel = pipelineEntry.qte + 'x ' + pipelineEntry.sku;
-    ensureClientExists(pipelineEntry.nom, produitLabel, 'Client actif', pipelineEntry.type);
+    ensureClientExists(pipelineEntry.nom, produitLabel, 'Client actif', pipelineEntry.type, pipelineEntry.ville);
   }
   return ok;
 }
@@ -2336,7 +2336,7 @@ function prixApresRemise(produit, qte, prixBase){
 // name already exists, update its produit/statut/date; otherwise create a new
 // client record automatically. This keeps "Clients & Prospects" in sync with
 // every sale, without requiring the user to manage two separate forms.
-function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType){
+function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType, ville){
   if(!nomClient) return;
   let cl = CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === nomClient.trim().toLowerCase(); });
   const todayStr = new Date().toLocaleDateString('fr-FR');
@@ -2345,13 +2345,14 @@ function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType)
     // Existing client: refresh status/product, never downgrade an already-active client by accident
     if(produitLabel) cl.produit = produitLabel;
     if(statutSouhaite) cl.statut = statutSouhaite;
+    if(ville) cl.ville = ville;
     stampModification(cl);
     if(typeof dbUpdate === 'function'){
-      dbUpdate('clients', cl.id, { produit: cl.produit, statut: cl.statut, last_modified_by: cl.lastModifiedBy, last_modified_at: cl.lastModifiedAt });
+      dbUpdate('clients', cl.id, { produit: cl.produit, statut: cl.statut, ville: cl.ville, last_modified_by: cl.lastModifiedBy, last_modified_at: cl.lastModifiedAt });
     }
   } else {
     cl = {
-      id: Date.now(), nom: nomClient, type: clientType || 'B2C', ville: CU ? CU.ville : 'Niamey', zone: '',
+      id: Date.now(), nom: nomClient, type: clientType || 'B2C', ville: ville || (CU ? CU.ville : 'Niamey'), zone: '',
       tel: '', email: '', societe: '', source: 'Devis/Facturation', statut: statutSouhaite || 'Client actif',
       produit: produitLabel || '-', asg: CU ? CU.nom : '-', date: todayStr, locked: false, historique: []
     };
@@ -3647,7 +3648,7 @@ function addProspect(){
   // fix for prospects being invisible outside the Pipeline screen.
   if(typeof ensureClientExists === 'function'){
     const produitLabel = p.qte + 'x ' + p.sku;
-    ensureClientExists(nom, produitLabel, pipelineEtapeToClientStatut(etape), p.type);
+    ensureClientExists(nom, produitLabel, pipelineEtapeToClientStatut(etape), p.type, p.ville);
   }
   logAction('Prospect ajoute au pipeline', nom + ' — ' + p.ville + ' — ' + fcfa(p.val), 'gold');
   closeModal('modal-prospect');
