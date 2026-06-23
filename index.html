@@ -912,7 +912,7 @@ function renderPipe(c){
 }
 
 function viewPipeCard(id){
-  const p = PIPELINE.find(function(x){return x.id===id;});
+  const p = PIPELINE.find(function(x){return String(x.id)===String(id);});
   if(!p) return;
   const produit = PRODUITS.find(function(x){return x.sku===p.sku;});
   const rows = [
@@ -930,7 +930,7 @@ function viewPipeCard(id){
   ];
 
   if(isSuperAdmin() && p.etape !== 'Gagne' && p.etape !== 'Perdu'){
-    rows.push(['Action', '<button class="btn btn-red btn-sm" onclick="advancePipelineStage(' + p.id + ')">Faire avancer a l\'etape suivante →</button>']);
+    rows.push(['Action', '<button class="btn btn-red btn-sm" onclick="advancePipelineStage(' + p.id + ')">Faire avancer a l\'etape suivante →</button> <button class="btn btn-ghost btn-sm" onclick="markPipelineLost(' + p.id + ')">✗ Marquer perdu</button>']);
   }
   if(p.lastModifiedBy){
     rows.push(['Derniere modification', modStampHtml(p)]);
@@ -953,7 +953,7 @@ function viewPipeCard(id){
 
 function advancePipelineStage(id){
   if(!isSuperAdmin()) return alert('Seul le Super Admin peut faire progresser une opportunite.');
-  const p = PIPELINE.find(function(x){return x.id===id;});
+  const p = PIPELINE.find(function(x){return String(x.id)===String(id);});
   if(!p) return;
   const idx = PIPELINE_STAGES.indexOf(p.etape);
   if(idx < 0 || idx >= PIPELINE_STAGES.length - 2) return; // already at Gagne/Perdu boundary
@@ -971,6 +971,27 @@ function advancePipelineStage(id){
   } else {
     logAction('Pipeline — etape avancee', p.nom + ' → ' + nextStage, 'blue');
   }
+  closeModal('modal-detail');
+  go('pipe');
+}
+
+function markPipelineLost(id){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut marquer une opportunite comme perdue.');
+  const p = PIPELINE.find(function(x){return String(x.id)===String(id);});
+  if(!p) return;
+  if(p.etape === 'Gagne' || p.etape === 'Perdu') return;
+
+  const etapePrecedente = p.etape;
+  if(p.reservationFaite){
+    const row = STOCK.find(function(s){return s.sku===p.sku && s.entrepot===p.entrepot;});
+    if(row){ row.reserve = Math.max(0, (row.reserve||0) - p.qte); if(typeof syncStockRow==='function') syncStockRow(row); }
+    p.reservationFaite = false;
+    logAction('Reservation liberee', p.nom + ' — opportunite perdue, stock libere', 'gold');
+  }
+
+  p.etape = 'Perdu';
+  stampModification(p);
+  logAction('Opportunite perdue', p.nom + ' — etape precedente: ' + etapePrecedente, 'red');
   closeModal('modal-detail');
   go('pipe');
 }
@@ -1168,7 +1189,7 @@ function renderClients(c){
 }
 
 function viewClientDetail(id){
-  const cl = CLIENTS.find(function(x){return x.id===id;});
+  const cl = CLIENTS.find(function(x){return String(x.id)===String(id);});
   if(!cl) return;
   const histo = (cl.historique||[]).map(function(h){ return '<div style="padding:4px 0;border-bottom:1px solid var(--border);font-size:12px"><strong>'+h.type+'</strong> — '+h.date+' : '+h.note+'</div>'; }).join('') || '<div class="td-muted">Aucun historique enregistre</div>';
   const rows = [
@@ -1248,7 +1269,7 @@ function renderTaches(c){
 }
 
 function markTaskDone(id){
-  const t = TASKS.find(function(x){return x.id===id;});
+  const t = TASKS.find(function(x){return String(x.id)===String(id);});
   const isOwnTask = t && (t.asg === CU.nom || t.asg === "Toute l'equipe");
   if(t && isOwnTask){
     t.statut = "Termine";
@@ -1258,7 +1279,7 @@ function markTaskDone(id){
 }
 
 function viewTaskDetail(id){
-  const t = TASKS.find(function(x){return x.id===id;});
+  const t = TASKS.find(function(x){return String(x.id)===String(id);});
   if(!t) return;
   const rows = [
     ['Titre', '<strong>'+t.titre+'</strong>'],
@@ -1345,7 +1366,7 @@ function handleDocUpload(input){
 }
 
 function downloadDocument(id){
-  const doc = DOCUMENTS.find(function(x){return x.id===id;});
+  const doc = DOCUMENTS.find(function(x){return String(x.id)===String(id);});
   if(!doc) return;
   if(!doc.data){ alert('Le contenu de ce document n\'est plus disponible (peut-etre televerse avant la mise a jour du stockage).'); return; }
   const a = document.createElement('a');
@@ -1356,7 +1377,7 @@ function downloadDocument(id){
 
 function deleteDocument(id){
   if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer un document.');
-  const doc = DOCUMENTS.find(function(x){return x.id===id;});
+  const doc = DOCUMENTS.find(function(x){return String(x.id)===String(id);});
   if(!doc) return;
   if(!confirm('Confirmer la suppression de "'+doc.nom+'" ?')) return;
   const idx = DOCUMENTS.indexOf(doc);
@@ -1545,7 +1566,7 @@ function renderUsers(c){
 
 function toggleUserActive(id){
   if(!isSuperAdmin()) return;
-  const u = USERS.find(function(x){return x.id===id;});
+  const u = USERS.find(function(x){return String(x.id)===String(id);});
   if(u){
     u.actif = !u.actif;
     logAction(u.actif ? "Utilisateur active" : "Utilisateur desactive", u.nom + " - " + u.email, u.actif?"green":"red");
@@ -1555,7 +1576,7 @@ function toggleUserActive(id){
 
 function unlockUser(id){
   if(!isSuperAdmin()) return;
-  const u = USERS.find(function(x){return x.id===id;});
+  const u = USERS.find(function(x){return String(x.id)===String(id);});
   if(u){
     u.verrouille = false; u.tentatives = 0;
     logAction("Compte deverrouille", u.nom + " - " + u.email, "green");
@@ -1565,7 +1586,7 @@ function unlockUser(id){
 
 function revealPassword(id){
   if(!canSeePasswords()) return alert("Seul le Super Admin peut consulter les mots de passe.");
-  const u = USERS.find(function(x){return x.id===id;});
+  const u = USERS.find(function(x){return String(x.id)===String(id);});
   if(u){
     logAction("Mot de passe consulte", "Super Admin a consulte le mot de passe de " + u.nom, "gold");
     alert("Mot de passe de " + u.nom + " :\\n\\n" + u.pass + "\\n\\n⚠️ Cette consultation a ete enregistree dans le journal d'audit.");
@@ -1575,7 +1596,7 @@ function revealPassword(id){
 let resetPwdTargetId = null;
 function openResetPwd(id){
   resetPwdTargetId = id;
-  const u = USERS.find(function(x){return x.id===id;});
+  const u = USERS.find(function(x){return String(x.id)===String(id);});
   el('reset-pwd-username').textContent = u.nom;
   el('reset-pwd-new').value = '';
   el('reset-pwd-force').checked = true;
@@ -1687,11 +1708,11 @@ function renderRH(c){
 }
 
 function approveConge(id){
-  const cg = RH_CONGES.find(function(x){return x.id===id;});
+  const cg = RH_CONGES.find(function(x){return String(x.id)===String(id);});
   if(cg){ cg.statut = "Approuve"; logAction("Conge approuve", cg.nom + " - " + cg.debut + " au " + cg.fin, "green"); go('rh'); }
 }
 function rejectConge(id){
-  const cg = RH_CONGES.find(function(x){return x.id===id;});
+  const cg = RH_CONGES.find(function(x){return String(x.id)===String(id);});
   if(cg){ cg.statut = "Refuse"; logAction("Conge refuse", cg.nom + " - " + cg.debut + " au " + cg.fin, "red"); go('rh'); }
 }
 
@@ -1788,6 +1809,12 @@ function triggerPipelineWon(pipelineEntry){
     pipelineEntry.reservationFaite = true;
   } else {
     NOTIFICATIONS.unshift({ id:Date.now(), icon:'⚠️', text:'Stock insuffisant pour reserver la vente: '+pipelineEntry.nom, time:"A l'instant", read:false, target:'all' });
+  }
+  // Close the Pipeline-Gagne -> Clients gap: a won opportunity should produce
+  // a client record automatically, same as a paid invoice does.
+  if(typeof ensureClientExists === 'function'){
+    const produitLabel = pipelineEntry.qte + 'x ' + pipelineEntry.sku;
+    ensureClientExists(pipelineEntry.nom, produitLabel, 'Client actif', pipelineEntry.type);
   }
   return ok;
 }
@@ -1969,7 +1996,7 @@ function openEntrepotCreate(){
 let ENTREPOT_EDIT_ID = null;
 function openEntrepotEdit(id){
   if(!isSuperAdmin()) return;
-  const e = ENTREPOTS.find(function(x){return x.id===id;});
+  const e = ENTREPOTS.find(function(x){return String(x.id)===String(id);});
   if(!e) return;
   ENTREPOT_EDIT_ID = id;
   el('en-nom').value = e.nom;
@@ -1981,7 +2008,7 @@ function openEntrepotEdit(id){
 
 function deleteEntrepot(id){
   if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer un entrepot.');
-  const e = ENTREPOTS.find(function(x){return x.id===id;});
+  const e = ENTREPOTS.find(function(x){return String(x.id)===String(id);});
   if(!e) return;
   const inUse = STOCK.some(function(s){return s.entrepot===e.nom && (s.qte>0 || (s.reserve||0)>0);});
   if(inUse){
@@ -2080,7 +2107,7 @@ function viewStockDetail(sku, entrepot){
 function deleteMovement(id){
   if(!canDeleteMovement()) return alert("Seul le Super Admin peut supprimer un mouvement de stock.");
   if(!confirm("Confirmer la suppression de ce mouvement ?")) return;
-  const idx = MOUVEMENTS_STOCK.findIndex(function(m){return m.id===id;});
+  const idx = MOUVEMENTS_STOCK.findIndex(function(m){return String(m.id)===String(id);});
   if(idx>=0){
     const m = MOUVEMENTS_STOCK[idx];
     logAction("Mouvement de stock supprime", m.produit+' — '+m.qte+' unites — '+m.date, "red");
@@ -2141,7 +2168,7 @@ function renderApprov(c){
 }
 
 function viewCommandeDetail(id){
-  const cmd = COMMANDES_FOURNISSEUR.find(function(x){return x.id===id;});
+  const cmd = COMMANDES_FOURNISSEUR.find(function(x){return String(x.id)===String(id);});
   if(!cmd) return;
   const lignes = cmd.lignes || [];
   const rows = [
@@ -2252,7 +2279,7 @@ function saveCommandeBuilder(){
 
 function deleteCommande(id){
   if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer une commande.');
-  const cmd = COMMANDES_FOURNISSEUR.find(function(x){return x.id===id;});
+  const cmd = COMMANDES_FOURNISSEUR.find(function(x){return String(x.id)===String(id);});
   if(!cmd) return;
   if(cmd.stockReceptionne){
     if(!confirm('Cette commande a deja ete receptionnee (stock entre). La supprimer ne retirera PAS le stock deja entre. Continuer ?')) return;
@@ -2268,7 +2295,7 @@ function deleteCommande(id){
 
 // Reception d'une commande: fait REELLEMENT entrer le stock (le lien manquant signale par l'utilisateur)
 function receptionnerCommande(id){
-  const cmd = COMMANDES_FOURNISSEUR.find(function(x){return x.id===id;});
+  const cmd = COMMANDES_FOURNISSEUR.find(function(x){return String(x.id)===String(id);});
   if(!cmd) return;
   if(cmd.stockReceptionne){ alert('Cette commande a deja ete receptionnee.'); return; }
   const lignes = cmd.lignes || [];
@@ -2318,7 +2345,7 @@ function renderAchats(c){
 
 function advanceAchat(id){
   const etapes = ["Demande","Validation","Commande","Reception","Paiement"];
-  const d = DEMANDES_ACHAT.find(function(x){return x.id===id;});
+  const d = DEMANDES_ACHAT.find(function(x){return String(x.id)===String(id);});
   if(d){
     const idx = etapes.indexOf(d.etape);
     if(idx < etapes.length-1){
@@ -3441,7 +3468,7 @@ function renderDepenses(c){
 }
 
 function viewDepenseDetail(id){
-  const d = DEPENSES.find(function(x){return x.id===id;});
+  const d = DEPENSES.find(function(x){return String(x.id)===String(id);});
   if(!d) return;
   const rows = [
     ['Libelle', '<strong>'+d.libelle+'</strong>'],
@@ -3459,7 +3486,7 @@ function viewDepenseDetail(id){
 let DEPENSE_EDIT_ID = null;
 function openDepenseBuilder(id){
   DEPENSE_EDIT_ID = id;
-  const existing = id ? DEPENSES.find(function(x){return x.id===id;}) : null;
+  const existing = id ? DEPENSES.find(function(x){return String(x.id)===String(id);}) : null;
   el('dp-libelle').value = existing ? existing.libelle : '';
   el('dp-categorie').value = existing ? existing.categorie : CATEGORIES_DEPENSES[0];
   el('dp-montant').value = existing ? existing.montant : '';
@@ -3783,7 +3810,7 @@ function openFournisseurCreate(){
 
 function openFournisseurEdit(id){
   if(!isSuperAdmin()) return;
-  const f = FOURNISSEURS.find(function(x){return x.id===id;});
+  const f = FOURNISSEURS.find(function(x){return String(x.id)===String(id);});
   if(!f) return;
   FOURNISSEUR_EDIT_ID = id;
   el('fo-nom').value = f.nom; el('fo-contact').value = f.contact; el('fo-tel').value = f.tel;
@@ -3794,7 +3821,7 @@ function openFournisseurEdit(id){
 
 function deleteFournisseur(id){
   if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer un fournisseur.');
-  const f = FOURNISSEURS.find(function(x){return x.id===id;});
+  const f = FOURNISSEURS.find(function(x){return String(x.id)===String(id);});
   if(!f) return;
   const inUse = COMMANDES_FOURNISSEUR.some(function(c){return c.fournisseur===f.nom;});
   if(inUse){
@@ -4350,7 +4377,7 @@ function doLogout(){
 // ── DB-backed: reveal password (Super Admin only) ──
 function revealPassword(id){
   if(!canSeePasswords()) return alert("Seul le Super Admin peut consulter les mots de passe.");
-  const u = USERS.find(function(x){ return x.id === id; });
+  const u = USERS.find(function(x){ return String(x.id)===String(id); });
   if(!u) return;
   apiGet('/api/users?reveal=' + encodeURIComponent(u.email) + '&requestedBy=' + encodeURIComponent(CU.nom)).then(function(result){
     if(result.ok && result.data.revealedPassword){
@@ -4365,7 +4392,7 @@ function toggleUserActive(id){
   if(!isSuperAdmin()) return;
   apiPut('/api/users', { id:id, action:'toggle_active', requestedBy: CU.nom }).then(function(result){
     if(result.ok){
-      const u = USERS.find(function(x){return x.id===id;});
+      const u = USERS.find(function(x){return String(x.id)===String(id);});
       if(u) u.actif = result.data.actif;
       go('users');
     }
@@ -4376,7 +4403,7 @@ function unlockUser(id){
   if(!isSuperAdmin()) return;
   apiPut('/api/users', { id:id, action:'unlock', requestedBy: CU.nom }).then(function(result){
     if(result.ok){
-      const u = USERS.find(function(x){return x.id===id;});
+      const u = USERS.find(function(x){return String(x.id)===String(id);});
       if(u){ u.verrouille = false; u.tentatives = 0; }
       go('users');
     }
@@ -4625,7 +4652,7 @@ wrapAfter('addProspect', function(){
     reservation_faite:p.reservationFaite });
 });
 wrapAfter('advancePipelineStage', function(id){
-  const p = PIPELINE.find(function(x){return x.id===id;});
+  const p = PIPELINE.find(function(x){return String(x.id)===String(id);});
   if(p) dbUpdate('pipeline', id, { etape:p.etape, reservation_faite:p.reservationFaite,
     last_modified_by:p.lastModifiedBy, last_modified_at:p.lastModifiedAt });
 });
@@ -4703,7 +4730,7 @@ wrapAfter('saveCommandeBuilder', function(){
   }
 });
 wrapAfter('receptionnerCommande', function(id){
-  const cmd = COMMANDES_FOURNISSEUR.find(function(x){return x.id===id;});
+  const cmd = COMMANDES_FOURNISSEUR.find(function(x){return String(x.id)===String(id);});
   if(cmd) dbUpdate('commandes_fournisseur', cmd.id, { statut:cmd.statut, stock_receptionne:cmd.stockReceptionne });
 });
 wrapAfter('deleteCommande', function(id){
@@ -4718,7 +4745,7 @@ wrapAfter('createPurchaseRequest', function(){
   if(d) dbInsert('demandes_achat', { id:d.id, produit:d.produit, qte:d.qte, motif:d.motif, demandeur:d.demandeur, etape:d.etape, date_demande:d.date });
 });
 wrapAfter('advanceAchat', function(id){
-  const d = DEMANDES_ACHAT.find(function(x){return x.id===id;});
+  const d = DEMANDES_ACHAT.find(function(x){return String(x.id)===String(id);});
   if(d) dbUpdate('demandes_achat', id, { etape:d.etape });
 });
 wrapAfter('addInventaire', function(){
