@@ -38,7 +38,7 @@ const COLUMN_TYPES = {
     last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP', created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   comm_perf: {
-    nom: 'TEXT', ville: 'TEXT', zone: 'TEXT', obj: 'INT DEFAULT 0', ventes: 'INT DEFAULT 0',
+    id: 'BIGINT', nom: 'TEXT', ville: 'TEXT', zone: 'TEXT', obj: 'INT DEFAULT 0', ventes: 'INT DEFAULT 0',
     nb: 'INT DEFAULT 0', tx: 'NUMERIC DEFAULT 5', date_enregistrement: 'TEXT',
     historique_modifs: "JSONB DEFAULT '[]'", created_at: 'TIMESTAMP DEFAULT NOW()'
   },
@@ -232,14 +232,26 @@ module.exports = async function handler(req, res) {
           [table, pk]
         );
         if (!hasPk || hasPk.length === 0) {
-          // De-duplicate existing rows on this column first (keep the most recent),
+          // If the id column was just added via ADD COLUMN IF NOT EXISTS
+          // (e.g. a table like comm_perf that never had one before), every
+          // existing row has id = NULL. A PRIMARY KEY constraint rejects
+          // NULLs outright, so backfill each NULL id with a unique value
+          // BEFORE adding the constraint, or the ALTER TABLE below silently
+          // fails and the table is left without a working primary key —
+          // which then makes every insert/update on that table fail.
+          await sql.query(
+            'UPDATE ' + table + ' SET ' + pk + ' = (extract(epoch from clock_timestamp()) * 1000000 + (random()*1000)::int)::bigint ' +
+            'WHERE ' + pk + ' IS NULL'
+          );
+          // De-duplicate existing rows on this column next (keep the most recent),
           // otherwise adding a PK/UNIQUE constraint would fail on duplicate values.
           await sql.query(
             'DELETE FROM ' + table + ' a USING ' + table + ' b ' +
             'WHERE a.' + pk + ' = b.' + pk + ' AND a.ctid < b.ctid'
           );
+          await sql.query('ALTER TABLE ' + table + ' ALTER COLUMN ' + pk + ' SET NOT NULL');
           await sql.query('ALTER TABLE ' + table + ' ADD CONSTRAINT ' + table + '_' + pk + '_pkey PRIMARY KEY (' + pk + ')');
-          healed.push(table + ': added missing PRIMARY KEY on ' + pk);
+          healed.push(table + ': added missing PRIMARY KEY on ' + pk + ' (backfilled any NULL ids first)');
         }
       } catch (e) {
         healed.push(table + '.PRIMARY_KEY -> ' + e.message);

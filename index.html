@@ -424,7 +424,9 @@ function lockBadge(){
 
 function roleBadgeHtml(role){
   const map = { superadmin:"role-superadmin", admin:"role-admin", responsable:"role-responsable", collaborateur:"role-member" };
-  return '<span class="role-badge ' + map[role] + '">' + ROLE_LABELS[role] + '</span>';
+  const cssClass = map[role] || "role-member";
+  const label = ROLE_LABELS[role] || ("⚠️ Role inconnu (" + role + ")");
+  return '<span class="role-badge ' + cssClass + '">' + label + '</span>';
 }
 
 function fmtDate(d){
@@ -511,13 +513,10 @@ function modStampHtml(record){
 }
 
 // ── AUDIT LOGGING ─────────────────────────────────────────────────────────────
-function logAction(action, detail, color, user){
-  const u = user || CU;
-  AUDIT.unshift({
-    ts: new Date(), user: u.nom, dept: u.departement, action: action, detail: detail,
-    color: "dot-" + color, ini: u.ini, col: u.col, ip: "41.138." + Math.floor(Math.random()*200) + "." + Math.floor(Math.random()*255)
-  });
-}
+// logAction() is defined in db-bridge.js (persists to /api/audit). Keeping
+// only one definition here avoids a critical risk: an in-memory-only
+// duplicate could silently win if file load order ever changed, making the
+// entire audit trail non-persistent without any visible error.
 
 // ── PASSWORD VALIDATION (8 car, 1 maj, 1 chiffre, 1 special) ─────────────────
 function validatePassword(pwd){
@@ -546,65 +545,11 @@ function fillLogin(email, pass){
   el("li-pass").value = pass;
 }
 
-function doLogin(){
-  const email = el("li-user").value.trim();
-  const pass = el("li-pass").value.trim();
-  const user = USERS.find(function(u){ return u.email === email; });
-
-  el("li-error").style.display = "none";
-  el("li-lock").style.display = "none";
-
-  if(!user){
-    el("li-error").style.display = "block";
-    return;
-  }
-  if(user.verrouille){
-    el("li-lock").style.display = "block";
-    return;
-  }
-  if(!user.actif){
-    el("li-error").textContent = "Ce compte a ete desactive. Contactez votre administrateur.";
-    el("li-error").style.display = "block";
-    return;
-  }
-  if(user.pass !== pass){
-    user.tentatives = (user.tentatives || 0) + 1;
-    if(user.tentatives >= MAX_TENTATIVES){
-      user.verrouille = true;
-      logAction("Compte verrouille", user.nom + " - trop de tentatives echouees", "red", user);
-      el("li-lock").style.display = "block";
-    } else {
-      el("li-error").textContent = "Mot de passe incorrect (" + user.tentatives + "/" + MAX_TENTATIVES + " tentatives).";
-      el("li-error").style.display = "block";
-    }
-    return;
-  }
-
-  // Successful login
-  user.tentatives = 0;
-  user.dernierLogin = new Date();
-  CU = user;
-  buildApp();
-  el("login-screen").style.display = "none";
-  el("app").classList.add("on");
-  logAction("Connexion", user.nom + " s'est connecte(e)", "green", user);
-
-  if(user.doitChangerPass){
-    setTimeout(function(){ openModal("modal-force-pwd"); }, 200);
-  }
-  go("dash");
-}
-
-function doLogout(){
-  logAction("Deconnexion", CU.nom + " s'est deconnecte(e)", "red", CU);
-  CU = null;
-  el("login-screen").style.display = "flex";
-  el("app").classList.remove("on");
-  el("app").innerHTML = "";
-  el("li-user").value = "";
-  el("li-pass").value = "";
-  el("li-error").style.display = "none";
-}
+// doLogin() and doLogout() are defined in db-bridge.js. They call /api/login
+// for real authentication and session-token management — the versions that
+// used to live here compared against USERS[].pass, which loadUsersFromDb()
+// deliberately never populates client-side, so they could never have worked
+// correctly if file load order ever put them in charge.
 
 // ════════════════════════════════════════════════════════════════════════════
 // UI BUILDER — builds the whole #app DOM via JS (avoids template literal bugs)
@@ -1107,11 +1052,14 @@ function saveTeamEdit(){
 // ── EQUIPE MARKETING ──────────────────────────────────────────────────────────
 function renderMkt(c){
   let h = '<div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">';
-  h += '<div class="tabs"><button class="tab active" onclick="switchTab(this,\'tm\',\'c\')">Campagnes</button><button class="tab" onclick="switchTab(this,\'tm\',\'k\')">KPIs & ROI</button></div>';
+  h += '<div class="tabs"><button class="tab active" onclick="switchTab(this,\'tm\',\'c\')">Campagnes</button><button class="tab" onclick="switchTab(this,\'tm\',\'k\')">KPIs & ROI</button><button class="tab" onclick="switchTab(this,\'tm\',\'m\')">Membres</button></div>';
+  h += '<div style="display:flex;gap:6px">';
+  if(canManageUsers()) h += '<button class="btn btn-ghost btn-sm" onclick="openModal(\'modal-membre\')">+ Membre</button>';
   h += '<button class="btn btn-red btn-sm" onclick="openModal(\'modal-campagne\')">+ Campagne</button>';
-  h += '</div>';
+  h += '</div></div>';
   h += '<div id="tm-c"><div class="grid2" id="camp-grid"></div></div>';
   h += '<div id="tm-k" style="display:none"><div class="card"><div id="kpi-mkt"></div></div></div>';
+  h += '<div id="tm-m" style="display:none"><div class="card"><div class="table-wrap"><table id="tbl-mkt-membres"></table></div></div></div>';
   c.innerHTML = h;
 
   el('camp-grid').innerHTML = CAMPAGNES.map(function(cp){
@@ -1128,16 +1076,28 @@ function renderMkt(c){
     '<table><thead><tr><th>Campagne</th><th>Canal</th><th>Leads</th><th>Cout/Lead</th><th>Responsable</th></tr></thead><tbody>' +
     CAMPAGNES.map(function(cp){ return '<tr><td class="td-bold">'+cp.nom+'</td><td class="td-muted">'+cp.canal+'</td><td>'+cp.leads+'</td><td>'+(cp.cout_lead>0?fcfa(cp.cout_lead):'Gratuit')+'</td><td class="td-muted">'+cp.resp+'</td></tr>'; }).join('') +
     '</tbody></table>';
+
+  const mktMembres = USERS.filter(function(u){ return u.departement === 'Marketing'; });
+  el('tbl-mkt-membres').innerHTML = mktMembres.length === 0
+    ? '<tbody><tr><td colspan="5" class="td-muted" style="padding:14px;text-align:center">Aucun membre dans l\'equipe Marketing encore.</td></tr></tbody>'
+    : '<thead><tr><th>Membre</th><th>Role</th><th>Ville</th><th>Email</th><th>Enregistre le</th></tr></thead><tbody>' +
+      mktMembres.map(function(u){
+        const regDate = u.dateEnregistrement ? new Date(u.dateEnregistrement).toLocaleDateString('fr-FR') : '-';
+        return '<tr><td class="td-bold">'+u.nom+(u.verrouille?' 🔒':'')+(!u.actif?' (inactif)':'')+'</td><td>'+roleBadgeHtml(u.role)+'</td><td class="td-muted">'+u.ville+'</td><td class="td-muted">'+u.email+'</td><td class="td-muted">'+regDate+'</td></tr>';
+      }).join('') + '</tbody>';
 }
 
 // ── EQUIPE COMMUNICATION (calendrier editorial + workflow validation) ──────
 function renderCom(c){
   let h = '<div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">';
-  h += '<div class="tabs"><button class="tab active" onclick="switchTab(this,\'tk\',\'p\')">Publications</button><button class="tab" onclick="switchTab(this,\'tk\',\'w\')">Workflow validation</button></div>';
+  h += '<div class="tabs"><button class="tab active" onclick="switchTab(this,\'tk\',\'p\')">Publications</button><button class="tab" onclick="switchTab(this,\'tk\',\'w\')">Workflow validation</button><button class="tab" onclick="switchTab(this,\'tk\',\'m\')">Membres</button></div>';
+  h += '<div style="display:flex;gap:6px">';
+  if(canManageUsers()) h += '<button class="btn btn-ghost btn-sm" onclick="openModal(\'modal-membre\')">+ Membre</button>';
   h += '<button class="btn btn-red btn-sm" onclick="openModal(\'modal-publication\')">+ Publication</button>';
-  h += '</div>';
+  h += '</div></div>';
   h += '<div id="tk-p"><div class="card"><div class="table-wrap"><table id="tbl-pub"></table></div></div></div>';
   h += '<div id="tk-w" style="display:none"><div class="card"><div id="workflow-view"></div></div></div>';
+  h += '<div id="tk-m" style="display:none"><div class="card"><div class="table-wrap"><table id="tbl-com-membres"></table></div></div></div>';
   c.innerHTML = h;
 
   el('tbl-pub').innerHTML = '<thead><tr><th>Titre</th><th>Plateforme</th><th>Format</th><th>Redacteur</th><th>Date</th><th>Statut</th></tr></thead><tbody>' +
@@ -1154,6 +1114,15 @@ function renderCom(c){
       }
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)"><div><div style="font-size:12px;font-weight:600">'+p.titre+'</div><div class="td-muted">Etape: '+p.workflow+' • '+p.redacteur+'</div></div><div style="display:flex;gap:6px;align-items:center">'+statusTag(p.statut)+actionBtn+'</div></div>';
     }).join('');
+
+  const comMembres = USERS.filter(function(u){ return u.departement === 'Communication'; });
+  el('tbl-com-membres').innerHTML = comMembres.length === 0
+    ? '<tbody><tr><td colspan="5" class="td-muted" style="padding:14px;text-align:center">Aucun membre dans l\'equipe Communication encore.</td></tr></tbody>'
+    : '<thead><tr><th>Membre</th><th>Role</th><th>Ville</th><th>Email</th><th>Enregistre le</th></tr></thead><tbody>' +
+      comMembres.map(function(u){
+        const regDate = u.dateEnregistrement ? new Date(u.dateEnregistrement).toLocaleDateString('fr-FR') : '-';
+        return '<tr><td class="td-bold">'+u.nom+(u.verrouille?' 🔒':'')+(!u.actif?' (inactif)':'')+'</td><td>'+roleBadgeHtml(u.role)+'</td><td class="td-muted">'+u.ville+'</td><td class="td-muted">'+u.email+'</td><td class="td-muted">'+regDate+'</td></tr>';
+      }).join('') + '</tbody>';
 }
 
 function validatePublication(titre){
@@ -1564,34 +1533,12 @@ function renderUsers(c){
     '<div style="margin-top:10px;padding:10px;background:var(--gold-light);border-radius:8px;font-size:11px;color:var(--gold)">⚠️ Seul le Super Admin peut voir les mots de passe en clair et reinitialiser n\'importe quel compte. Les autres roles ne peuvent reinitialiser que les mots de passe de leur propre departement.</div>';
 }
 
-function toggleUserActive(id){
-  if(!isSuperAdmin()) return;
-  const u = USERS.find(function(x){return String(x.id)===String(id);});
-  if(u){
-    u.actif = !u.actif;
-    logAction(u.actif ? "Utilisateur active" : "Utilisateur desactive", u.nom + " - " + u.email, u.actif?"green":"red");
-    go('users');
-  }
-}
+// toggleUserActive() is defined in db-bridge.js (persists via /api/users).
 
-function unlockUser(id){
-  if(!isSuperAdmin()) return;
-  const u = USERS.find(function(x){return String(x.id)===String(id);});
-  if(u){
-    u.verrouille = false; u.tentatives = 0;
-    logAction("Compte deverrouille", u.nom + " - " + u.email, "green");
-    go('users');
-  }
-}
+// unlockUser() is defined in db-bridge.js (persists via /api/users).
 
-function revealPassword(id){
-  if(!canSeePasswords()) return alert("Seul le Super Admin peut consulter les mots de passe.");
-  const u = USERS.find(function(x){return String(x.id)===String(id);});
-  if(u){
-    logAction("Mot de passe consulte", "Super Admin a consulte le mot de passe de " + u.nom, "gold");
-    alert("Mot de passe de " + u.nom + " :\\n\\n" + u.pass + "\\n\\n⚠️ Cette consultation a ete enregistree dans le journal d'audit.");
-  }
-}
+// revealPassword() is defined in db-bridge.js (fetches the real password
+// securely via /api/users — the in-memory USERS array never holds it).
 
 let resetPwdTargetId = null;
 function openResetPwd(id){
@@ -1603,50 +1550,11 @@ function openResetPwd(id){
   openModal('modal-reset-pwd');
 }
 
-function confirmResetPwd(){
-  const u = USERS.find(function(x){return x.id===resetPwdTargetId;});
-  const newPwd = el('reset-pwd-new').value.trim();
-  const validation = validatePassword(newPwd);
-  if(!validation.valid){
-    alert("Le mot de passe doit contenir au moins 8 caracteres, 1 majuscule, 1 chiffre et 1 caractere special.");
-    return;
-  }
-  u.pass = newPwd;
-  u.doitChangerPass = el('reset-pwd-force').checked;
-  u.verrouille = false; u.tentatives = 0;
-  logAction("Mot de passe reinitialise", "Pour: " + u.nom + " - Changement force a la prochaine connexion: " + (u.doitChangerPass?"Oui":"Non"), "gold");
-  closeModal('modal-reset-pwd');
-  go('users');
-  alert("Mot de passe reinitialise pour " + u.nom + ".\\nNouveau mot de passe: " + newPwd);
-}
+// confirmResetPwd() is defined in db-bridge.js (persists via /api/users).
 
 // ── MON MOT DE PASSE (tout collaborateur peut changer le sien) ──────────────
-function changeMyPassword(){
-  const current = el('mypwd-current').value;
-  const newPwd = el('mypwd-new').value;
-  const confirm = el('mypwd-confirm').value;
-
-  if(current !== CU.pass){
-    alert("Mot de passe actuel incorrect.");
-    return;
-  }
-  const validation = validatePassword(newPwd);
-  if(!validation.valid){
-    alert("Le nouveau mot de passe doit contenir au moins 8 caracteres, 1 majuscule, 1 chiffre et 1 caractere special.");
-    return;
-  }
-  if(newPwd !== confirm){
-    alert("Les mots de passe ne correspondent pas.");
-    return;
-  }
-  CU.pass = newPwd;
-  CU.doitChangerPass = false;
-  logAction("Mot de passe modifie", CU.nom + " a change son propre mot de passe", "green");
-  NOTIFICATIONS.unshift({ id:Date.now(), icon:"🔑", text:"Votre mot de passe a ete modifie", time:"A l'instant", read:false, target:CU.nom });
-  closeModal('modal-mypwd');
-  closeModal('modal-force-pwd');
-  alert("Mot de passe modifie avec succes !");
-}
+// changeMyPassword() is defined in db-bridge.js (verifies current password
+// server-side via /api/users, since the client never holds it in plain text).
 
 // ── JOURNAL D'AUDIT ────────────────────────────────────────────────────────────
 function renderJournal(c){
@@ -3001,18 +2909,8 @@ function forceDisconnect(idx){
   }
 }
 
-function resetDeptPasswords(){
-  if(!isSuperAdmin()) return;
-  const dept = el('reset-dept-select').value;
-  const affected = USERS.filter(function(u){ return u.departement === dept; });
-  affected.forEach(function(u){
-    u.pass = "Temp@" + Math.floor(Math.random()*9000+1000);
-    u.doitChangerPass = true;
-  });
-  logAction("Reinitialisation par departement", dept+" — "+affected.length+" comptes reinitialises", "gold");
-  closeModal('modal-reset-dept');
-  alert(affected.length + " comptes du departement " + dept + " ont ete reinitialises.\\nTous devront changer leur mot de passe a la prochaine connexion.");
-}
+// resetDeptPasswords() is defined in db-bridge.js (persists via /api/users).
+
 
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -3743,35 +3641,8 @@ function addPublication(){
   go('com');
 }
 
-function createUser(){
-  const nom = el('nu-nom').value.trim();
-  const email = el('nu-email').value.trim();
-  const pass = el('nu-pass').value.trim();
-  const role = el('nu-role').value.toLowerCase();
-  const dept = el('nu-dept').value;
+// createUser() is defined in db-bridge.js (persists via /api/users).
 
-  if(!nom || !email || !pass){ alert('Remplissez tous les champs'); return; }
-  if(USERS.find(function(u){ return u.email === email; })){ alert('Cet email existe deja'); return; }
-
-  const validation = validatePassword(pass);
-  if(!validation.valid){
-    alert('Le mot de passe doit contenir au moins 8 caracteres, 1 majuscule, 1 chiffre et 1 caractere special.');
-    return;
-  }
-  if(role === 'admin' && !isSuperAdmin()){
-    alert('Seul le Super Admin peut creer un compte Admin.');
-    return;
-  }
-
-  USERS.push({
-    id: Date.now(), nom: nom, email: email, pass: pass, role: role, departement: dept,
-    ini: ini(nom), col: AVC[USERS.length % 5], actif: true, ville: 'Niamey',
-    tentatives: 0, verrouille: false, doitChangerPass: true, dernierLogin: null, sessions: []
-  });
-  logAction('Acces utilisateur cree', nom + ' — ' + email + ' — Role: ' + role + ' — Departement: ' + dept, 'blue');
-  closeModal('modal-newuser');
-  go('users');
-}
 
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -3920,6 +3791,10 @@ function addInventaire(){
 
 // ════════════════════════════════════════════════════════════════════════════
 // FORGOT PASSWORD FLOW — sends real email via Resend through /api/forgot-password
+// sendResetCode() and confirmResetCode() are defined in db-bridge.js, which
+// calls the server (the server generates/validates the reset code and
+// updates the password in Postgres — never client-side, since the client
+// never holds the real password or a trustworthy code in memory).
 // ════════════════════════════════════════════════════════════════════════════
 
 let FP_TARGET_USER = null;
@@ -3947,118 +3822,8 @@ function generateResetCode(){
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-function sendResetCode(){
-  const email = el('fp-email').value.trim();
-  const errorEl = el('fp-error-1');
-  errorEl.style.display = 'none';
-
-  const user = USERS.find(function(u){ return u.email === email; });
-  if(!user){
-    errorEl.textContent = "Aucun compte associe a cet email.";
-    errorEl.style.display = 'block';
-    return;
-  }
-  if(!user.actif){
-    errorEl.textContent = "Ce compte est desactive. Contactez le Super Admin.";
-    errorEl.style.display = 'block';
-    return;
-  }
-
-  FP_TARGET_USER = user;
-  FP_RESET_CODE = generateResetCode();
-  FP_CODE_EXPIRES = Date.now() + 15 * 60 * 1000; // 15 minutes
-
-  const btn = el('fp-send-btn');
-  btn.textContent = 'Envoi en cours...';
-  btn.disabled = true;
-
-  fetch('/api/forgot-password', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      userName: user.nom,
-      userEmail: user.email,
-      resetCode: FP_RESET_CODE,
-      requestedBy: user.nom
-    })
-  })
-  .then(function(res){ return res.json().then(function(data){ return { ok: res.ok, data: data }; }); })
-  .then(function(result){
-    btn.textContent = 'Envoyer le code';
-    btn.disabled = false;
-    if(!result.ok){
-      errorEl.textContent = "Erreur d'envoi: " + (result.data.error || 'Veuillez reessayer');
-      errorEl.style.display = 'block';
-      return;
-    }
-    logAction && typeof CU !== 'undefined'; // no-op guard
-    AUDIT.unshift({ ts:new Date(), user:user.nom, dept:user.departement, action:"Code de reinitialisation envoye", detail:"Email envoye a djineyvan@yahoo.fr pour le compte "+user.email, color:"dot-gold", ini:user.ini, col:user.col, ip:"web" });
-    el('forgot-step-1').style.display = 'none';
-    el('forgot-step-2').style.display = 'block';
-    el('fp-code').value = '';
-    el('fp-newpass').value = '';
-    el('fp-confirmpass').value = '';
-    const newPassEl = el('fp-newpass');
-    newPassEl.removeEventListener('input', fpPwdListener);
-    newPassEl.addEventListener('input', fpPwdListener);
-  })
-  .catch(function(err){
-    btn.textContent = 'Envoyer le code';
-    btn.disabled = false;
-    errorEl.textContent = "Erreur reseau: impossible de contacter le serveur d'envoi.";
-    errorEl.style.display = 'block';
-  });
-}
-
 function fpPwdListener(){
   updatePasswordStrengthUI(el('fp-newpass').value, 'fp-pass-bars');
-}
-
-function confirmResetCode(){
-  const code = el('fp-code').value.trim();
-  const newPass = el('fp-newpass').value;
-  const confirmPass = el('fp-confirmpass').value;
-  const errorEl = el('fp-error-2');
-  errorEl.style.display = 'none';
-
-  if(!FP_TARGET_USER || !FP_RESET_CODE){
-    errorEl.textContent = "Session expiree. Recommencez la procedure.";
-    errorEl.style.display = 'block';
-    return;
-  }
-  if(Date.now() > FP_CODE_EXPIRES){
-    errorEl.textContent = "Ce code a expire. Demandez-en un nouveau.";
-    errorEl.style.display = 'block';
-    return;
-  }
-  if(code !== FP_RESET_CODE){
-    errorEl.textContent = "Code incorrect.";
-    errorEl.style.display = 'block';
-    return;
-  }
-  const validation = validatePassword(newPass);
-  if(!validation.valid){
-    errorEl.textContent = "Le mot de passe doit contenir 8+ caracteres, 1 majuscule, 1 chiffre, 1 caractere special.";
-    errorEl.style.display = 'block';
-    return;
-  }
-  if(newPass !== confirmPass){
-    errorEl.textContent = "Les mots de passe ne correspondent pas.";
-    errorEl.style.display = 'block';
-    return;
-  }
-
-  FP_TARGET_USER.pass = newPass;
-  FP_TARGET_USER.doitChangerPass = false;
-  FP_TARGET_USER.verrouille = false;
-  FP_TARGET_USER.tentatives = 0;
-
-  AUDIT.unshift({ ts:new Date(), user:FP_TARGET_USER.nom, dept:FP_TARGET_USER.departement, action:"Mot de passe reinitialise via email", detail:"Recuperation par code envoye a djineyvan@yahoo.fr", color:"dot-green", ini:FP_TARGET_USER.ini, col:FP_TARGET_USER.col, ip:"web" });
-
-  el('forgot-step-2').style.display = 'none';
-  el('forgot-step-3').style.display = 'block';
-
-  FP_TARGET_USER = null; FP_RESET_CODE = null; FP_CODE_EXPIRES = null;
 }
 
 
@@ -4107,8 +3872,58 @@ function showSyncWarning(){
   banner.textContent = '⚠️ Erreur de sauvegarde (' + SYNC_FAILURES + ') — vos dernieres modifications n\'ont peut-etre pas ete enregistrees. Cliquez pour recharger et verifier.';
 }
 
+// ── PENDING-WRITES INDICATOR — visible feedback while a save is still in
+// flight. This directly addresses the reported bug: after a heavy operation
+// (like a full restore), the database connection can be momentarily slower
+// (cold start / connection pool warmup), so a write that "looks done" on
+// screen may actually still be saving in the background. Reloading during
+// that window shows the old state, which looks like data loss but is really
+// just a timing issue. This banner makes that window visible instead of
+// invisible, so the user knows to wait before reloading. ──
+let PENDING_WRITES = 0;
+
+function showPendingIndicator(){
+  let banner = document.getElementById('pending-write-banner');
+  if(PENDING_WRITES <= 0){
+    if(banner) banner.remove();
+    return;
+  }
+  if(!banner){
+    banner = document.createElement('div');
+    banner.id = 'pending-write-banner';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#1a6eb5;color:white;text-align:center;padding:8px;font-size:12px;font-weight:600;z-index:9998';
+    document.body.appendChild(banner);
+  }
+  banner.textContent = '⏳ Enregistrement en cours (' + PENDING_WRITES + ')... Attendez avant de recharger la page.';
+}
+
+function trackPendingWrite(promise){
+  PENDING_WRITES++;
+  showPendingIndicator();
+  return promise.then(function(result){
+    PENDING_WRITES = Math.max(0, PENDING_WRITES - 1);
+    showPendingIndicator();
+    return result;
+  }).catch(function(err){
+    PENDING_WRITES = Math.max(0, PENDING_WRITES - 1);
+    showPendingIndicator();
+    throw err;
+  });
+}
+
+// Directly prevents the reported bug: warns before a reload/close if any
+// save is still in flight, so the user never loses an in-progress write by
+// reloading too early after a heavy operation like a restore.
+window.addEventListener('beforeunload', function(e){
+  if(PENDING_WRITES > 0){
+    e.preventDefault();
+    e.returnValue = '';
+    return '';
+  }
+});
+
 function dbInsert(entity, row){
-  return apiPost('/api/data', { entity: entity, row: row }).then(function(result){
+  return trackPendingWrite(apiPost('/api/data', { entity: entity, row: row }).then(function(result){
     if(!result.ok){
       SYNC_FAILURES++;
       console.error('DB INSERT FAILED for ' + entity + ':', result.data && result.data.error);
@@ -4119,10 +3934,10 @@ function dbInsert(entity, row){
     SYNC_FAILURES++;
     console.error('DB INSERT NETWORK ERROR for ' + entity + ':', err);
     showSyncWarning();
-  });
+  }));
 }
 function dbUpdate(entity, id, patch){
-  return apiPut('/api/data', { entity: entity, id: id, patch: patch }).then(function(result){
+  return trackPendingWrite(apiPut('/api/data', { entity: entity, id: id, patch: patch }).then(function(result){
     if(!result.ok){
       SYNC_FAILURES++;
       console.error('DB UPDATE FAILED for ' + entity + ' #' + id + ':', result.data && result.data.error);
@@ -4133,10 +3948,10 @@ function dbUpdate(entity, id, patch){
     SYNC_FAILURES++;
     console.error('DB UPDATE NETWORK ERROR for ' + entity + ' #' + id + ':', err);
     showSyncWarning();
-  });
+  }));
 }
 function dbDelete(entity, id){
-  return apiDelete('/api/data', { entity: entity, id: id }).then(function(result){
+  return trackPendingWrite(apiDelete('/api/data', { entity: entity, id: id }).then(function(result){
     if(!result.ok){
       SYNC_FAILURES++;
       console.error('DB DELETE FAILED for ' + entity + ' #' + id + ':', result.data && result.data.error);
@@ -4147,7 +3962,7 @@ function dbDelete(entity, id){
     SYNC_FAILURES++;
     console.error('DB DELETE NETWORK ERROR for ' + entity + ' #' + id + ':', err);
     showSyncWarning();
-  });
+  }));
 }
 function dbLoadAll(entity){
   return apiGet('/api/data?entity=' + entity).then(function(result){
@@ -4749,9 +4564,14 @@ function confirmRestoreBackup(){
   const pwd = el('restore-pwd').value;
   if(!pwd){ alert('Entrez votre mot de passe pour confirmer.'); return; }
 
+  const modal = el('modal-restore');
+  const confirmBtn = modal ? modal.querySelector('.modal-footer .btn-red') : null;
+  if(confirmBtn){ confirmBtn.disabled = true; confirmBtn.textContent = '⏳ Restauration en cours, patientez...'; }
+
   apiPost('/api/restore-backup', { email: CU.email, password: pwd, backupId: RESTORE_TARGET_BACKUP_ID, confirm: 'RESTORE' }).then(function(result){
     if(!result.ok){
       alert(result.data.error || 'Erreur lors de la restauration.');
+      if(confirmBtn){ confirmBtn.disabled = false; confirmBtn.textContent = 'Je confirme — Restaurer cette sauvegarde'; }
       return;
     }
     alert('Restauration reussie (' + (result.data.restored_tables ? result.data.restored_tables.length : 0) + ' tables). La page va se recharger pour afficher les donnees restaurees.');
@@ -4759,6 +4579,7 @@ function confirmRestoreBackup(){
     window.location.reload();
   }).catch(function(){
     alert('Erreur reseau lors de la restauration.');
+    if(confirmBtn){ confirmBtn.disabled = false; confirmBtn.textContent = 'Je confirme — Restaurer cette sauvegarde'; }
   });
 }
 
