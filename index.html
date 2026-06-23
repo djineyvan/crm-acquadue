@@ -918,7 +918,7 @@ function advancePipelineStage(id){
   }
   // Keep Clients & Prospects in sync at every stage change, not just at creation.
   if(typeof ensureClientExists === 'function' && typeof pipelineEtapeToClientStatut === 'function'){
-    ensureClientExists(p.nom, p.qte + 'x ' + p.sku, pipelineEtapeToClientStatut(nextStage), p.type, p.ville);
+    ensureClientExists(p.nom, p.qte + 'x ' + p.sku, pipelineEtapeToClientStatut(nextStage), p.type, p.ville, 'Pipeline');
   }
   closeModal('modal-detail');
   go('pipe');
@@ -942,7 +942,7 @@ function markPipelineLost(id){
   stampModification(p);
   logAction('Opportunite perdue', p.nom + ' — etape precedente: ' + etapePrecedente, 'red');
   if(typeof ensureClientExists === 'function' && typeof pipelineEtapeToClientStatut === 'function'){
-    ensureClientExists(p.nom, p.qte + 'x ' + p.sku, pipelineEtapeToClientStatut('Perdu'), p.type, p.ville);
+    ensureClientExists(p.nom, p.qte + 'x ' + p.sku, pipelineEtapeToClientStatut('Perdu'), p.type, p.ville, 'Pipeline');
   }
   closeModal('modal-detail');
   go('pipe');
@@ -1198,6 +1198,7 @@ function viewClientDetail(id){
       ['Ville', 'ville', cl.ville],
       ['Zone / Quartier', 'zone', cl.zone || ''],
       ['Source', 'source', [
+        {label:'Pipeline',selected:cl.source==='Pipeline'},
         {label:'Prospection terrain',selected:cl.source==='Prospection terrain'},
         {label:'Bouche a oreille',selected:cl.source==='Bouche a oreille'},
         {label:'Recommandation',selected:cl.source==='Recommandation'},
@@ -1729,7 +1730,7 @@ function triggerPipelineWon(pipelineEntry){
   // a client record automatically, same as a paid invoice does.
   if(typeof ensureClientExists === 'function'){
     const produitLabel = pipelineEntry.qte + 'x ' + pipelineEntry.sku;
-    ensureClientExists(pipelineEntry.nom, produitLabel, 'Client actif', pipelineEntry.type, pipelineEntry.ville);
+    ensureClientExists(pipelineEntry.nom, produitLabel, 'Client actif', pipelineEntry.type, pipelineEntry.ville, 'Pipeline');
   }
   return ok;
 }
@@ -2336,7 +2337,7 @@ function prixApresRemise(produit, qte, prixBase){
 // name already exists, update its produit/statut/date; otherwise create a new
 // client record automatically. This keeps "Clients & Prospects" in sync with
 // every sale, without requiring the user to manage two separate forms.
-function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType, ville){
+function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType, ville, source){
   if(!nomClient) return;
   let cl = CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === nomClient.trim().toLowerCase(); });
   const todayStr = new Date().toLocaleDateString('fr-FR');
@@ -2351,9 +2352,10 @@ function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType,
       dbUpdate('clients', cl.id, { produit: cl.produit, statut: cl.statut, ville: cl.ville, last_modified_by: cl.lastModifiedBy, last_modified_at: cl.lastModifiedAt });
     }
   } else {
+    const sourceLabel = source || 'Devis/Facturation';
     cl = {
       id: Date.now(), nom: nomClient, type: clientType || 'B2C', ville: ville || (CU ? CU.ville : 'Niamey'), zone: '',
-      tel: '', email: '', societe: '', source: 'Devis/Facturation', statut: statutSouhaite || 'Client actif',
+      tel: '', email: '', societe: '', source: sourceLabel, statut: statutSouhaite || 'Client actif',
       produit: produitLabel || '-', asg: CU ? CU.nom : '-', date: todayStr, locked: false, historique: []
     };
     CLIENTS.unshift(cl);
@@ -2362,7 +2364,7 @@ function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType,
         email:cl.email, societe:cl.societe, source:cl.source, statut:cl.statut, produit:cl.produit,
         asg:cl.asg, date_creation:cl.date, locked:cl.locked, historique:[] });
     }
-    logAction('Client cree automatiquement', nomClient + ' — depuis Devis/Facturation', 'blue');
+    logAction('Client cree automatiquement', nomClient + ' — depuis ' + sourceLabel, 'blue');
   }
   return cl;
 }
@@ -2982,7 +2984,7 @@ function buildModals(){
   const clientBody =
     fieldRow(fieldText('cl-nom','Nom','Ex: Amadou Mahamane'), fieldSelect('cl-type','Type',['B2C — Famille','B2B — Hotel','B2B — Restaurant','B2B — Clinique','B2B — Bureau','B2B — Ecole','B2B — Administration'])) +
     fieldRow(fieldText('cl-tel','Telephone','+227 XX XX XX XX'), fieldSelect('m-ville-1','Ville — Niger',[])) +
-    fieldRow(fieldText('cl-zone','Quartier / Zone','Plateau, Centre...'), fieldSelect('cl-source','Source',['Prospection terrain','Bouche a oreille','Recommandation','Reseaux sociaux','Salon professionnel'])) +
+    fieldRow(fieldText('cl-zone','Quartier / Zone','Plateau, Centre...'), fieldSelect('cl-source','Source',['Pipeline','Devis/Facturation','Prospection terrain','Bouche a oreille','Recommandation','Reseaux sociaux','Salon professionnel'])) +
     fieldRow(fieldSelect('cl-statut','Statut',['Prospect froid','Prospect chaud','Demonstration faite','Offre envoyee','Client actif','Client perdu']), fieldSelect('m-asg-1','Commercial assigne',[])) +
     '<div class="form-label" style="margin-top:8px">Produit(s) d\'interet</div>' +
     '<div id="client-builder-lignes"></div>' +
@@ -3648,7 +3650,7 @@ function addProspect(){
   // fix for prospects being invisible outside the Pipeline screen.
   if(typeof ensureClientExists === 'function'){
     const produitLabel = p.qte + 'x ' + p.sku;
-    ensureClientExists(nom, produitLabel, pipelineEtapeToClientStatut(etape), p.type, p.ville);
+    ensureClientExists(nom, produitLabel, pipelineEtapeToClientStatut(etape), p.type, p.ville, 'Pipeline');
   }
   logAction('Prospect ajoute au pipeline', nom + ' — ' + p.ville + ' — ' + fcfa(p.val), 'gold');
   closeModal('modal-prospect');
