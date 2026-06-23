@@ -916,6 +916,10 @@ function advancePipelineStage(id){
   } else {
     logAction('Pipeline — etape avancee', p.nom + ' → ' + nextStage, 'blue');
   }
+  // Keep Clients & Prospects in sync at every stage change, not just at creation.
+  if(typeof ensureClientExists === 'function' && typeof pipelineEtapeToClientStatut === 'function'){
+    ensureClientExists(p.nom, p.qte + 'x ' + p.sku, pipelineEtapeToClientStatut(nextStage), p.type);
+  }
   closeModal('modal-detail');
   go('pipe');
 }
@@ -937,6 +941,9 @@ function markPipelineLost(id){
   p.etape = 'Perdu';
   stampModification(p);
   logAction('Opportunite perdue', p.nom + ' — etape precedente: ' + etapePrecedente, 'red');
+  if(typeof ensureClientExists === 'function' && typeof pipelineEtapeToClientStatut === 'function'){
+    ensureClientExists(p.nom, p.qte + 'x ' + p.sku, pipelineEtapeToClientStatut('Perdu'), p.type);
+  }
   closeModal('modal-detail');
   go('pipe');
 }
@@ -3604,6 +3611,21 @@ function addCampagne(){
   go('mkt');
 }
 
+// Maps a Pipeline stage to the corresponding Clients & Prospects status, so
+// the two screens never drift apart — a prospect added to the Pipeline must
+// always be reflected in Clients & Prospects with a consistent status.
+function pipelineEtapeToClientStatut(etape){
+  const map = {
+    'Nouveau prospect': 'Prospect froid',
+    'Contacte': 'Prospect chaud',
+    'En negociation': 'Demonstration faite',
+    'Offre envoyee': 'Offre envoyee',
+    'Gagne': 'Client actif',
+    'Perdu': 'Client perdu'
+  };
+  return map[etape] || 'Prospect froid';
+}
+
 function addProspect(){
   const nom = el('pr-nom').value.trim();
   if(!nom){ alert('Entrez un nom'); return; }
@@ -3620,6 +3642,12 @@ function addProspect(){
   if(etape === 'Gagne'){
     const ok = triggerPipelineWon(p);
     if(!ok) alert('⚠️ Opportunite creee en "Gagne" mais stock disponible insuffisant pour reserver.');
+  }
+  // Always sync to Clients & Prospects, regardless of stage — this is the
+  // fix for prospects being invisible outside the Pipeline screen.
+  if(typeof ensureClientExists === 'function'){
+    const produitLabel = p.qte + 'x ' + p.sku;
+    ensureClientExists(nom, produitLabel, pipelineEtapeToClientStatut(etape), p.type);
   }
   logAction('Prospect ajoute au pipeline', nom + ' — ' + p.ville + ' — ' + fcfa(p.val), 'gold');
   closeModal('modal-prospect');
