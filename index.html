@@ -775,6 +775,18 @@ function renderView(view){
 
 // ── DASHBOARD ──────────────────────────────────────────────────────────────────
 function renderDash(c){
+  // Real sales figures from actual invoices, not just manually-entered team numbers.
+  const todayDate = new Date();
+  const isThisMonth = function(dateStr){
+    if(!dateStr) return false;
+    const parts = dateStr.split(' ')[0].split('/');
+    if(parts.length !== 3) return false;
+    const d = new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]));
+    return d.getFullYear()===todayDate.getFullYear() && d.getMonth()===todayDate.getMonth();
+  };
+  const facturesPayeesMois = FACTURES.filter(function(f){ return f.statut === 'Payee' && isThisMonth(f.date); });
+  const caReelMois = facturesPayeesMois.reduce(function(s,f){ return s + lignesTotalMontant(f.lignes||[]); }, 0);
+
   const totalVentes = COMM_PERF.reduce(function(s,x){return s+x.ventes;},0);
   const totalObj = COMM_PERF.reduce(function(s,x){return s+x.obj;},0);
   const pctObj = totalObj > 0 ? Math.round(totalVentes/totalObj*100) : 0;
@@ -785,12 +797,15 @@ function renderDash(c){
   const pipelineClos = PIPELINE.filter(function(p){return p.etape==='Gagne'||p.etape==='Perdu';});
   const pipelineGagne = PIPELINE.filter(function(p){return p.etape==='Gagne';});
   const tauxConversion = pipelineClos.length > 0 ? Math.round(pipelineGagne.length/pipelineClos.length*100) : 0;
+  const prospectsActifs = CLIENTS.filter(function(cl){ return cl.statut !== 'Client perdu'; }).length;
+  const facturesImpayees = FACTURES.filter(function(f){ return f.statut === 'Impayee'; });
+  const montantImpaye = facturesImpayees.reduce(function(s,f){ return s + lignesTotalMontant(f.lignes||[]); }, 0);
 
   h += '<div class="grid4" style="margin-bottom:13px">';
-  h += '  <div class="kpi kred"><div class="kpi-lbl">Ventes ce mois</div><div class="kpi-val">' + (totalVentes/1000000).toFixed(2) + 'M</div></div>';
-  h += '  <div class="kpi kblue"><div class="kpi-lbl">Prospects actifs</div><div class="kpi-val">' + myClients.length + '</div></div>';
-  h += '  <div class="kpi kgreen"><div class="kpi-lbl">Taux conversion</div><div class="kpi-val">' + tauxConversion + '%</div></div>';
-  h += '  <div class="kpi kgold"><div class="kpi-lbl">Objectif mensuel</div><div class="kpi-val">' + pctObj + '%</div></div>';
+  h += '  <div class="kpi kred"><div class="kpi-lbl">CA reel ce mois (factures payees)</div><div class="kpi-val">' + (caReelMois/1000000).toFixed(2) + 'M</div></div>';
+  h += '  <div class="kpi kblue"><div class="kpi-lbl">Clients & Prospects actifs</div><div class="kpi-val">' + prospectsActifs + '</div></div>';
+  h += '  <div class="kpi kgreen"><div class="kpi-lbl">Taux conversion Pipeline</div><div class="kpi-val">' + tauxConversion + '%</div></div>';
+  h += '  <div class="kpi kgold"><div class="kpi-lbl">Factures impayees</div><div class="kpi-val">' + (montantImpaye/1000).toFixed(0) + 'K</div></div>';
   h += '</div>';
 
   h += '<div class="grid2" style="margin-bottom:12px">';
@@ -798,8 +813,8 @@ function renderDash(c){
   h += '  <div class="card"><div class="card-title">Activite recente</div><div class="timeline" id="d-act"></div></div>';
   h += '</div>';
   h += '<div class="grid3">';
-  h += '  <div class="card"><div class="card-title">Top Commerciaux</div><div id="d-top"></div></div>';
-  h += '  <div class="card"><div class="card-title">Campagnes actives</div><div id="d-camp"></div></div>';
+  h += '  <div class="card"><div class="card-title">Dernieres factures</div><div id="d-fact"></div></div>';
+  h += '  <div class="card"><div class="card-title">Pipeline en cours</div><div id="d-pipe"></div></div>';
   h += '  <div class="card"><div class="card-title">Mes taches urgentes</div><div id="d-task"></div></div>';
   h += '</div>';
   c.innerHTML = h;
@@ -808,7 +823,7 @@ function renderDash(c){
   const pctMkt = CAMPAGNES.length > 0 ? Math.round(campagnesActives/CAMPAGNES.length*100) : 0;
   const pctCom = PUBLICATIONS.length > 0 ? Math.round(PUBLICATIONS.filter(function(p){return p.statut==='Publie';}).length/PUBLICATIONS.length*100) : 0;
   const teams = [
-    {n:"Equipe Commerciale", v:pctObj, s:fcfa(totalVentes)+" / "+fcfa(totalObj), f:"pf-red"},
+    {n:"Equipe Commerciale", v:pctObj, s:fcfa(totalVentes)+" / "+fcfa(totalObj)+" (objectifs declares)", f:"pf-red"},
     {n:"Equipe Marketing", v:pctMkt, s:campagnesActives+" campagnes actives sur "+CAMPAGNES.length, f:"pf-blue"},
     {n:"Equipe Communication", v:pctCom, s:PUBLICATIONS.length+" publications", f:"pf-green"}
   ];
@@ -820,13 +835,13 @@ function renderDash(c){
     return '<div class="tl-item"><div class="tl-dot '+a.color+'"></div><div style="font-size:12px"><strong>'+a.user+'</strong> — '+a.action+'</div><div class="td-muted">'+a.detail+'</div><div class="td-muted">'+fmtDate(a.ts)+'</div></div>';
   }).join('');
 
-  el('d-top').innerHTML = COMM_PERF.slice().sort(function(a,b){return b.ventes-a.ventes;}).map(function(cm,i){
-    return '<div style="display:flex;align-items:center;gap:7px;padding:7px 0;border-bottom:1px solid var(--border)"><div style="font-size:10px;font-weight:700;color:var(--muted);width:13px">'+(i+1)+'</div><div class="avatar '+avColor(i)+'">'+ini(cm.nom)+'</div><div style="flex:1"><div style="font-size:12px;font-weight:600">'+cm.nom+'</div><div class="td-muted">'+cm.ville+' • '+cm.nb+' ventes</div></div><div style="font-size:12px;font-weight:700;color:var(--red)">'+fcfa(cm.ventes)+'</div></div>';
-  }).join('');
+  el('d-fact').innerHTML = FACTURES.slice(0,5).map(function(f){
+    return '<div style="display:flex;align-items:center;gap:7px;padding:7px 0;border-bottom:1px solid var(--border)"><div style="flex:1"><div style="font-size:12px;font-weight:600">'+f.id+' — '+f.client+'</div><div class="td-muted">'+fcfa(lignesTotalMontant(f.lignes||[]))+'</div></div>'+statusTag(f.statut)+'</div>';
+  }).join('') || '<div class="empty-state" style="padding:10px"><div class="td-muted">Aucune facture encore</div></div>';
 
-  el('d-camp').innerHTML = CAMPAGNES.filter(function(x){return x.statut==="Active";}).map(function(cp){
-    return '<div style="display:flex;align-items:center;gap:7px;padding:7px 0;border-bottom:1px solid var(--border)"><div style="flex:1"><div style="font-size:12px;font-weight:600">'+cp.nom+'</div><div class="td-muted">'+cp.canal+' • '+cp.leads+' leads</div></div>'+statusTag(cp.statut)+'</div>';
-  }).join('');
+  el('d-pipe').innerHTML = PIPELINE.filter(function(p){return p.etape!=='Gagne' && p.etape!=='Perdu';}).slice(0,5).map(function(p){
+    return '<div style="display:flex;align-items:center;gap:7px;padding:7px 0;border-bottom:1px solid var(--border)"><div style="flex:1"><div style="font-size:12px;font-weight:600">'+p.nom+'</div><div class="td-muted">'+p.ville+' • '+fcfa(p.val)+'</div></div>'+statusTag(p.etape)+'</div>';
+  }).join('') || '<div class="empty-state" style="padding:10px"><div class="td-muted">Aucune opportunite en cours</div></div>';
 
   el('d-task').innerHTML = myTasks.slice(0,4).map(function(t){
     return '<div style="padding:7px 0;border-bottom:1px solid var(--border)"><div style="font-size:12px;font-weight:500;margin-bottom:2px">'+t.titre+'</div><div style="display:flex;align-items:center;gap:5px"><span class="td-muted">'+t.asg+'</span>'+statusTag(t.statut)+'</div></div>';
@@ -4081,7 +4096,59 @@ function mapNotificationFromDb(r){
 }
 
 // ── LOAD EVERYTHING FROM DB INTO THE IN-MEMORY ARRAYS USED BY THE UI ───────
+function applyBulkData(data){
+  CLIENTS = (data.clients||[]).map(mapClientFromDb);
+  PIPELINE = (data.pipeline||[]).map(mapPipelineFromDb);
+  TASKS = (data.tasks||[]).map(mapTaskFromDb);
+  COMM_PERF = (data.comm_perf||[]).map(mapCommPerfFromDb);
+  CAMPAGNES = (data.campagnes||[]).map(mapCampagneFromDb);
+  PUBLICATIONS = (data.publications||[]).map(mapPublicationFromDb);
+  PRODUITS = (data.produits||[]).map(mapProduitFromDb);
+  ENTREPOTS = (data.entrepots||[]).map(mapEntrepotFromDb);
+  STOCK = (data.stock||[]).map(mapStockFromDb);
+  MOUVEMENTS_STOCK = (data.mouvements_stock||[]).map(mapMouvementFromDb);
+  FOURNISSEURS = (data.fournisseurs||[]).map(mapFournisseurFromDb);
+  COMMANDES_FOURNISSEUR = (data.commandes_fournisseur||[]).map(mapCommandeFromDb);
+  DEMANDES_ACHAT = (data.demandes_achat||[]).map(mapDemandeAchatFromDb);
+  INVENTAIRES = (data.inventaires||[]).map(mapInventaireFromDb);
+  DEVIS = (data.devis||[]).map(mapDevisFromDb);
+  FACTURES = (data.factures||[]).map(mapFactureFromDb);
+  DEPENSES = (data.depenses||[]).map(mapDepenseFromDb);
+  NOTIFICATIONS = (data.notifications||[]).map(mapNotificationFromDb);
+  DOCUMENTS = (data.documents||[]).map(mapDocumentFromDb);
+  RH_PRESENCE = (data.rh_presence||[]).map(mapRhPresenceFromDb);
+  RH_CONGES = (data.rh_conges||[]).map(mapRhCongesFromDb);
+}
+
+// Loads every business table in ONE request via /api/bulk-load, instead of
+// firing 19 separate /api/data calls. This is the fix for the reported
+// severe latency / "needs several logout-login cycles to settle" bug: each
+// of those 19 calls was its own serverless cold start competing for the
+// same concurrency limits, so some would land late or get throttled,
+// leaving the UI with a partial, inconsistent snapshot. One request means
+// one consistent snapshot, every time.
 function loadAllDataFromDb(){
+  return apiGet('/api/bulk-load').then(function(result){
+    if(result.ok && result.data && result.data.data){
+      applyBulkData(result.data.data);
+      if(result.data.errors && Object.keys(result.data.errors).length > 0){
+        console.error('bulk-load: some tables failed to load:', result.data.errors);
+        showSyncWarning();
+      }
+      return;
+    }
+    // Fallback: bulk-load itself failed (network error, deployment not yet
+    // updated, etc.) — fall back to the original per-table approach rather
+    // than leaving the app with no data at all.
+    console.error('bulk-load failed, falling back to per-table loading');
+    return loadAllDataFromDbLegacy();
+  }).catch(function(){
+    console.error('bulk-load network error, falling back to per-table loading');
+    return loadAllDataFromDbLegacy();
+  });
+}
+
+function loadAllDataFromDbLegacy(){
   return Promise.all([
     dbLoadAll('clients').then(function(rows){ CLIENTS = rows.map(mapClientFromDb); }),
     dbLoadAll('pipeline').then(function(rows){ PIPELINE = rows.map(mapPipelineFromDb); }),
