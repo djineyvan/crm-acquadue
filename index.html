@@ -4733,6 +4733,16 @@ wrapAfter('advancePipelineStage', function(id){
     last_modified_by:p.lastModifiedBy, last_modified_at:p.lastModifiedAt });
 });
 
+// markPipelineLost() was missing a sync wrapper entirely — the stage change
+// to 'Perdu' (and the stock-reservation release) were only ever applied in
+// memory, never persisted. This is the actual cause of "marked as lost, but
+// reverts to its previous stage after refresh".
+wrapAfter('markPipelineLost', function(id){
+  const p = PIPELINE.find(function(x){return String(x.id)===String(id);});
+  if(p) dbUpdate('pipeline', id, { etape:p.etape, reservation_faite:p.reservationFaite,
+    last_modified_by:p.lastModifiedBy, last_modified_at:p.lastModifiedAt });
+});
+
 // CAMPAGNES — addCampagne() unshifts
 wrapAfter('addCampagne', function(){
   const c = CAMPAGNES[0];
