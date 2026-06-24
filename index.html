@@ -812,10 +812,11 @@ function renderDash(c){
   h += '  <div class="card"><div class="card-title">Performance Equipes</div><div id="d-perf"></div></div>';
   h += '  <div class="card"><div class="card-title">Activite recente</div><div class="timeline" id="d-act"></div></div>';
   h += '</div>';
-  h += '<div class="grid3">';
+  h += '<div class="grid4">';
   h += '  <div class="card"><div class="card-title">Dernieres factures</div><div id="d-fact"></div></div>';
   h += '  <div class="card"><div class="card-title">Pipeline en cours</div><div id="d-pipe"></div></div>';
   h += '  <div class="card"><div class="card-title">Mes taches urgentes</div><div id="d-task"></div></div>';
+  h += '  <div class="card"><div class="card-title">Alertes Stock</div><div id="d-stock"></div></div>';
   h += '</div>';
   c.innerHTML = h;
 
@@ -846,6 +847,19 @@ function renderDash(c){
   el('d-task').innerHTML = myTasks.slice(0,4).map(function(t){
     return '<div style="padding:7px 0;border-bottom:1px solid var(--border)"><div style="font-size:12px;font-weight:500;margin-bottom:2px">'+t.titre+'</div><div style="display:flex;align-items:center;gap:5px"><span class="td-muted">'+t.asg+'</span>'+statusTag(t.statut)+'</div></div>';
   }).join('') || '<div class="empty-state" style="padding:10px"><div class="td-muted">Aucune tache urgente</div></div>';
+
+  // Connects Vue Generale to Produits & Stocks: same low-stock rule used in
+  // the Stock module itself (available <= seuil), so the dashboard surfaces
+  // the same alerts without duplicating separate logic.
+  const stockAlertes = STOCK.filter(function(s){ return (s.qte - (s.reserve||0)) <= s.seuil; });
+  el('d-stock').innerHTML = stockAlertes.slice(0,4).map(function(s){
+    const p = PRODUITS.find(function(x){return x.sku===s.sku;});
+    const dispo = s.qte - (s.reserve||0);
+    return '<div style="padding:7px 0;border-bottom:1px solid var(--border)"><div style="font-size:12px;font-weight:600">'+(p?p.nom:s.sku)+'</div><div class="td-muted">'+s.entrepot+' — Disponible: '+dispo+' / Seuil: '+s.seuil+'</div></div>';
+  }).join('') || '<div class="empty-state" style="padding:10px"><div class="td-muted">Aucune alerte de stock</div></div>';
+  if(stockAlertes.length > 4){
+    el('d-stock').innerHTML += '<div style="text-align:center;margin-top:6px"><button class="btn btn-ghost btn-sm" onclick="go(\'stock\')">Voir les '+stockAlertes.length+' alertes →</button></div>';
+  }
 }
 
 // ── PIPELINE (6 etapes selon cahier des charges) ────────────────────────────
@@ -999,7 +1013,9 @@ function renderComm(c){
     COMM_PERF.map(function(cm,i){
       const p = cm.obj > 0 ? Math.round(cm.ventes/cm.obj*100) : 0;
       const pc = p>=100 ? "pf-green" : p>=60 ? "pf-blue" : "pf-gold";
-      return '<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar '+avColor(i)+'">'+ini(cm.nom)+'</div><div class="td-bold">'+cm.nom+'</div></div></td><td class="td-muted">'+cm.ville+'</td><td class="td-muted">'+cm.zone+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(cm.ventes)+'</td><td class="td-muted">'+fcfa(cm.obj)+'</td><td><div style="font-size:11px;font-weight:700;margin-bottom:2px">'+p+'%</div><div class="progress-bar" style="min-width:50px"><div class="progress-fill '+pc+'" style="width:'+Math.min(p,100)+'%"></div></div></td><td style="color:var(--green);font-weight:700">'+fcfa(Math.round(cm.ventes*cm.tx/100))+'</td><td class="td-muted">'+(cm.dateEnregistrement||'-')+'</td><td>'+editBtn(i)+'</td></tr>';
+      const linkedUser = USERS.find(function(u){return u.nom===cm.nom;});
+      const inactiveTag = (linkedUser && !linkedUser.actif) ? ' <span class="tag tag-red" style="font-size:10px">Compte desactive</span>' : '';
+      return '<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar '+avColor(i)+'">'+ini(cm.nom)+'</div><div class="td-bold">'+cm.nom+inactiveTag+'</div></div></td><td class="td-muted">'+cm.ville+'</td><td class="td-muted">'+cm.zone+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(cm.ventes)+'</td><td class="td-muted">'+fcfa(cm.obj)+'</td><td><div style="font-size:11px;font-weight:700;margin-bottom:2px">'+p+'%</div><div class="progress-bar" style="min-width:50px"><div class="progress-fill '+pc+'" style="width:'+Math.min(p,100)+'%"></div></div></td><td style="color:var(--green);font-weight:700">'+fcfa(Math.round(cm.ventes*cm.tx/100))+'</td><td class="td-muted">'+(cm.dateEnregistrement||'-')+'</td><td>'+editBtn(i)+'</td></tr>';
     }).join('') + '</tbody>';
 
   el('obj-view').innerHTML = '<table><thead><tr><th>Commercial</th><th>Ville</th><th>Objectif</th><th>Realise</th><th>Ecart</th><th>%</th><th></th></tr></thead><tbody>' +
@@ -3587,7 +3603,20 @@ function addMembre(){
 
     const todayStr = new Date().toLocaleDateString('fr-FR');
     if(dept === 'Commercial'){
-      COMM_PERF.push({ nom: nom, ville: ville, zone: zone, obj: parseInt(el('me-objectif').value) || 600000, ventes: 0, nb: 0, tx: 5, dateEnregistrement: todayStr, historiqueModifs: [] });
+      const cm = { nom: nom, ville: ville, zone: zone, obj: parseInt(el('me-objectif').value) || 600000, ventes: 0, nb: 0, tx: 5, dateEnregistrement: todayStr, historiqueModifs: [] };
+      COMM_PERF.push(cm);
+      // Sync to the database HERE, inside the resolved promise — not via a
+      // wrapAfter on addMembre, which fires synchronously right after this
+      // function returns and therefore runs BEFORE this .then() callback
+      // ever executes, missing the push entirely. This was the actual cause
+      // of new Commercial team members vanishing from Equipes on reload
+      // while still showing correctly in Utilisateurs & Acces (whose own
+      // sync via /api/users above is awaited correctly).
+      if(typeof dbInsert === 'function'){
+        dbInsert('comm_perf', { nom:cm.nom, ville:cm.ville, zone:cm.zone, obj:cm.obj,
+          ventes:cm.ventes, nb:cm.nb, tx:cm.tx, date_enregistrement:cm.dateEnregistrement, historique_modifs:[] })
+          .then(function(r){ if(r && r.ok && r.data && r.data.row) cm._dbId = r.data.row.id; });
+      }
     }
     logAction('Membre ajoute', nom + ' — ' + dept + ' — ' + ville + ' (compte cree: ' + email + ')', 'blue');
     closeModal('modal-membre');
@@ -4892,14 +4921,12 @@ wrapAfter('saveDepense', function(){
 
 // EQUIPE — addMembre() already persists the USER via API internally (no wrap needed for the account),
 // but the COMM_PERF row it appends locally still needs syncing:
-wrapAfter('addMembre', function(){
-  const cm = COMM_PERF[COMM_PERF.length-1];
-  if(cm && !cm._dbId){
-    apiPost('/api/data', { entity:'comm_perf', row:{ nom:cm.nom, ville:cm.ville, zone:cm.zone, obj:cm.obj,
-      ventes:cm.ventes, nb:cm.nb, tx:cm.tx, date_enregistrement:cm.dateEnregistrement, historique_modifs:[] } })
-      .then(function(r){ if(r.ok && r.data.row) cm._dbId = r.data.row.id; }).catch(function(){});
-  }
-});
+// addMembre() now syncs comm_perf directly inside its own resolved promise
+// (see actions.js) — a wrapAfter here would fire synchronously right after
+// addMembre() returns, before its internal apiPost('/api/users').then()
+// callback (which does the actual COMM_PERF.push) ever runs. That race
+// condition was the cause of new Commercial team members vanishing from
+// Equipes on reload while still correctly showing in Utilisateurs & Acces.
 wrapAfter('saveTeamEdit', function(){
   const cm = COMM_PERF[TEAM_EDIT_IDX];
   if(cm && cm._dbId){
