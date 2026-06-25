@@ -1976,7 +1976,7 @@ function addEntrepot(){
   if(!nom){ alert('Entrez un nom'); return; }
 
   if(ENTREPOT_EDIT_ID){
-    const e = ENTREPOTS.find(function(x){return x.id===ENTREPOT_EDIT_ID;});
+    const e = ENTREPOTS.find(function(x){return String(x.id)===String(ENTREPOT_EDIT_ID);});
     if(!e) return;
     const ancienNom = e.nom;
     if(nom !== ancienNom && ENTREPOTS.find(function(x){return x.nom===nom && x.id!==e.id;})){
@@ -2136,7 +2136,7 @@ let COMMANDE_BUILDER_EDIT_ID = null;
 
 function openCommandeBuilder(commandeId){
   COMMANDE_BUILDER_EDIT_ID = commandeId || null;
-  const existing = commandeId ? COMMANDES_FOURNISSEUR.find(function(x){return x.id===commandeId;}) : null;
+  const existing = commandeId ? COMMANDES_FOURNISSEUR.find(function(x){return String(x.id)===String(commandeId);}) : null;
   COMMANDE_BUILDER_LIGNES = existing && existing.lignes ? JSON.parse(JSON.stringify(existing.lignes)) : [];
 
   openModal('modal-commande'); // refreshes fournisseur/entrepot selects first
@@ -2207,7 +2207,8 @@ function saveCommandeBuilder(){
 
   if(COMMANDE_BUILDER_EDIT_ID){
     if(!isSuperAdmin()) return alert('Seul le Super Admin peut modifier une commande existante.');
-    const cmd = COMMANDES_FOURNISSEUR.find(function(x){return x.id===COMMANDE_BUILDER_EDIT_ID;});
+    const cmd = COMMANDES_FOURNISSEUR.find(function(x){return String(x.id)===String(COMMANDE_BUILDER_EDIT_ID);});
+    if(!cmd) return alert('Commande introuvable - rafraichissez la page et reessayez.');
     cmd.fournisseur = fournisseur; cmd.entrepot = entrepot; cmd.statut = statut;
     cmd.lignes = JSON.parse(JSON.stringify(COMMANDE_BUILDER_LIGNES));
     stampModification(cmd);
@@ -3476,7 +3477,8 @@ function saveDepense(){
 
   if(DEPENSE_EDIT_ID){
     if(!isSuperAdmin()) return alert('Seul le Super Admin peut modifier une depense existante.');
-    const d = DEPENSES.find(function(x){return x.id===DEPENSE_EDIT_ID;});
+    const d = DEPENSES.find(function(x){return String(x.id)===String(DEPENSE_EDIT_ID);});
+    if(!d) return alert('Depense introuvable - rafraichissez la page et reessayez.');
     d.libelle = libelle;
     d.categorie = el('dp-categorie').value;
     d.montant = montant;
@@ -3820,7 +3822,7 @@ function addFournisseur(){
   if(!nom){ alert('Entrez un nom'); return; }
 
   if(FOURNISSEUR_EDIT_ID){
-    const f = FOURNISSEURS.find(function(x){return x.id===FOURNISSEUR_EDIT_ID;});
+    const f = FOURNISSEURS.find(function(x){return String(x.id)===String(FOURNISSEUR_EDIT_ID);});
     if(!f) return;
     f.nom = nom; f.contact = el('fo-contact').value; f.tel = el('fo-tel').value;
     f.email = el('fo-email').value; f.adresse = el('fo-adresse').value; f.paiement = el('fo-paiement').value;
@@ -4832,7 +4834,7 @@ wrapAfter('addFournisseur', function(){
   if(f) dbInsert('fournisseurs', { id:f.id, nom:f.nom, contact:f.contact, tel:f.tel, email:f.email, adresse:f.adresse, paiement:f.paiement });
 });
 wrapAfter('saveCommandeBuilder', function(){
-  const cmd = COMMANDE_BUILDER_EDIT_ID ? COMMANDES_FOURNISSEUR.find(function(x){return x.id===COMMANDE_BUILDER_EDIT_ID;}) : COMMANDES_FOURNISSEUR[0];
+  const cmd = COMMANDE_BUILDER_EDIT_ID ? COMMANDES_FOURNISSEUR.find(function(x){return String(x.id)===String(COMMANDE_BUILDER_EDIT_ID);}) : COMMANDES_FOURNISSEUR[0];
   if(!cmd) return;
   const montant = typeof lignesTotalMontant === 'function' ? lignesTotalMontant(cmd.lignes||[]) : 0;
   const produitsLabel = typeof lignesLabel === 'function' ? lignesLabel(cmd.lignes||[]) : '';
@@ -4908,7 +4910,7 @@ wrapAfter('rejectConge', function(id){ dbUpdate('rh_conges', id, { statut:'Refus
 
 wrapAfter('saveDepense', function(){
   if(DEPENSE_EDIT_ID){
-    const d = DEPENSES.find(function(x){return x.id===DEPENSE_EDIT_ID;});
+    const d = DEPENSES.find(function(x){return String(x.id)===String(DEPENSE_EDIT_ID);});
     if(d) dbUpdate('depenses', d.id, { libelle:d.libelle, categorie:d.categorie, montant:d.montant,
       paye_par:d.payePar, justificatif:d.justificatif, statut:d.statut,
       last_modified_by:d.lastModifiedBy, last_modified_at:d.lastModifiedAt });
