@@ -841,20 +841,47 @@ function renderView(view){
 }
 
 // ── DASHBOARD ──────────────────────────────────────────────────────────────────
+// Returns true if a fr-FR date string ("DD/MM/YYYY", optionally followed by
+// a time) falls in the current calendar month. Used to scope "real sales"
+// figures to the current month, consistently across Dashboard, Equipe
+// Commerciale and Direction.
+function isThisMonth(dateStr){
+  if(!dateStr) return false;
+  const parts = dateStr.split(' ')[0].split('/');
+  if(parts.length !== 3) return false;
+  const d = new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]));
+  const today = new Date();
+  return d.getFullYear()===today.getFullYear() && d.getMonth()===today.getMonth();
+}
+
+// Real sales per commercial, computed directly from paid invoices — NOT from
+// COMM_PERF.ventes, which is only ever set once (when the member is created)
+// and is never touched by any sale event (markFacturePaid, etc.). A facture
+// is attributed to whichever commercial is assigned (asg) to its client.
+// onlyThisMonth=true scopes to the current month (for tracking against a
+// monthly objectif); false gives the all-time total (for Direction's CA).
+function computeVentesParCommercial(onlyThisMonth){
+  const totals = {};
+  FACTURES.filter(function(f){ return f.statut === 'Payee' && (!onlyThisMonth || isThisMonth(f.date)); }).forEach(function(f){
+    const cl = CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === (f.client||'').trim().toLowerCase(); });
+    if(cl && cl.asg){
+      totals[cl.asg] = (totals[cl.asg]||0) + lignesTotalMontant(f.lignes||[]);
+    }
+  });
+  return totals;
+}
+
 function renderDash(c){
   // Real sales figures from actual invoices, not just manually-entered team numbers.
-  const todayDate = new Date();
-  const isThisMonth = function(dateStr){
-    if(!dateStr) return false;
-    const parts = dateStr.split(' ')[0].split('/');
-    if(parts.length !== 3) return false;
-    const d = new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]));
-    return d.getFullYear()===todayDate.getFullYear() && d.getMonth()===todayDate.getMonth();
-  };
   const facturesPayeesMois = FACTURES.filter(function(f){ return f.statut === 'Payee' && isThisMonth(f.date); });
   const caReelMois = facturesPayeesMois.reduce(function(s,f){ return s + lignesTotalMontant(f.lignes||[]); }, 0);
 
-  const totalVentes = COMM_PERF.reduce(function(s,x){return s+x.ventes;},0);
+  // Equipe Commerciale: ventes reelles de chaque commercial ce mois, basees
+  // sur les factures payees liees a ses clients — pas sur COMM_PERF.ventes,
+  // qui n'etait jamais mis a jour par aucune vente (toujours la valeur
+  // saisie a la creation du membre).
+  const ventesParCommercialMois = computeVentesParCommercial(true);
+  const totalVentes = COMM_PERF.reduce(function(s,x){return s+(ventesParCommercialMois[x.nom]||0);},0);
   const totalObj = COMM_PERF.reduce(function(s,x){return s+x.obj;},0);
   const pctObj = totalObj > 0 ? Math.round(totalVentes/totalObj*100) : 0;
   const myClients = CLIENTS.filter(visibleClientFilter);
@@ -891,7 +918,7 @@ function renderDash(c){
   const pctMkt = CAMPAGNES.length > 0 ? Math.round(campagnesActives/CAMPAGNES.length*100) : 0;
   const pctCom = PUBLICATIONS.length > 0 ? Math.round(PUBLICATIONS.filter(function(p){return p.statut==='Publie';}).length/PUBLICATIONS.length*100) : 0;
   const teams = [
-    {n:"Equipe Commerciale", v:pctObj, s:fcfa(totalVentes)+" / "+fcfa(totalObj)+" (objectifs declares)", f:"pf-red"},
+    {n:"Equipe Commerciale", v:pctObj, s:fcfa(totalVentes)+" / "+fcfa(totalObj)+" (ventes reelles ce mois)", f:"pf-red"},
     {n:"Equipe Marketing", v:pctMkt, s:campagnesActives+" campagnes actives sur "+CAMPAGNES.length, f:"pf-blue"},
     {n:"Equipe Communication", v:pctCom, s:PUBLICATIONS.length+" publications", f:"pf-green"}
   ];
@@ -1086,26 +1113,35 @@ function renderComm(c){
     .map(function(cm, i){ return { cm: cm, idx: i }; })
     .filter(function(pair){ return searchMatch(pair.cm, ['nom','ville','zone']); });
 
-  el('tbl-comm').innerHTML = '<thead><tr><th>Membre</th><th>Ville</th><th>Zone</th><th>Ventes</th><th>Objectif</th><th>%</th><th>Commission</th><th>Enregistre le</th><th></th></tr></thead><tbody>' +
+  // Real sales this month per commercial, from paid invoices — see
+  // computeVentesParCommercial(). cm.ventes itself is never used for display
+  // anymore: it was only ever set once at member creation and never updated
+  // by any actual sale.
+  const ventesParCommercial = computeVentesParCommercial(true);
+  function ventesDe(cm){ return ventesParCommercial[cm.nom] || 0; }
+
+  el('tbl-comm').innerHTML = '<thead><tr><th>Membre</th><th>Ville</th><th>Zone</th><th>Ventes (ce mois)</th><th>Objectif</th><th>%</th><th>Commission</th><th>Enregistre le</th><th></th></tr></thead><tbody>' +
     visibleComm.map(function(pair){
       const cm = pair.cm, i = pair.idx;
-      const p = cm.obj > 0 ? Math.round(cm.ventes/cm.obj*100) : 0;
+      const ventes = ventesDe(cm);
+      const p = cm.obj > 0 ? Math.round(ventes/cm.obj*100) : 0;
       const pc = p>=100 ? "pf-green" : p>=60 ? "pf-blue" : "pf-gold";
       const linkedUser = USERS.find(function(u){return u.nom===cm.nom;});
       const inactiveTag = (linkedUser && !linkedUser.actif) ? ' <span class="tag tag-red" style="font-size:10px">Compte desactive</span>' : '';
-      return '<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar '+avColor(i)+'">'+ini(cm.nom)+'</div><div class="td-bold">'+cm.nom+inactiveTag+'</div></div></td><td class="td-muted">'+cm.ville+'</td><td class="td-muted">'+cm.zone+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(cm.ventes)+'</td><td class="td-muted">'+fcfa(cm.obj)+'</td><td><div style="font-size:11px;font-weight:700;margin-bottom:2px">'+p+'%</div><div class="progress-bar" style="min-width:50px"><div class="progress-fill '+pc+'" style="width:'+Math.min(p,100)+'%"></div></div></td><td style="color:var(--green);font-weight:700">'+fcfa(Math.round(cm.ventes*cm.tx/100))+'</td><td class="td-muted">'+(cm.dateEnregistrement||'-')+'</td><td>'+editBtn(i)+'</td></tr>';
+      return '<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar '+avColor(i)+'">'+ini(cm.nom)+'</div><div class="td-bold">'+cm.nom+inactiveTag+'</div></div></td><td class="td-muted">'+cm.ville+'</td><td class="td-muted">'+cm.zone+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(ventes)+'</td><td class="td-muted">'+fcfa(cm.obj)+'</td><td><div style="font-size:11px;font-weight:700;margin-bottom:2px">'+p+'%</div><div class="progress-bar" style="min-width:50px"><div class="progress-fill '+pc+'" style="width:'+Math.min(p,100)+'%"></div></div></td><td style="color:var(--green);font-weight:700">'+fcfa(Math.round(ventes*cm.tx/100))+'</td><td class="td-muted">'+(cm.dateEnregistrement||'-')+'</td><td>'+editBtn(i)+'</td></tr>';
     }).join('') + '</tbody>';
 
-  el('obj-view').innerHTML = '<table><thead><tr><th>Commercial</th><th>Ville</th><th>Objectif</th><th>Realise</th><th>Ecart</th><th>%</th><th></th></tr></thead><tbody>' +
+  el('obj-view').innerHTML = '<table><thead><tr><th>Commercial</th><th>Ville</th><th>Objectif</th><th>Realise (ce mois)</th><th>Ecart</th><th>%</th><th></th></tr></thead><tbody>' +
     visibleComm.map(function(pair){
       const cm = pair.cm, i = pair.idx;
-      const ecart = cm.ventes - cm.obj; const p = cm.obj > 0 ? Math.round(cm.ventes/cm.obj*100) : 0;
-      return '<tr><td class="td-bold">'+cm.nom+'</td><td class="td-muted">'+cm.ville+'</td><td>'+fcfa(cm.obj)+'</td><td style="color:var(--red);font-weight:600">'+fcfa(cm.ventes)+'</td><td style="color:'+(ecart>=0?'var(--green)':'var(--red)')+';font-weight:600">'+(ecart>=0?'+':'')+fcfa(ecart)+'</td><td style="font-weight:700;color:'+(p>=100?'var(--green)':p>=60?'var(--blue)':'var(--red)')+'">'+p+'%</td><td>'+editBtn(i)+'</td></tr>';
+      const ventes = ventesDe(cm);
+      const ecart = ventes - cm.obj; const p = cm.obj > 0 ? Math.round(ventes/cm.obj*100) : 0;
+      return '<tr><td class="td-bold">'+cm.nom+'</td><td class="td-muted">'+cm.ville+'</td><td>'+fcfa(cm.obj)+'</td><td style="color:var(--red);font-weight:600">'+fcfa(ventes)+'</td><td style="color:'+(ecart>=0?'var(--green)':'var(--red)')+';font-weight:600">'+(ecart>=0?'+':'')+fcfa(ecart)+'</td><td style="font-weight:700;color:'+(p>=100?'var(--green)':p>=60?'var(--blue)':'var(--red)')+'">'+p+'%</td><td>'+editBtn(i)+'</td></tr>';
     }).join('') + '</tbody></table>';
 
-  const totalComm = COMM_PERF.reduce(function(s,cm){return s+Math.round(cm.ventes*cm.tx/100);},0);
-  el('comm-view').innerHTML = '<table><thead><tr><th>Commercial</th><th>Ventes</th><th>Taux</th><th>Commission</th><th></th></tr></thead><tbody>' +
-    visibleComm.map(function(pair){ const cm = pair.cm, i = pair.idx; return '<tr><td class="td-bold">'+cm.nom+'</td><td>'+fcfa(cm.ventes)+'</td><td>'+cm.tx+'%</td><td style="color:var(--green);font-weight:700">'+fcfa(Math.round(cm.ventes*cm.tx/100))+'</td><td>'+editBtn(i)+'</td></tr>'; }).join('') +
+  const totalComm = COMM_PERF.reduce(function(s,cm){return s+Math.round(ventesDe(cm)*cm.tx/100);},0);
+  el('comm-view').innerHTML = '<table><thead><tr><th>Commercial</th><th>Ventes (ce mois)</th><th>Taux</th><th>Commission</th><th></th></tr></thead><tbody>' +
+    visibleComm.map(function(pair){ const cm = pair.cm, i = pair.idx; const ventes = ventesDe(cm); return '<tr><td class="td-bold">'+cm.nom+'</td><td>'+fcfa(ventes)+'</td><td>'+cm.tx+'%</td><td style="color:var(--green);font-weight:700">'+fcfa(Math.round(ventes*cm.tx/100))+'</td><td>'+editBtn(i)+'</td></tr>'; }).join('') +
     '<tr style="border-top:2px solid var(--border)"><td colspan="3" style="font-weight:700;text-align:right">Total a verser</td><td style="color:var(--red);font-weight:700;font-size:14px">'+fcfa(totalComm)+'</td><td></td></tr></tbody></table>';
 
   const allHisto = [];
@@ -1142,11 +1178,22 @@ function saveTeamEdit(){
   const raison = el('te-raison').value.trim();
   if(!raison){ alert('La raison de la modification est obligatoire.'); return; }
 
+  // parseInt/parseFloat stop at the first invalid character, so "600 000"
+  // (space) or "5,5" (French decimal comma) used to silently get truncated
+  // and, worse, silently fall back to the OLD value via "|| cm.obj" whenever
+  // parsing failed entirely — making a real edit look like "nothing changed".
+  const objRaw = el('te-obj').value.replace(/\s/g,'');
+  const txRaw = el('te-tx').value.replace(',', '.').trim();
+  const objVal = parseInt(objRaw, 10);
+  const txVal = parseFloat(txRaw);
+  if(objRaw !== '' && isNaN(objVal)){ alert('Objectif mensuel : valeur invalide. Entrez un nombre, ex: 600000'); return; }
+  if(txRaw !== '' && isNaN(txVal)){ alert('Taux de commission : valeur invalide. Entrez un nombre, ex: 5 ou 5.5'); return; }
+
   const changes = [
     { champ:'Ville', key:'ville', newVal: el('te-ville').value },
     { champ:'Zone', key:'zone', newVal: el('te-zone').value },
-    { champ:'Objectif mensuel', key:'obj', newVal: parseInt(el('te-obj').value)||cm.obj },
-    { champ:'Taux de commission (%)', key:'tx', newVal: parseFloat(el('te-tx').value)||cm.tx },
+    { champ:'Objectif mensuel', key:'obj', newVal: isNaN(objVal) ? cm.obj : objVal },
+    { champ:'Taux de commission (%)', key:'tx', newVal: isNaN(txVal) ? cm.tx : txVal },
   ];
 
   if(!cm.historiqueModifs) cm.historiqueModifs = [];
@@ -1159,7 +1206,7 @@ function saveTeamEdit(){
     }
   });
 
-  if(!anyChange){ alert('Aucune valeur n\'a ete modifiee.'); return; }
+  if(!anyChange){ alert('Aucune valeur n\'a ete modifiee. Changez au moins un des 4 champs (Ville, Zone, Objectif ou Taux) avant d\'enregistrer — le champ "Ventes" n\'est pas modifiable ici, il se calcule automatiquement a partir des factures payees.'); return; }
 
   logAction('Membre equipe modifie', cm.nom + ' — Raison: ' + raison, 'gold');
   closeModal('modal-team-edit');
@@ -1587,10 +1634,12 @@ function renderRapports(c){
   h += '<div class="card"><div class="card-title">ROI — Acqua Due vs Bouteilles Niger</div><div id="rpt-roi"></div></div>';
   c.innerHTML = h;
 
-  const tv = COMM_PERF.reduce(function(s,x){return s+x.ventes;},0);
-  const tc = COMM_PERF.reduce(function(s,x){return s+Math.round(x.ventes*x.tx/100);},0);
+  // Meme calcul reel que partout ailleurs (factures payees), pas COMM_PERF.ventes
+  const ventesParCommercialRpt = computeVentesParCommercial(true);
+  const tv = COMM_PERF.reduce(function(s,x){return s+(ventesParCommercialRpt[x.nom]||0);},0);
+  const tc = COMM_PERF.reduce(function(s,x){return s+Math.round((ventesParCommercialRpt[x.nom]||0)*x.tx/100);},0);
   el('rpt-comm').innerHTML = '<div class="grid2" style="margin-bottom:11px"><div style="background:var(--red-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--red)">CA TOTAL</div><div style="font-size:18px;font-weight:800;color:var(--red)">'+fcfa(tv)+'</div></div><div style="background:var(--green-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--green)">COMMISSIONS</div><div style="font-size:18px;font-weight:800;color:var(--green)">'+fcfa(tc)+'</div></div></div>' +
-    COMM_PERF.map(function(cm){ const p=cm.obj>0?Math.round(cm.ventes/cm.obj*100):0; return '<div style="padding:7px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between"><span style="font-size:12px;font-weight:600">'+cm.nom+'</span><span style="font-weight:700;color:var(--red)">'+p+'%</span></div><div class="progress-bar"><div class="progress-fill '+(p>=100?'pf-green':p>=60?'pf-blue':'pf-red')+'" style="width:'+Math.min(p,100)+'%"></div></div></div>'; }).join('');
+    COMM_PERF.map(function(cm){ const ventes=ventesParCommercialRpt[cm.nom]||0; const p=cm.obj>0?Math.round(ventes/cm.obj*100):0; return '<div style="padding:7px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between"><span style="font-size:12px;font-weight:600">'+cm.nom+'</span><span style="font-weight:700;color:var(--red)">'+p+'%</span></div><div class="progress-bar"><div class="progress-fill '+(p>=100?'pf-green':p>=60?'pf-blue':'pf-red')+'" style="width:'+Math.min(p,100)+'%"></div></div></div>'; }).join('');
 
   const tl = CAMPAGNES.reduce(function(s,x){return s+x.leads;},0);
   const tb = CAMPAGNES.reduce(function(s,x){return s+x.budget;},0);
@@ -1638,10 +1687,12 @@ function exportReportCSV(){
   lines.push('');
   lines.push('--- COMMERCIAL ---');
   lines.push(['Commercial','Ville','Zone','Ventes (FCFA)','Objectif (FCFA)','Atteinte (%)','Commission (FCFA)'].map(csvEscape).join(','));
+  const ventesParCommercialCsv = computeVentesParCommercial(true);
   COMM_PERF.forEach(function(cm){
-    const p = cm.obj>0 ? Math.round(cm.ventes/cm.obj*100) : 0;
-    const comm = Math.round(cm.ventes*cm.tx/100);
-    lines.push([cm.nom, cm.ville, cm.zone, cm.ventes, cm.obj, p, comm].map(csvEscape).join(','));
+    const ventes = ventesParCommercialCsv[cm.nom]||0;
+    const p = cm.obj>0 ? Math.round(ventes/cm.obj*100) : 0;
+    const comm = Math.round(ventes*cm.tx/100);
+    lines.push([cm.nom, cm.ville, cm.zone, ventes, cm.obj, p, comm].map(csvEscape).join(','));
   });
   lines.push('');
   lines.push('--- MARKETING ---');
@@ -1663,8 +1714,9 @@ function exportReportCSV(){
 // Opens a clean, print-formatted version of the report in a new window/tab;
 // the user picks "Save as PDF" in the print dialog (works in every browser).
 function exportReportPDF(){
-  const tv = COMM_PERF.reduce(function(s,x){return s+x.ventes;},0);
-  const tc = COMM_PERF.reduce(function(s,x){return s+Math.round(x.ventes*x.tx/100);},0);
+  const ventesParCommercialPdf = computeVentesParCommercial(true);
+  const tv = COMM_PERF.reduce(function(s,x){return s+(ventesParCommercialPdf[x.nom]||0);},0);
+  const tc = COMM_PERF.reduce(function(s,x){return s+Math.round((ventesParCommercialPdf[x.nom]||0)*x.tx/100);},0);
   const tl = CAMPAGNES.reduce(function(s,x){return s+x.leads;},0);
   const tb = CAMPAGNES.reduce(function(s,x){return s+x.budget;},0);
 
@@ -1687,7 +1739,7 @@ function exportReportPDF(){
     '<div class="kpi"><div class="kpi-lbl">Leads</div><div class="kpi-val">' + tl + '</div></div>' +
     '<div class="kpi"><div class="kpi-lbl">Budget Marketing</div><div class="kpi-val">' + fcfa(tb) + '</div></div>' +
     '<h2>Performance Commerciale</h2><table><thead><tr><th>Commercial</th><th>Ville</th><th>Ventes</th><th>Objectif</th><th>%</th><th>Commission</th></tr></thead><tbody>' +
-    COMM_PERF.map(function(cm){ const p=cm.obj>0?Math.round(cm.ventes/cm.obj*100):0; return '<tr><td>'+cm.nom+'</td><td>'+cm.ville+'</td><td>'+fcfa(cm.ventes)+'</td><td>'+fcfa(cm.obj)+'</td><td>'+p+'%</td><td>'+fcfa(Math.round(cm.ventes*cm.tx/100))+'</td></tr>'; }).join('') +
+    COMM_PERF.map(function(cm){ const ventes=ventesParCommercialPdf[cm.nom]||0; const p=cm.obj>0?Math.round(ventes/cm.obj*100):0; return '<tr><td>'+cm.nom+'</td><td>'+cm.ville+'</td><td>'+fcfa(ventes)+'</td><td>'+fcfa(cm.obj)+'</td><td>'+p+'%</td><td>'+fcfa(Math.round(ventes*cm.tx/100))+'</td></tr>'; }).join('') +
     '</tbody></table>' +
     '<h2>Campagnes Marketing</h2><table><thead><tr><th>Campagne</th><th>Canal</th><th>Budget</th><th>Leads</th><th>Statut</th></tr></thead><tbody>' +
     CAMPAGNES.map(function(cp){ return '<tr><td>'+cp.nom+'</td><td>'+cp.canal+'</td><td>'+fcfa(cp.budget)+'</td><td>'+cp.leads+'</td><td>'+cp.statut+'</td></tr>'; }).join('') +
@@ -3028,13 +3080,18 @@ function renderDirection(c){
     c.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔒</div>Tableau de bord reserve a la Direction.</div>';
     return;
   }
-  const ca = COMM_PERF.reduce(function(s,x){return s+x.ventes;},0);
+  // CA Total used to be computed from COMM_PERF.ventes, a field that is only
+  // ever set once at member creation and never updated by any real sale —
+  // it was silently drifting further from reality over time. "Encaissements"
+  // a few lines below already computes the exact same thing correctly,
+  // directly from paid invoices, so CA Total now simply reuses it.
+  const encaissements = FACTURES.filter(function(f){return f.statut==="Payee";}).reduce(function(s,f){return s+lignesTotalMontant(f.lignes);},0);
+  const ca = encaissements;
   const leads = CAMPAGNES.reduce(function(s,x){return s+x.leads;},0);
   const coutAcq = CAMPAGNES.reduce(function(s,x){return s+x.budget;},0) / Math.max(leads,1);
   // Valeur financiere du stock — methode CMUP (Cout Moyen Unitaire Pondere) : Stock Reel x Prix d'achat moyen pondere
   const valeurStock = PRODUITS.reduce(function(s,p){ return s + stockReelForSku(p.sku) * p.prix_achat; }, 0);
   const produitsCritiques = STOCK.filter(function(s){return (s.qte-(s.reserve||0))<=s.seuil;}).length;
-  const encaissements = FACTURES.filter(function(f){return f.statut==="Payee";}).reduce(function(s,f){return s+lignesTotalMontant(f.lignes);},0);
   const impayes = FACTURES.filter(function(f){return f.statut==="Impayee";}).reduce(function(s,f){return s+lignesTotalMontant(f.lignes);},0);
   const totalDepenses = DEPENSES.filter(function(d){return d.statut==='Payee';}).reduce(function(s,d){return s+d.montant;},0);
   const margeEstimee = ca - PRODUITS.reduce(function(s,p){
@@ -3074,10 +3131,14 @@ function renderDirection(c){
   const pipelineClosDir = PIPELINE.filter(function(p){return p.etape==='Gagne'||p.etape==='Perdu';});
   const pipelineGagneDir = PIPELINE.filter(function(p){return p.etape==='Gagne';});
   const tauxConversionDir = pipelineClosDir.length > 0 ? Math.round(pipelineGagneDir.length/pipelineClosDir.length*100) : 0;
+  // All-time per-commercial breakdown, matching the "CA Total" scope above
+  // (the Equipe Commerciale module itself scopes its own numbers to the
+  // current month instead, for tracking against a monthly objectif).
+  const ventesParCommercialTotal = computeVentesParCommercial(false);
 
   el('dir-comm').innerHTML =
     '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span class="td-muted">Chiffre d\'affaires</span><strong style="color:var(--red)">'+fcfa(ca)+'</strong></div>' +
-    COMM_PERF.map(function(cm){ return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span class="td-muted">'+cm.nom+'</span><strong>'+fcfa(cm.ventes)+'</strong></div>'; }).join('') +
+    COMM_PERF.map(function(cm){ return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span class="td-muted">'+cm.nom+'</span><strong>'+fcfa(ventesParCommercialTotal[cm.nom]||0)+'</strong></div>'; }).join('') +
     '<div style="display:flex;justify-content:space-between;padding:6px 0"><span class="td-muted">Taux de conversion</span><strong style="color:var(--green)">'+tauxConversionDir+'%</strong></div>';
 
   el('dir-mkt').innerHTML =
@@ -3273,6 +3334,7 @@ function buildModals(){
   // ── Modal: Modifier un membre d'equipe (Super Admin, raison obligatoire) ──
   const teamEditBody =
     '<div style="margin-bottom:10px;font-size:12px">Modification de <strong id="te-nom">-</strong></div>' +
+    '<div style="background:var(--blue-light);border-radius:8px;padding:9px;font-size:11px;color:var(--blue);margin-bottom:10px">ℹ️ Les ventes et la commission sont calculees automatiquement a partir des factures payees — ce ne sont pas des champs a modifier ici. Pour qu\'une raison soit enregistree, changez reellement au moins un des champs ci-dessous (Ville, Zone, Objectif ou Taux).</div>' +
     fieldRow(fieldText('te-ville','Ville'), fieldText('te-zone','Zone')) +
     fieldRow(fieldText('te-obj','Objectif mensuel (FCFA)'), fieldText('te-tx','Taux de commission (%)')) +
     fieldTextarea('te-raison','Raison de la modification (obligatoire)', 'Ex: Revalorisation suite a la nouvelle zone Zinder Nord') +
