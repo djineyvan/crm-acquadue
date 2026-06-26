@@ -48,7 +48,7 @@ const COLUMNS = {
   comm_perf: ['id','nom','ville','zone','obj','ventes','nb','tx','date_enregistrement','historique_modifs'],
   campagnes: ['id','nom','canal','budget','statut','leads','cout_lead','debut','fin','resp','locked','last_modified_by','last_modified_at'],
   publications: ['id','titre','plat','fmt','date_pub','statut','workflow','redacteur','locked','last_modified_by','last_modified_at'],
-  produits: ['sku','nom','categorie','marque','desc_produit','prix_achat','prix_vente','prix_revendeur','tva','poids','dimensions','codebarre','remise_seuil','remise_pct','last_modified_by','last_modified_at'],
+  produits: ['sku','nom','categorie','marque','desc_produit','prix_achat','prix_vente','prix_revendeur','tva','poids','dimensions','codebarre','remise_seuil','remise_pct','roi_installation','roi_volume_bougie_l','roi_cout_bougie','roi_frequence_bougie_mois','last_modified_by','last_modified_at'],
   entrepots: ['id','nom','type','ville'],
   stock: ['id','sku','entrepot','qte','reserve','seuil','last_modified_by','last_modified_at'],
   mouvements_stock: ['id','date_mvt','type','motif','sku','produit','qte','entrepot','user_nom'],

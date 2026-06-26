@@ -59,6 +59,10 @@ const COLUMN_TYPES = {
     prix_achat: 'INT DEFAULT 0', prix_vente: 'INT DEFAULT 0', prix_revendeur: 'INT DEFAULT 0',
     tva: 'INT DEFAULT 19', poids: 'TEXT', dimensions: 'TEXT', codebarre: 'TEXT',
     remise_seuil: 'INT DEFAULT 0', remise_pct: 'NUMERIC DEFAULT 0',
+    // Donnees utilisees uniquement par le Calculateur ROI (Pipeline/Rapports).
+    // Toutes optionnelles : si non renseignees, le calcul ignore simplement
+    // le cout de recharge et utilise prix_vente comme cout d'installation.
+    roi_installation: 'NUMERIC', roi_volume_bougie_l: 'NUMERIC', roi_cout_bougie: 'NUMERIC', roi_frequence_bougie_mois: 'NUMERIC',
     last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP', created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   entrepots: {

@@ -419,6 +419,16 @@ function frDateToIso(fr){
   if(parts.length !== 3) return ''; // unrecognized format — input just starts blank
   return parts[2] + '-' + String(parts[1]).padStart(2,'0') + '-' + String(parts[0]).padStart(2,'0');
 }
+// Returns null for an empty/blank input rather than 0 — important for
+// optional numeric fields (like the ROI candle-replacement settings) where
+// "not configured" must be distinguishable from "configured as zero".
+function parseOptionalFloat(value){
+  if(value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  if(trimmed === '') return null;
+  const n = parseFloat(trimmed.replace(',', '.'));
+  return isNaN(n) ? null : n;
+}
 function ini(nom){ return nom.split(" ").map(function(n){return n[0];}).join("").slice(0,2).toUpperCase(); }
 function avColor(i){ return AVC[i % 5]; }
 function fcfa(n){ return Number(n).toLocaleString("fr-FR") + " FCFA"; }
@@ -1766,18 +1776,43 @@ function updateRoiCalc(){
 
   const prixParLitre = conc.prix / conc.volumeLitres;
   const coutAnnuelBouteilles = consoJour * 365 * prixParLitre;
-  const coutProduit = produit.prix_vente;
-  const economieAn1 = coutAnnuelBouteilles - coutProduit;
-  const moisRentabilisation = coutAnnuelBouteilles > 0 ? (coutProduit / (coutAnnuelBouteilles / 12)) : 0;
+
+  // Cout d'installation : utilise la valeur ROI specifique au produit si elle
+  // a ete renseignee (Produits -> Details -> champs ROI), sinon le prix de
+  // vente normal du produit.
+  const coutInstallation = (produit.roiInstallation && produit.roiInstallation > 0) ? produit.roiInstallation : produit.prix_vente;
+
+  // Cout de recharge (bougie) : seulement si volume ET cout sont configures
+  // pour ce produit. La bougie est remplacee au premier des deux seuils
+  // atteints — volume d'eau filtree OU frequence maximale recommandee.
+  let coutRechargeAnnuel = 0, intervalleJours = null;
+  const bougieConfiguree = produit.roiVolumeBougieL > 0 && produit.roiCoutBougie > 0;
+  if(bougieConfiguree){
+    const joursParVolume = produit.roiVolumeBougieL / consoJour;
+    const joursParFrequence = (produit.roiFrequenceBougieMois && produit.roiFrequenceBougieMois > 0) ? produit.roiFrequenceBougieMois * 30.44 : joursParVolume;
+    intervalleJours = Math.min(joursParVolume, joursParFrequence);
+    const remplacementsParAn = 365 / intervalleJours;
+    coutRechargeAnnuel = remplacementsParAn * produit.roiCoutBougie;
+  }
+
+  const coutProduitAn1 = coutInstallation + coutRechargeAnnuel;
+  const coutProduitAnsSuivantes = coutRechargeAnnuel;
+  const economieAn1 = coutAnnuelBouteilles - coutProduitAn1;
+  const economieAnsSuivantes = coutAnnuelBouteilles - coutProduitAnsSuivantes;
+  const economieMensuelleNette = (coutAnnuelBouteilles - coutRechargeAnnuel) / 12;
+  const moisRentabilisation = economieMensuelleNette > 0 ? (coutInstallation / economieMensuelleNette) : 0;
 
   resultEl.innerHTML =
     '<div class="grid2" style="margin-bottom:10px">' +
     '<div style="background:var(--red-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--red)">Cout bouteilles / an</div><div style="font-size:16px;font-weight:800;color:var(--red)">'+fcfa(Math.round(coutAnnuelBouteilles))+'</div></div>' +
-    '<div style="background:var(--blue-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--blue)">Cout '+produit.nom+'</div><div style="font-size:16px;font-weight:800;color:var(--blue)">'+fcfa(coutProduit)+'</div></div>' +
+    '<div style="background:var(--blue-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--blue)">Installation '+produit.nom+'</div><div style="font-size:16px;font-weight:800;color:var(--blue)">'+fcfa(coutInstallation)+'</div></div>' +
     '</div>' +
+    (bougieConfiguree
+      ? '<div class="td-muted" style="margin-bottom:8px">+ Remplacement bougie : '+fcfa(produit.roiCoutBougie)+' tous les '+(intervalleJours/30.44).toFixed(1)+' mois environ → <strong>'+fcfa(Math.round(coutRechargeAnnuel))+'/an</strong> de recharge</div>'
+      : '<div class="td-muted" style="margin-bottom:8px">⚠️ Cout de recharge non configure pour ce produit (Produits → Details → champs ROI) — non inclus ci-dessous.</div>') +
     '<div style="background:var(--green-light);border-radius:8px;padding:12px;margin-bottom:8px"><div class="kpi-lbl" style="color:var(--green)">Economie 1ere annee</div><div style="font-size:22px;font-weight:800;color:'+(economieAn1>=0?'var(--green)':'var(--red)')+'">'+fcfa(Math.round(economieAn1))+'</div></div>' +
-    '<div class="td-muted">Rentabilise en environ <strong>'+(coutAnnuelBouteilles>0 ? Math.ceil(moisRentabilisation) : '-')+' mois</strong>. A partir de l\'annee 2 (produit deja paye), l\'economie complete d\'environ <strong>'+fcfa(Math.round(coutAnnuelBouteilles))+'/an</strong> est conservee.</div>' +
-    '<div class="td-muted" style="margin-top:6px;font-size:10px">Estimation hors entretien / remplacement eventuel de filtres.</div>';
+    '<div class="td-muted">Rentabilise en environ <strong>'+(moisRentabilisation>0 ? Math.ceil(moisRentabilisation)+' mois' : '-')+'</strong>. A partir de l\'annee 2 (installation deja payee'+(bougieConfiguree?', recharges bougie deduites':'')+'), economie d\'environ <strong>'+fcfa(Math.round(economieAnsSuivantes))+'/an</strong>.</div>' +
+    (bougieConfiguree ? '' : '<div class="td-muted" style="margin-top:6px;font-size:10px">Estimation hors entretien / remplacement de filtre (non configure pour ce produit).</div>');
 }
 
 function csvEscape(val){
@@ -2174,6 +2209,10 @@ function viewProductDetail(sku){
     ['TVA', p.tva + '%'],
     ['Poids / Dimensions', (p.poids||'-') + ' / ' + (p.dimensions||'-')],
     ['Code-barres', p.codebarre || '-'],
+    ['Cout d\'installation (Calculateur ROI)', p.roiInstallation ? fcfa(p.roiInstallation) : '<span class="td-muted">Non configure — le calculateur utilise le prix de vente</span>'],
+    ['Volume par bougie (Calculateur ROI)', p.roiVolumeBougieL ? p.roiVolumeBougieL+' L' : '<span class="td-muted">Non configure</span>'],
+    ['Cout remplacement bougie (Calculateur ROI)', p.roiCoutBougie ? fcfa(p.roiCoutBougie) : '<span class="td-muted">Non configure</span>'],
+    ['Remplacer au plus tard tous les (Calculateur ROI)', p.roiFrequenceBougieMois ? p.roiFrequenceBougieMois+' mois' : '<span class="td-muted">Non configure</span>'],
     ['Stock Reel total', stockReelForSku(sku)],
     ['Stock Reserve total', '<span style="color:var(--gold)">'+stockReserveForSku(sku)+'</span>'],
     ['Stock Disponible total', '<strong style="color:var(--green)">'+stockDisponibleForSku(sku)+'</strong>'],
@@ -2197,7 +2236,11 @@ function viewProductDetail(sku){
       ['Dimensions', 'dimensions', p.dimensions || ''],
       ['Code-barres', 'codebarre', p.codebarre || ''],
       ['A partir de X unites (remise)', 'remiseSeuil', p.remiseSeuil || 0],
-      ['Remise par unite (%)', 'remisePct', p.remisePct || 0]
+      ['Remise par unite (%)', 'remisePct', p.remisePct || 0],
+      ['ROI — Cout installation (FCFA, 0 = utiliser prix de vente)', 'roiInstallation', p.roiInstallation || 0],
+      ['ROI — Volume par bougie (litres, 0 = ignorer)', 'roiVolumeBougieL', p.roiVolumeBougieL || 0],
+      ['ROI — Cout remplacement bougie (FCFA)', 'roiCoutBougie', p.roiCoutBougie || 0],
+      ['ROI — Remplacer tous les (mois)', 'roiFrequenceBougieMois', p.roiFrequenceBougieMois || 0]
     ],
     onSave: function(){ go('produits'); }
   });
@@ -3565,7 +3608,10 @@ function buildModals2(){
     fieldRow(fieldText('pd-prix-achat','Prix d\'achat (FCFA)'), fieldText('pd-prix-vente','Prix de vente (FCFA)')) +
     fieldRow(fieldText('pd-prix-revendeur','Prix revendeur (FCFA)'), fieldText('pd-tva','TVA (%)','19')) +
     fieldRow(fieldText('pd-remise-seuil','A partir de X unites (remise)','2'), fieldText('pd-remise-pct','Remise par unite (%)','0')) +
-    fieldTextarea('pd-desc','Description');
+    fieldTextarea('pd-desc','Description') +
+    '<div class="form-label" style="margin-top:10px">Donnees pour le Calculateur ROI (optionnel)</div>' +
+    fieldRow(fieldText('pd-roi-installation','Cout d\'installation (FCFA)','Ex: 30000'), fieldText('pd-roi-volume-bougie','Volume par bougie (litres)','Ex: 2000')) +
+    fieldRow(fieldText('pd-roi-cout-bougie','Cout remplacement bougie (FCFA)','Ex: 20000'), fieldText('pd-roi-freq-bougie','Remplacer au plus tard tous les (mois)','Ex: 3'));
   modals += modalShell('modal-produit', 'Nouveau Produit', produitBody,
     btnGhost('Annuler', "closeModal('modal-produit')") + btnRed('Enregistrer', 'addProduit()'));
 
@@ -3833,6 +3879,8 @@ function syncDetailEditToDb(entity, record){
       desc_produit:record.desc, prix_achat:record.prix_achat, prix_vente:record.prix_vente,
       prix_revendeur:record.prix_revendeur, tva:record.tva, poids:record.poids, dimensions:record.dimensions,
       codebarre:record.codebarre, remise_seuil:record.remiseSeuil, remise_pct:record.remisePct,
+      roi_installation:record.roiInstallation||null, roi_volume_bougie_l:record.roiVolumeBougieL||null,
+      roi_cout_bougie:record.roiCoutBougie||null, roi_frequence_bougie_mois:record.roiFrequenceBougieMois||null,
       last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
   } else if(entity === 'stock'){
     if(record._dbId){
@@ -4180,7 +4228,11 @@ function addProduit(){
     desc: el('pd-desc').value, prix_achat: parseInt(el('pd-prix-achat').value) || 0,
     prix_vente: parseInt(el('pd-prix-vente').value) || 0, prix_revendeur: parseInt(el('pd-prix-revendeur').value) || 0,
     tva: parseInt(el('pd-tva').value) || 19, poids:'-', dimensions:'-', codebarre:'-',
-    remiseSeuil: parseInt(el('pd-remise-seuil').value) || 0, remisePct: parseFloat(el('pd-remise-pct').value) || 0
+    remiseSeuil: parseInt(el('pd-remise-seuil').value) || 0, remisePct: parseFloat(el('pd-remise-pct').value) || 0,
+    roiInstallation: parseOptionalFloat(el('pd-roi-installation').value),
+    roiVolumeBougieL: parseOptionalFloat(el('pd-roi-volume-bougie').value),
+    roiCoutBougie: parseOptionalFloat(el('pd-roi-cout-bougie').value),
+    roiFrequenceBougieMois: parseOptionalFloat(el('pd-roi-freq-bougie').value)
   });
   logAction('Produit ajoute au catalogue', sku + ' — ' + nom, 'blue');
   closeModal('modal-produit');
@@ -4526,6 +4578,10 @@ function mapProduitFromDb(r){
     prix_achat:r.prix_achat, prix_vente:r.prix_vente, prix_revendeur:r.prix_revendeur, tva:r.tva,
     poids:r.poids, dimensions:r.dimensions, codebarre:r.codebarre,
     remiseSeuil:r.remise_seuil, remisePct:r.remise_pct!=null?Number(r.remise_pct):0,
+    roiInstallation: r.roi_installation!=null ? Number(r.roi_installation) : null,
+    roiVolumeBougieL: r.roi_volume_bougie_l!=null ? Number(r.roi_volume_bougie_l) : null,
+    roiCoutBougie: r.roi_cout_bougie!=null ? Number(r.roi_cout_bougie) : null,
+    roiFrequenceBougieMois: r.roi_frequence_bougie_mois!=null ? Number(r.roi_frequence_bougie_mois) : null,
     lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapEntrepotFromDb(r){ return { id:r.id, nom:r.nom, type:r.type, ville:r.ville }; }
@@ -5262,7 +5318,9 @@ wrapAfter('addProduit', function(){
   if(p) dbInsert('produits', { sku:p.sku, nom:p.nom, categorie:p.categorie, marque:p.marque,
     desc_produit:p.desc, prix_achat:p.prix_achat, prix_vente:p.prix_vente, prix_revendeur:p.prix_revendeur,
     tva:p.tva, poids:p.poids||'-', dimensions:p.dimensions||'-', codebarre:p.codebarre||'-',
-    remise_seuil:p.remiseSeuil||0, remise_pct:p.remisePct||0 });
+    remise_seuil:p.remiseSeuil||0, remise_pct:p.remisePct||0,
+    roi_installation:p.roiInstallation, roi_volume_bougie_l:p.roiVolumeBougieL,
+    roi_cout_bougie:p.roiCoutBougie, roi_frequence_bougie_mois:p.roiFrequenceBougieMois });
 });
 
 // ENTREPOTS
