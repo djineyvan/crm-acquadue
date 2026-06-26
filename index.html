@@ -1468,6 +1468,7 @@ function viewTaskDetail(id){
     ['Departement', deptTag(t.dept)],
     ['Priorite', statusTag(t.pri)],
     ['Date limite', t.date],
+    ['Description', t.desc ? t.desc.replace(/\n/g,'<br/>') : '<span class="td-muted">Aucune description fournie</span>'],
     ['Statut', statusTag(t.statut)],
     ['Verrouillage', t.locked ? lockBadge() : '<span class="td-muted">Modifiable</span>']
   ];
@@ -1480,9 +1481,17 @@ function viewTaskDetail(id){
     owner: t.asg,
     fields: [
       ['Titre', 'titre', t.titre],
-      ['Priorite', 'pri', t.pri],
+      ['Priorite', 'pri', [
+        {label:'Haute',selected:t.pri==='Haute'},
+        {label:'Moyenne',selected:t.pri==='Moyenne'},
+        {label:'Basse',selected:t.pri==='Basse'}
+      ], 'select'],
       ['Date limite', 'date', t.date],
-      ['Statut', 'statut', t.statut]
+      ['Description', 'desc', t.desc || '', 'textarea'],
+      ['Statut', 'statut', [
+        {label:'A faire',selected:t.statut==='A faire'},
+        {label:'Termine',selected:t.statut==='Termine'}
+      ], 'select']
     ],
     onSave: function(){ go('taches'); }
   });
@@ -3618,7 +3627,7 @@ function syncDetailEditToDb(entity, record){
     dbUpdate('pipeline', record.id, { nom:record.nom, val:record.val, ville:record.ville, tel:record.tel, date_estimee:record.dateEstimee,
       last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
   } else if(entity === 'tasks'){
-    dbUpdate('tasks', record.id, { titre:record.titre, pri:record.pri, date_limite:record.date, statut:record.statut,
+    dbUpdate('tasks', record.id, { titre:record.titre, pri:record.pri, date_limite:record.date, desc_tache:record.desc, statut:record.statut,
       last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
   } else if(entity === 'produits'){
     dbUpdate('produits', record.sku, { nom:record.nom, categorie:record.categorie, marque:record.marque,
@@ -3871,7 +3880,8 @@ function addTache(){
   const asg = el('m-asg-2').value;
   const task = {
     id: Date.now(), titre: titre, asg: asg, dept: el('ta-dept').value,
-    pri: el('ta-pri').value, statut: 'A faire', date: el('ta-date').value || '—', locked: false
+    pri: el('ta-pri').value, statut: 'A faire', date: el('ta-date').value || '—',
+    desc: el('ta-desc').value.trim(), locked: false
   };
   TASKS.unshift(task);
   NOTIFICATIONS.unshift({ id: Date.now()+1, icon: '✅', text: 'Tache assignee: ' + titre, time: "A l'instant", read: false, target: asg });
@@ -4296,7 +4306,7 @@ function mapPipelineFromDb(r){
 }
 function mapTaskFromDb(r){
   return { id:r.id, titre:r.titre, asg:r.asg, dept:r.dept, pri:r.pri, statut:r.statut,
-    date:r.date_limite, locked:r.locked, lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
+    date:r.date_limite, desc:r.desc_tache||'', locked:r.locked, lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapCommPerfFromDb(r){
   return { nom:r.nom, ville:r.ville, zone:r.zone, obj:r.obj, ventes:r.ventes, nb:r.nb, tx:Number(r.tx),
@@ -4995,7 +5005,7 @@ wrapAfter('addClient', function(){
 // TASKS — addTache() unshifts into TASKS[0]
 wrapAfter('addTache', function(){
   const t = TASKS[0];
-  if(t) dbInsert('tasks', { id:t.id, titre:t.titre, asg:t.asg, dept:t.dept, pri:t.pri, statut:t.statut, date_limite:t.date, locked:t.locked });
+  if(t) dbInsert('tasks', { id:t.id, titre:t.titre, asg:t.asg, dept:t.dept, pri:t.pri, statut:t.statut, date_limite:t.date, desc_tache:t.desc||'', locked:t.locked });
 });
 wrapAfter('markTaskDone', function(id){
   dbUpdate('tasks', id, { statut: 'Termine' });

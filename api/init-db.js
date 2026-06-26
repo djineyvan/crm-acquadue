@@ -34,7 +34,7 @@ const COLUMN_TYPES = {
   },
   tasks: {
     id: 'BIGINT', titre: 'TEXT', asg: 'TEXT', dept: 'TEXT', pri: "TEXT DEFAULT 'Moyenne'",
-    statut: "TEXT DEFAULT 'A faire'", date_limite: 'TEXT', locked: 'BOOLEAN DEFAULT false',
+    statut: "TEXT DEFAULT 'A faire'", date_limite: 'TEXT', desc_tache: 'TEXT', locked: 'BOOLEAN DEFAULT false',
     last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP', created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   comm_perf: {
