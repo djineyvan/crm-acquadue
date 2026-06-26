@@ -356,11 +356,27 @@ let FACTURES = [];
 let SESSIONS_ACTIVES = [];
 
 // ── EXTEND PERMISSIONS — autorisations sensibles (module 27) ────────────────
-const SENSITIVE_PERMS = {
-  collaborateur:   { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:false, modifier_cout_fournisseur:false },
-  responsable:     { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:false, modifier_cout_fournisseur:false },
-  admin:           { voir_stock:true,  modifier_stock:true,  supprimer_mouvement:false, modifier_prix_achat:true,  modifier_cout_fournisseur:true  },
-  superadmin:      { voir_stock:true,  modifier_stock:true,  supprimer_mouvement:true,  modifier_prix_achat:true,  modifier_cout_fournisseur:true  },
+// Mutable (not const): the Super Admin can toggle these at runtime from
+// Centre de Controle -> Permissions sensibles. The values below are only the
+// fallback used before the real values arrive from the DB (table
+// sensitive_perms, seeded by /api/init-db) — see applySensitivePermsFromDb().
+let SENSITIVE_PERMS = {
+  collaborateur:   { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:false, modifier_cout_fournisseur:false, fournisseurs_approvisionnement:true, logistique_stock:true },
+  responsable:     { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:false, modifier_cout_fournisseur:false, fournisseurs_approvisionnement:true, logistique_stock:true },
+  // modifier_stock=false : seul le Super Admin a le droit d'ajouter/modifier
+  // les Produits et les Stocks (demande explicite). Reglable depuis le
+  // Centre de Controle si besoin d'assouplir plus tard.
+  admin:           { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:true,  modifier_cout_fournisseur:true,  fournisseurs_approvisionnement:true, logistique_stock:true },
+  superadmin:      { voir_stock:true,  modifier_stock:true,  supprimer_mouvement:true,  modifier_prix_achat:true,  modifier_cout_fournisseur:true,  fournisseurs_approvisionnement:true, logistique_stock:true },
+};
+
+// Labels used in the Centre de Controle matrix and in confirmation dialogs.
+const SENSITIVE_PERM_LABELS = {
+  voir_stock: 'Voir le stock', modifier_stock: 'Modifier Produits & Stocks',
+  supprimer_mouvement: 'Supprimer un mouvement', modifier_prix_achat: "Modifier le prix d'achat",
+  modifier_cout_fournisseur: 'Modifier le cout fournisseur',
+  fournisseurs_approvisionnement: 'Voir et modifier : Fournisseurs & Approvisionnement',
+  logistique_stock: 'Voir et modifier : Reservations, Mouvements, Previsions, Entrepots'
 };
 
 // ── SAUVEGARDES (Super Admin centre de controle) ─────────────────────────────
@@ -377,6 +393,8 @@ const CATEGORIES_DEPENSES = ["Loyer","Transport","Marketing","Charges","Salaires
 // ════════════════════════════════════════════════════════════════════════════
 
 let CU = null; // current user
+let GLOBAL_SEARCH = ''; // lowercased search term from the topbar search bar, applied across modules
+let CURRENT_VIEW = 'dash'; // tracks the active page so the search bar can re-render it on every keystroke
 const AVC = ["av-red","av-blue","av-green","av-gold","av-purple"];
 const MAX_TENTATIVES = 5;
 
@@ -385,6 +403,27 @@ function el(id){ return document.getElementById(id); }
 function ini(nom){ return nom.split(" ").map(function(n){return n[0];}).join("").slice(0,2).toUpperCase(); }
 function avColor(i){ return AVC[i % 5]; }
 function fcfa(n){ return Number(n).toLocaleString("fr-FR") + " FCFA"; }
+
+// ── GLOBAL SEARCH BAR — the #global-search input was sitting in the topbar
+// with no code wired to it at all (no oninput, no listener), which is why it
+// looked "frozen" / unresponsive. onGlobalSearch() is called on every
+// keystroke (see buildApp()'s topbar HTML) and simply re-renders whichever
+// page is currently open, this time filtered by GLOBAL_SEARCH. ──
+function onGlobalSearch(value){
+  GLOBAL_SEARCH = (value || '').trim().toLowerCase();
+  if(CURRENT_VIEW) renderView(CURRENT_VIEW);
+}
+// Returns true if `record` should be shown given the current GLOBAL_SEARCH
+// term — checks every field name passed in `fields`, case-insensitively.
+// An empty search term always matches (nothing is filtered out).
+function searchMatch(record, fields){
+  if(!GLOBAL_SEARCH) return true;
+  return fields.some(function(f){
+    const v = record[f];
+    if(v === null || v === undefined) return false;
+    return String(v).toLowerCase().indexOf(GLOBAL_SEARCH) >= 0;
+  });
+}
 
 function tag(label, cls){
   return '<span class="tag ' + cls + '">' + label + '</span>';
@@ -615,7 +654,7 @@ function buildApp(){
   html += '  <div class="topbar">';
   html += '    <div class="tbt" id="ptitle">Tableau de bord</div>';
   html += '    <div style="display:flex;gap:8px;align-items:center">';
-  html += '      <div class="search-bar">🔍 <input placeholder="Rechercher..." id="global-search"/></div>';
+  html += '      <div class="search-bar">🔍 <input placeholder="Rechercher..." id="global-search" oninput="onGlobalSearch(this.value)"/></div>';
   html += '      <button class="btn btn-ghost btn-sm" onclick="openModal(\'modal-mypwd\')">🔑 Mon mot de passe</button>';
   html += '      <button class="btn btn-red" onclick="openModal(\'modal-add\')">+ Ajouter</button>';
   html += '    </div>';
@@ -630,6 +669,11 @@ function buildApp(){
     const roles = btn.getAttribute('data-roles').split(',');
     btn.style.display = roles.indexOf(CU.role) >= 0 ? '' : 'none';
   });
+  // Approvisionnement's visibility depends on a togglable sensitive permission
+  // (not a fixed role list), so it's handled separately here rather than via
+  // navItem's static data-roles mechanism.
+  const approvBtn = document.querySelector('#nav-menu .ni[data-view="approv"]');
+  if(approvBtn) approvBtn.style.display = canAccessFournisseurs() ? '' : 'none';
   // Hide admin section header if no admin nav items visible
   const adminViews = ['users','journal','rh','controle'];
   const anyAdminVisible = adminViews.some(function(v){
@@ -680,6 +724,13 @@ function go(view){
   const btn = document.querySelector('.ni[data-view="'+view+'"]');
   if(btn) btn.classList.add('active');
   el('ptitle').textContent = VIEW_TITLES[view] || view;
+  CURRENT_VIEW = view;
+  // Reset the search term on navigation — otherwise a term typed on one
+  // module (e.g. "Niamey" on Clients) would silently filter out everything
+  // on the next module too, which would itself look like another bug.
+  GLOBAL_SEARCH = '';
+  const searchInput = el('global-search');
+  if(searchInput) searchInput.value = '';
   renderView(view);
 }
 
@@ -870,7 +921,7 @@ function renderPipe(c){
   h += '</div><div class="pipeline" id="pipe-board"></div>';
   c.innerHTML = h;
 
-  const data = PIPELINE.filter(visiblePipeFilter);
+  const data = PIPELINE.filter(visiblePipeFilter).filter(function(x){ return searchMatch(x, ['nom','ville','tel','asg','sku','type']); });
   const cols = ["muted2","blue","gold","purple","green","red"];
   let board = '';
   PIPELINE_STAGES.forEach(function(stage, i){
@@ -878,7 +929,7 @@ function renderPipe(c){
     const total = cards.reduce(function(s,x){return s+x.val;},0);
     board += '<div class="pipeline-col"><div class="pipeline-col-header"><span style="color:var(--'+cols[i]+')">'+stage+'</span><span>'+cards.length+'</span></div>';
     board += cards.map(function(card){
-      return '<div class="pipeline-card" onclick="viewPipeCard('+card.id+')"><div class="pipeline-card-name">'+card.nom+(card.locked?' 🔒':'')+'</div><div class="pipeline-card-sub">'+card.type+' • '+card.ville+' • '+card.asg.split(' ')[0]+'</div><div class="pipeline-card-val">'+fcfa(card.val)+'</div></div>';
+      return '<div class="pipeline-card" onclick="viewPipeCard('+card.id+')"><div class="pipeline-card-name">'+card.nom+(card.locked?' 🔒':'')+'</div><div class="pipeline-card-sub">'+card.type+' • '+card.ville+' • '+card.asg.split(' ')[0]+(card.tel?' • 📞 '+card.tel:'')+'</div><div class="pipeline-card-val">'+fcfa(card.val)+'</div></div>';
     }).join('');
     board += '<div class="td-muted" style="text-align:right;margin-top:4px;padding-top:4px;border-top:1px solid var(--border)">Total: '+fcfa(total)+'</div></div>';
   });
@@ -893,6 +944,7 @@ function viewPipeCard(id){
     ['Nom du prospect', p.nom],
     ['Type', typeTag(p.type)],
     ['Ville', p.ville],
+    ['Telephone', p.tel || '-'],
     ['Valeur estimee', '<strong style="color:var(--red)">' + fcfa(p.val) + '</strong>'],
     ['Etape du pipeline', statusTag(p.etape)],
     ['Commercial assigne', p.asg],
@@ -917,6 +969,7 @@ function viewPipeCard(id){
     owner: p.asg,
     fields: [
       ['Nom', 'nom', p.nom],
+      ['Telephone', 'tel', p.tel || ''],
       ['Valeur (FCFA)', 'val', p.val],
       ['Ville', 'ville', p.ville],
       ['Date estimee', 'dateEstimee', p.dateEstimee || '']
@@ -1009,8 +1062,17 @@ function renderComm(c){
 
   const editBtn = function(idx){ return isSuperAdmin() ? ' <button class="btn btn-ghost btn-sm" onclick="openTeamEditModal('+idx+')">✏️ Modifier</button>' : ''; };
 
+  // openTeamEditModal(idx) indexes directly into COMM_PERF, so when filtering
+  // for search we must keep each member's ORIGINAL index alongside it —
+  // filtering COMM_PERF itself would silently point "Modifier" at the wrong
+  // person as soon as a search term hides any row above it.
+  const visibleComm = COMM_PERF
+    .map(function(cm, i){ return { cm: cm, idx: i }; })
+    .filter(function(pair){ return searchMatch(pair.cm, ['nom','ville','zone']); });
+
   el('tbl-comm').innerHTML = '<thead><tr><th>Membre</th><th>Ville</th><th>Zone</th><th>Ventes</th><th>Objectif</th><th>%</th><th>Commission</th><th>Enregistre le</th><th></th></tr></thead><tbody>' +
-    COMM_PERF.map(function(cm,i){
+    visibleComm.map(function(pair){
+      const cm = pair.cm, i = pair.idx;
       const p = cm.obj > 0 ? Math.round(cm.ventes/cm.obj*100) : 0;
       const pc = p>=100 ? "pf-green" : p>=60 ? "pf-blue" : "pf-gold";
       const linkedUser = USERS.find(function(u){return u.nom===cm.nom;});
@@ -1019,14 +1081,15 @@ function renderComm(c){
     }).join('') + '</tbody>';
 
   el('obj-view').innerHTML = '<table><thead><tr><th>Commercial</th><th>Ville</th><th>Objectif</th><th>Realise</th><th>Ecart</th><th>%</th><th></th></tr></thead><tbody>' +
-    COMM_PERF.map(function(cm,i){
+    visibleComm.map(function(pair){
+      const cm = pair.cm, i = pair.idx;
       const ecart = cm.ventes - cm.obj; const p = cm.obj > 0 ? Math.round(cm.ventes/cm.obj*100) : 0;
       return '<tr><td class="td-bold">'+cm.nom+'</td><td class="td-muted">'+cm.ville+'</td><td>'+fcfa(cm.obj)+'</td><td style="color:var(--red);font-weight:600">'+fcfa(cm.ventes)+'</td><td style="color:'+(ecart>=0?'var(--green)':'var(--red)')+';font-weight:600">'+(ecart>=0?'+':'')+fcfa(ecart)+'</td><td style="font-weight:700;color:'+(p>=100?'var(--green)':p>=60?'var(--blue)':'var(--red)')+'">'+p+'%</td><td>'+editBtn(i)+'</td></tr>';
     }).join('') + '</tbody></table>';
 
   const totalComm = COMM_PERF.reduce(function(s,cm){return s+Math.round(cm.ventes*cm.tx/100);},0);
   el('comm-view').innerHTML = '<table><thead><tr><th>Commercial</th><th>Ventes</th><th>Taux</th><th>Commission</th><th></th></tr></thead><tbody>' +
-    COMM_PERF.map(function(cm,i){ return '<tr><td class="td-bold">'+cm.nom+'</td><td>'+fcfa(cm.ventes)+'</td><td>'+cm.tx+'%</td><td style="color:var(--green);font-weight:700">'+fcfa(Math.round(cm.ventes*cm.tx/100))+'</td><td>'+editBtn(i)+'</td></tr>'; }).join('') +
+    visibleComm.map(function(pair){ const cm = pair.cm, i = pair.idx; return '<tr><td class="td-bold">'+cm.nom+'</td><td>'+fcfa(cm.ventes)+'</td><td>'+cm.tx+'%</td><td style="color:var(--green);font-weight:700">'+fcfa(Math.round(cm.ventes*cm.tx/100))+'</td><td>'+editBtn(i)+'</td></tr>'; }).join('') +
     '<tr style="border-top:2px solid var(--border)"><td colspan="3" style="font-weight:700;text-align:right">Total a verser</td><td style="color:var(--red);font-weight:700;font-size:14px">'+fcfa(totalComm)+'</td><td></td></tr></tbody></table>';
 
   const allHisto = [];
@@ -1100,7 +1163,7 @@ function renderMkt(c){
   h += '<div id="tm-m" style="display:none"><div class="card"><div class="table-wrap"><table id="tbl-mkt-membres"></table></div></div></div>';
   c.innerHTML = h;
 
-  el('camp-grid').innerHTML = CAMPAGNES.map(function(cp){
+  el('camp-grid').innerHTML = CAMPAGNES.filter(function(cp){ return searchMatch(cp, ['nom','canal','resp']); }).map(function(cp){
     return '<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:9px"><div><div style="font-size:13px;font-weight:700">'+cp.nom+(cp.locked?' 🔒':'')+'</div><div class="td-muted">'+cp.canal+' • '+cp.debut+' → '+cp.fin+'</div></div>'+statusTag(cp.statut)+'</div><div style="display:flex;gap:13px"><div><div class="kpi-lbl">Leads</div><div style="font-size:19px;font-weight:800;color:var(--blue)">'+cp.leads+'</div></div><div><div class="kpi-lbl">Budget</div><div style="font-size:19px;font-weight:800;color:var(--red)">'+(cp.budget>0?fcfa(cp.budget):'Gratuit')+'</div></div><div><div class="kpi-lbl">Cout/Lead</div><div style="font-size:19px;font-weight:800;color:var(--gold)">'+(cp.cout_lead>0?fcfa(cp.cout_lead):'-')+'</div></div></div></div>';
   }).join('');
 
@@ -1112,10 +1175,10 @@ function renderMkt(c){
     '<div class="kpi kgold"><div class="kpi-lbl">Budget total</div><div class="kpi-val">'+(totalBudget/1000).toFixed(0)+'K</div></div>' +
     '<div class="kpi kgreen"><div class="kpi-lbl">ROI estime</div><div class="kpi-val">'+roi+'%</div></div></div>' +
     '<table><thead><tr><th>Campagne</th><th>Canal</th><th>Leads</th><th>Cout/Lead</th><th>Responsable</th></tr></thead><tbody>' +
-    CAMPAGNES.map(function(cp){ return '<tr><td class="td-bold">'+cp.nom+'</td><td class="td-muted">'+cp.canal+'</td><td>'+cp.leads+'</td><td>'+(cp.cout_lead>0?fcfa(cp.cout_lead):'Gratuit')+'</td><td class="td-muted">'+cp.resp+'</td></tr>'; }).join('') +
+    CAMPAGNES.filter(function(cp){ return searchMatch(cp, ['nom','canal','resp']); }).map(function(cp){ return '<tr><td class="td-bold">'+cp.nom+'</td><td class="td-muted">'+cp.canal+'</td><td>'+cp.leads+'</td><td>'+(cp.cout_lead>0?fcfa(cp.cout_lead):'Gratuit')+'</td><td class="td-muted">'+cp.resp+'</td></tr>'; }).join('') +
     '</tbody></table>';
 
-  const mktMembres = USERS.filter(function(u){ return u.departement === 'Marketing'; });
+  const mktMembres = USERS.filter(function(u){ return u.departement === 'Marketing'; }).filter(function(u){ return searchMatch(u, ['nom','ville','email']); });
   el('tbl-mkt-membres').innerHTML = mktMembres.length === 0
     ? '<tbody><tr><td colspan="5" class="td-muted" style="padding:14px;text-align:center">Aucun membre dans l\'equipe Marketing encore.</td></tr></tbody>'
     : '<thead><tr><th>Membre</th><th>Role</th><th>Ville</th><th>Email</th><th>Enregistre le</th></tr></thead><tbody>' +
@@ -1139,13 +1202,13 @@ function renderCom(c){
   c.innerHTML = h;
 
   el('tbl-pub').innerHTML = '<thead><tr><th>Titre</th><th>Plateforme</th><th>Format</th><th>Redacteur</th><th>Date</th><th>Statut</th></tr></thead><tbody>' +
-    PUBLICATIONS.map(function(p){ return '<tr><td class="td-bold">'+p.titre+(p.locked?' 🔒':'')+'</td><td>'+p.plat+'</td><td class="td-muted">'+p.fmt+'</td><td class="td-muted">'+p.redacteur+'</td><td class="td-muted">'+p.date+'</td><td>'+statusTag(p.statut)+'</td></tr>'; }).join('') + '</tbody>';
+    PUBLICATIONS.filter(function(p){ return searchMatch(p, ['titre','plat','redacteur']); }).map(function(p){ return '<tr><td class="td-bold">'+p.titre+(p.locked?' 🔒':'')+'</td><td>'+p.plat+'</td><td class="td-muted">'+p.fmt+'</td><td class="td-muted">'+p.redacteur+'</td><td class="td-muted">'+p.date+'</td><td>'+statusTag(p.statut)+'</td></tr>'; }).join('') + '</tbody>';
 
   el('workflow-view').innerHTML = '<div style="display:flex;gap:8px;margin-bottom:14px;font-size:11px;font-weight:600;color:var(--muted2)">' +
     '<div style="flex:1;text-align:center;padding:8px;background:var(--card2);border-radius:8px">1. Redacteur</div><div style="align-self:center">→</div>' +
     '<div style="flex:1;text-align:center;padding:8px;background:var(--card2);border-radius:8px">2. Responsable</div><div style="align-self:center">→</div>' +
     '<div style="flex:1;text-align:center;padding:8px;background:var(--card2);border-radius:8px">3. Publication</div></div>' +
-    PUBLICATIONS.map(function(p){
+    PUBLICATIONS.filter(function(p){ return searchMatch(p, ['titre','plat','redacteur']); }).map(function(p){
       let actionBtn = '';
       if(canValidate() && p.workflow === "Responsable"){
         actionBtn = '<button class="btn btn-red btn-sm" onclick="validatePublication(\''+p.titre.replace(/'/g,"")+'\')">Valider →</button>';
@@ -1153,7 +1216,7 @@ function renderCom(c){
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)"><div><div style="font-size:12px;font-weight:600">'+p.titre+'</div><div class="td-muted">Etape: '+p.workflow+' • '+p.redacteur+'</div></div><div style="display:flex;gap:6px;align-items:center">'+statusTag(p.statut)+actionBtn+'</div></div>';
     }).join('');
 
-  const comMembres = USERS.filter(function(u){ return u.departement === 'Communication'; });
+  const comMembres = USERS.filter(function(u){ return u.departement === 'Communication'; }).filter(function(u){ return searchMatch(u, ['nom','ville','email']); });
   el('tbl-com-membres').innerHTML = comMembres.length === 0
     ? '<tbody><tr><td colspan="5" class="td-muted" style="padding:14px;text-align:center">Aucun membre dans l\'equipe Communication encore.</td></tr></tbody>'
     : '<thead><tr><th>Membre</th><th>Role</th><th>Ville</th><th>Email</th><th>Enregistre le</th></tr></thead><tbody>' +
@@ -1183,12 +1246,13 @@ function renderClients(c){
   h += '<div id="tl-c" style="display:none"><div class="card"><div class="table-wrap"><table id="tbl-b2b"></table></div></div></div>';
   c.innerHTML = h;
 
-  const data = CLIENTS.filter(visibleClientFilter);
+  const data = CLIENTS.filter(visibleClientFilter).filter(function(x){ return searchMatch(x, ['nom','tel','ville','zone','produit','asg','statut','source','notes']); });
   function mkTable(d){
-    return '<thead><tr><th>Client</th><th>Type</th><th>Ville</th><th>Source</th><th>Produit</th><th>Commercial</th><th>Statut</th><th>Date</th><th></th></tr></thead><tbody>' +
+    return '<thead><tr><th>Client</th><th>Type</th><th>Ville</th><th>Source</th><th>Produit</th><th>Commercial</th><th>Notes</th><th>Statut</th><th>Date</th><th></th></tr></thead><tbody>' +
       d.map(function(cl,i){
-        return '<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar '+avColor(i)+'">'+ini(cl.nom)+'</div><div><div class="td-bold">'+cl.nom+(cl.locked?' 🔒':'')+'</div><div class="td-muted">'+cl.tel+'</div></div></div></td><td>'+typeTag(cl.type)+'</td><td class="td-muted">'+cl.ville+'</td><td class="td-muted">'+(cl.source||'-')+'</td><td class="td-muted">'+cl.produit+'</td><td class="td-muted">'+cl.asg.split(' ')[0]+'</td><td>'+statusTag(cl.statut)+'</td><td class="td-muted">'+cl.date+'</td><td><button class="btn btn-ghost btn-sm" onclick="viewClientDetail('+cl.id+')">👁 Details</button></td></tr>';
-      }).join('') + '</tbody>';
+        const notesPreview = cl.notes ? ((cl.notes.length > 28 ? cl.notes.slice(0,28)+'…' : cl.notes)) : '<span class="td-muted">-</span>';
+        return '<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar '+avColor(i)+'">'+ini(cl.nom)+'</div><div><div class="td-bold">'+cl.nom+(cl.locked?' 🔒':'')+'</div><div class="td-muted">'+cl.tel+'</div></div></div></td><td>'+typeTag(cl.type)+'</td><td class="td-muted">'+cl.ville+'</td><td class="td-muted">'+(cl.source||'-')+'</td><td class="td-muted">'+cl.produit+'</td><td class="td-muted">'+cl.asg.split(' ')[0]+'</td><td class="td-muted" title="'+(cl.notes?cl.notes.replace(/"/g,'&quot;'):'')+'">'+notesPreview+'</td><td>'+statusTag(cl.statut)+'</td><td class="td-muted">'+cl.date+'</td><td><button class="btn btn-ghost btn-sm" onclick="viewClientDetail('+cl.id+')">👁 Details</button></td></tr>';
+      }).join('') + (d.length === 0 ? '<tr><td colspan="10" class="td-muted" style="text-align:center;padding:14px">'+(GLOBAL_SEARCH?'Aucun resultat pour "'+GLOBAL_SEARCH+'"':'Aucun client')+'</td></tr>' : '') + '</tbody>';
   }
   el('tbl-cli').innerHTML = mkTable(data);
   el('tbl-b2c').innerHTML = mkTable(data.filter(function(x){return x.type==="B2C";}));
@@ -1209,6 +1273,7 @@ function viewClientDetail(id){
     ['Source du prospect', cl.source || '-'],
     ['Produit d\'interet', cl.produit],
     ['Commercial assigne', cl.asg],
+    ['Notes', cl.notes ? cl.notes.replace(/\n/g,'<br/>') : '<span class="td-muted">-</span>'],
     ['Statut', statusTag(cl.statut)],
     ['Date de creation', cl.date],
     ['Verrouillage', cl.locked ? lockBadge() : '<span class="td-muted">Modifiable</span>'],
@@ -1239,6 +1304,7 @@ function viewClientDetail(id){
       ], 'select'],
       ['Produit', 'produit', cl.produit],
       ['Commercial assigne', 'asg', USERS.filter(function(u){return u.departement==='Commercial';}).map(function(u){ return {label:u.nom, selected:u.nom===cl.asg}; }), 'select'],
+      ['Notes', 'notes', cl.notes || '', 'textarea'],
       ['Statut', 'statut', [
         {label:'Prospect froid',selected:cl.statut==='Prospect froid'},
         {label:'Prospect chaud',selected:cl.statut==='Prospect chaud'},
@@ -1262,7 +1328,7 @@ function renderTaches(c){
   h += '<div id="tt-u" style="display:none"><div class="card"><div class="table-wrap"><table id="tbl-urg"></table></div></div></div>';
   c.innerHTML = h;
 
-  const data = TASKS.filter(visibleTaskFilter);
+  const data = TASKS.filter(visibleTaskFilter).filter(function(t){ return searchMatch(t, ['titre','asg','dept']); });
   function mkTable(d){
     return '<thead><tr><th>Tache</th><th>Assignee a</th><th>Departement</th><th>Priorite</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>' +
       d.map(function(t){
@@ -1336,7 +1402,7 @@ function renderDocs(c){
   el('tbl-docs').innerHTML = DOCUMENTS.length === 0
     ? '<tbody><tr><td class="empty-state" style="padding:30px;text-align:center"><div class="empty-state-icon">📁</div>Aucun document televerse encore.</td></tr></tbody>'
     : '<thead><tr><th>Document</th><th>Categorie</th><th>Taille</th><th>Date</th><th>Ajoute par</th><th></th></tr></thead><tbody>' +
-    DOCUMENTS.map(function(d){
+    DOCUMENTS.filter(function(d){ return searchMatch(d, ['nom','categorie','par']); }).map(function(d){
       let actions = '<button class="btn btn-ghost btn-sm" onclick="downloadDocument('+d.id+')">⬇️ Telecharger</button>';
       if(isSuperAdmin()) actions += ' <button class="btn btn-ghost btn-sm" onclick="deleteDocument('+d.id+')">🗑 Supprimer</button>';
       return '<tr><td class="td-bold">📄 '+d.nom+'</td><td>'+deptTag(d.categorie==="Clients"?"Commercial":d.categorie==="Campagnes"?"Marketing":"Direction")+' '+d.categorie+'</td><td class="td-muted">'+d.taille+'</td><td class="td-muted">'+d.date+'</td><td class="td-muted">'+d.par+'</td><td>'+actions+'</td></tr>';
@@ -1668,6 +1734,9 @@ function canModifyStock(){ return CU && SENSITIVE_PERMS[CU.role].modifier_stock;
 function canDeleteMovement(){ return CU && SENSITIVE_PERMS[CU.role].supprimer_mouvement; }
 function canModifyPrixAchat(){ return CU && SENSITIVE_PERMS[CU.role].modifier_prix_achat; }
 function canModifyCoutFournisseur(){ return CU && SENSITIVE_PERMS[CU.role].modifier_cout_fournisseur; }
+// Super Admin always passes regardless of the toggle, same convention as the other can*() helpers.
+function canAccessFournisseurs(){ return CU && (isSuperAdmin() || (SENSITIVE_PERMS[CU.role] && SENSITIVE_PERMS[CU.role].fournisseurs_approvisionnement)); }
+function canAccessLogistiqueStock(){ return CU && (isSuperAdmin() || (SENSITIVE_PERMS[CU.role] && SENSITIVE_PERMS[CU.role].logistique_stock)); }
 
 // ── STOCK CORE MODEL ──────────────────────────────────────────────────────────
 // Stock Reel      = somme des mouvements (source de verite, jamais ecrase directement)
@@ -1789,7 +1858,7 @@ function renderProduits(c){
   c.innerHTML = h;
 
   el('tbl-produits').innerHTML = '<thead><tr><th>SKU</th><th>Produit</th><th>Categorie</th><th>Prix achat</th><th>Prix vente</th><th>Stock disponible</th><th></th></tr></thead><tbody>' +
-    PRODUITS.map(function(p){
+    PRODUITS.filter(function(p){ return searchMatch(p, ['sku','nom','categorie']); }).map(function(p){
       const dispo = stockDisponibleForSku(p.sku);
       const low = isLowStock(p.sku);
       const prixAchatDisplay = canModifyPrixAchat() ? fcfa(p.prix_achat) : '<span class="td-muted">Confidentiel</span>';
@@ -1851,26 +1920,31 @@ function viewProductDetail(sku){
 
 // ── STOCKS — vue Reel / Reserve / Disponible ──────────────────────────────────
 function renderStock(c){
+  const logistique = canAccessLogistiqueStock();
   let h = '<div style="margin-bottom:11px"><div class="tabs">';
   h += '<button class="tab active" onclick="switchTab(this,\'st\',\'n\')">Niveaux de stock</button>';
-  h += '<button class="tab" onclick="switchTab(this,\'st\',\'r\')">Reservations en cours</button>';
-  h += '<button class="tab" onclick="switchTab(this,\'st\',\'m\')">Mouvements</button>';
+  if(logistique) h += '<button class="tab" onclick="switchTab(this,\'st\',\'r\')">Reservations en cours</button>';
+  if(logistique) h += '<button class="tab" onclick="switchTab(this,\'st\',\'m\')">Mouvements</button>';
   h += '<button class="tab" onclick="switchTab(this,\'st\',\'a\')">Alertes</button>';
-  h += '<button class="tab" onclick="switchTab(this,\'st\',\'p\')">Previsions</button>';
-  h += '<button class="tab" onclick="switchTab(this,\'st\',\'e\')">Entrepots</button>';
+  if(logistique) h += '<button class="tab" onclick="switchTab(this,\'st\',\'p\')">Previsions</button>';
+  if(logistique) h += '<button class="tab" onclick="switchTab(this,\'st\',\'e\')">Entrepots</button>';
   h += '</div></div>';
   h += '<div id="st-n"><div class="card"><div class="table-wrap"><table id="tbl-stock"></table></div></div></div>';
+  if(logistique){
   h += '<div id="st-r" style="display:none"><div class="card"><div id="reservations-view"></div></div></div>';
   h += '<div id="st-m" style="display:none">';
   h += '  <div style="margin-bottom:9px;text-align:right">' + (canModifyStock() ? '<button class="btn btn-red btn-sm" onclick="openModal(\'modal-mouvement\')">+ Mouvement</button>' : '') + '</div>';
   h += '  <div class="card"><div class="table-wrap"><table id="tbl-mouvements"></table></div></div>';
   h += '</div>';
+  }
   h += '<div id="st-a" style="display:none"><div class="card"><div id="alertes-view"></div></div></div>';
+  if(logistique){
   h += '<div id="st-p" style="display:none"><div class="card"><div id="previsions-view"></div></div></div>';
   h += '<div id="st-e" style="display:none">';
   h += '  <div style="margin-bottom:9px;text-align:right">' + (canModifyStock() ? '<button class="btn btn-red btn-sm" onclick="openEntrepotCreate()">+ Entrepot</button>' : '') + '</div>';
   h += '  <div class="card"><div id="entrepots-view"></div></div>';
   h += '</div>';
+  }
   c.innerHTML = h;
 
   el('tbl-stock').innerHTML = '<thead><tr><th>Produit</th><th>Entrepot</th><th>Stock Reel</th><th>Reserve</th><th>Disponible</th><th>Seuil</th><th>Statut</th><th></th></tr></thead><tbody>' +
@@ -1882,6 +1956,7 @@ function renderStock(c){
     }).join('') + '</tbody>';
 
   // Reservations: all stock rows with reserve > 0, cross-referenced with what created them
+  if(logistique){
   const reserved = STOCK.filter(function(s){ return (s.reserve||0) > 0; });
   el('reservations-view').innerHTML = reserved.length === 0
     ? '<div class="empty-state"><div class="empty-state-icon">📭</div>Aucune reservation active actuellement</div>'
@@ -1899,6 +1974,7 @@ function renderStock(c){
       const delBtn = canDeleteMovement() ? '<button class="btn btn-ghost btn-sm" onclick="deleteMovement('+m.id+')">🗑</button>' : '';
       return '<tr><td class="td-muted">'+m.date+'</td><td>'+(m.type==="Entree"?tag('Entree','tag-green'):tag('Sortie','tag-red'))+'</td><td class="td-muted">'+m.motif+'</td><td class="td-bold">'+m.produit+'</td><td>'+m.qte+'</td><td class="td-muted">'+m.entrepot+'</td><td class="td-muted">'+m.user+'</td><td>'+delBtn+'</td></tr>';
     }).join('') + '</tbody>';
+  }
 
   const alertes = STOCK.filter(function(s){ return (s.qte-(s.reserve||0)) <= s.seuil; });
   el('alertes-view').innerHTML = alertes.length === 0
@@ -1909,6 +1985,7 @@ function renderStock(c){
         return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--red-light);border-radius:8px;margin-bottom:8px"><div><div style="font-weight:700;font-size:12px;color:var(--red)">⚠️ '+(p?p.nom:s.sku)+'</div><div class="td-muted">'+s.entrepot+' — Disponible: '+dispo+' (Reel: '+s.qte+', Reserve: '+(s.reserve||0)+') / Seuil: '+s.seuil+'</div></div><button class="btn btn-red btn-sm" onclick="createPurchaseRequest(\''+s.sku+'\')">Creer demande d\'achat</button></div>';
       }).join('');
 
+  if(logistique){
   el('previsions-view').innerHTML = '<table><thead><tr><th>Produit</th><th>Disponible</th><th>Ventes moy./mois</th><th>Couverture</th></tr></thead><tbody>' +
     PRODUITS.map(function(p){
       const dispo = stockDisponibleForSku(p.sku);
@@ -1929,6 +2006,7 @@ function renderStock(c){
         }
         return '<tr><td class="td-bold">'+e.nom+'</td><td>'+tag(e.type,'tag-blue')+'</td><td class="td-muted">'+e.ville+'</td><td class="td-muted">'+nbProduits+' reference(s)</td><td>'+actions+'</td></tr>';
       }).join('') + '</tbody></table>';
+  }
 }
 
 function openEntrepotCreate(){
@@ -2075,6 +2153,10 @@ function createPurchaseRequest(sku){
 // ── FOURNISSEURS & APPROVISIONNEMENT ──────────────────────────────────────────
 // ── FOURNISSEURS & APPROVISIONNEMENT ──────────────────────────────────────────
 function renderApprov(c){
+  if(!canAccessFournisseurs()){
+    c.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔒</div>Acces a Fournisseurs &amp; Approvisionnement non autorise pour votre role. Demandez au Super Admin de l\'activer depuis le Centre de Controle.</div>';
+    return;
+  }
   let h = '<div style="margin-bottom:11px"><div class="tabs">';
   h += '<button class="tab active" onclick="switchTab(this,\'ap\',\'f\')">Fournisseurs</button>';
   h += '<button class="tab" onclick="switchTab(this,\'ap\',\'c\')">Commandes</button>';
@@ -2090,7 +2172,7 @@ function renderApprov(c){
   c.innerHTML = h;
 
   el('tbl-fourn').innerHTML = '<thead><tr><th>Fournisseur</th><th>Contact</th><th>Telephone</th><th>Email</th><th>Conditions</th><th></th></tr></thead><tbody>' +
-    FOURNISSEURS.map(function(f){
+    FOURNISSEURS.filter(function(f){ return searchMatch(f, ['nom','contact','tel','email']); }).map(function(f){
       let actions = '';
       if(isSuperAdmin()){
         actions = '<button class="btn btn-ghost btn-sm" onclick="openFournisseurEdit('+f.id+')">✏️ Modifier</button> <button class="btn btn-ghost btn-sm" onclick="deleteFournisseur('+f.id+')">🗑 Supprimer</button>';
@@ -2099,7 +2181,7 @@ function renderApprov(c){
     }).join('') + '</tbody>';
 
   el('tbl-commandes').innerHTML = '<thead><tr><th>Fournisseur</th><th>Date</th><th>Produits</th><th>Montant</th><th>Entrepot</th><th>Statut</th><th></th></tr></thead><tbody>' +
-    COMMANDES_FOURNISSEUR.map(function(cmd){
+    COMMANDES_FOURNISSEUR.filter(function(cmd){ return searchMatch(cmd, ['fournisseur','entrepot','statut']); }).map(function(cmd){
       const lignes = cmd.lignes || [];
       const montant = lignes.length ? lignesTotalMontant(lignes) : (cmd.montant||0);
       const produitsLabel = lignes.length ? lignesLabel(lignes) : (cmd.produits || '-');
@@ -2369,7 +2451,7 @@ function prixApresRemise(produit, qte, prixBase){
 // name already exists, update its produit/statut/date; otherwise create a new
 // client record automatically. This keeps "Clients & Prospects" in sync with
 // every sale, without requiring the user to manage two separate forms.
-function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType, ville, source){
+function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType, ville, source, tel){
   if(!nomClient) return;
   let cl = CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === nomClient.trim().toLowerCase(); });
   const todayStr = new Date().toLocaleDateString('fr-FR');
@@ -2379,22 +2461,23 @@ function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType,
     if(produitLabel) cl.produit = produitLabel;
     if(statutSouhaite) cl.statut = statutSouhaite;
     if(ville) cl.ville = ville;
+    if(tel && !cl.tel) cl.tel = tel; // fill in a missing phone number, never overwrite one already on file
     stampModification(cl);
     if(typeof dbUpdate === 'function'){
-      dbUpdate('clients', cl.id, { produit: cl.produit, statut: cl.statut, ville: cl.ville, last_modified_by: cl.lastModifiedBy, last_modified_at: cl.lastModifiedAt });
+      dbUpdate('clients', cl.id, { produit: cl.produit, statut: cl.statut, ville: cl.ville, tel: cl.tel, last_modified_by: cl.lastModifiedBy, last_modified_at: cl.lastModifiedAt });
     }
   } else {
     const sourceLabel = source || 'Devis/Facturation';
     cl = {
       id: Date.now(), nom: nomClient, type: clientType || 'B2C', ville: ville || (CU ? CU.ville : 'Niamey'), zone: '',
-      tel: '', email: '', societe: '', source: sourceLabel, statut: statutSouhaite || 'Client actif',
-      produit: produitLabel || '-', asg: CU ? CU.nom : '-', date: todayStr, locked: false, historique: []
+      tel: tel || '', email: '', societe: '', source: sourceLabel, statut: statutSouhaite || 'Client actif',
+      produit: produitLabel || '-', asg: CU ? CU.nom : '-', notes: '', date: todayStr, locked: false, historique: []
     };
     CLIENTS.unshift(cl);
     if(typeof dbInsert === 'function'){
       dbInsert('clients', { id:cl.id, nom:cl.nom, type:cl.type, ville:cl.ville, zone:cl.zone, tel:cl.tel,
         email:cl.email, societe:cl.societe, source:cl.source, statut:cl.statut, produit:cl.produit,
-        asg:cl.asg, date_creation:cl.date, locked:cl.locked, historique:[] });
+        asg:cl.asg, notes:cl.notes, date_creation:cl.date, locked:cl.locked, historique:[] });
     }
     logAction('Client cree automatiquement', nomClient + ' — depuis ' + sourceLabel, 'blue');
   }
@@ -2434,7 +2517,7 @@ function renderFacturation(c){
   c.innerHTML = h;
 
   el('tbl-devis').innerHTML = '<thead><tr><th>N° Devis</th><th>Client</th><th>Produits</th><th>Montant</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>' +
-    DEVIS.map(function(d){
+    DEVIS.filter(function(d){ return searchMatch(d, ['id','client']); }).map(function(d){
       const montant = lignesTotalMontant(d.lignes);
       let actions = '<button class="btn btn-ghost btn-sm" onclick="viewDevisDetail(\''+d.id+'\')">👁 Details</button>';
       if(isSuperAdmin() && d.statut !== 'Accepte'){
@@ -2452,8 +2535,8 @@ function renderFacturation(c){
       return '<tr><td class="td-bold">'+d.id+'</td><td>'+d.client+'</td><td class="td-muted">'+lignesLabel(d.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+d.date+'</td><td>'+statusTag(d.statut)+(d.reservationFaite?' <span class="locked-badge">📦 Reserve</span>':'')+'</td><td>'+actions+'</td></tr>';
     }).join('') + '</tbody>';
 
-  el('tbl-fact').innerHTML = '<thead><tr><th>N° Facture</th><th>Client</th><th>Produits</th><th>Montant</th><th>Date</th><th>Mode paiement</th><th>Statut</th><th></th></tr></thead><tbody>' +
-    FACTURES.map(function(f){
+  el('tbl-fact').innerHTML = '<thead><tr><th>N° Facture</th><th>Client</th><th>Produits</th><th>Montant</th><th>Date</th><th>Mode paiement</th><th>Statut</th><th>Renouvellement</th><th></th></tr></thead><tbody>' +
+    FACTURES.filter(function(f){ return searchMatch(f, ['id','client']); }).map(function(f){
       const montant = lignesTotalMontant(f.lignes);
       let actions = '<button class="btn btn-ghost btn-sm" onclick="viewFactureDetail(\''+f.id+'\')">👁 Details</button>';
       if(isSuperAdmin() && f.statut === 'Impayee'){
@@ -2465,7 +2548,7 @@ function renderFacturation(c){
       if(isSuperAdmin()){
         actions += ' <button class="btn btn-ghost btn-sm" onclick="deleteFacture(\''+f.id+'\')">🗑 Supprimer</button>';
       }
-      return '<tr><td class="td-bold">'+f.id+'</td><td>'+f.client+'</td><td class="td-muted">'+lignesLabel(f.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+f.date+'</td><td class="td-muted">'+f.mode_paiement+'</td><td>'+statusTag(f.statut)+(f.sortieAppliquee?' <span class="locked-badge">📤 Stock sorti</span>':'')+'</td><td>'+actions+'</td></tr>';
+      return '<tr><td class="td-bold">'+f.id+'</td><td>'+f.client+'</td><td class="td-muted">'+lignesLabel(f.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+f.date+'</td><td class="td-muted">'+f.mode_paiement+'</td><td>'+statusTag(f.statut)+(f.sortieAppliquee?' <span class="locked-badge">📤 Stock sorti</span>':'')+'</td><td class="td-muted">'+(f.dateRenouvellement?f.dateRenouvellement:'-')+'</td><td>'+actions+'</td></tr>';
     }).join('') + '</tbody>';
 }
 
@@ -2495,6 +2578,7 @@ function viewFactureDetail(factureId){
     ['Date', f.date],
     ['Mode de paiement', f.mode_paiement],
     ['Statut', statusTag(f.statut)],
+    ['Date de renouvellement', f.dateRenouvellement ? '<strong>'+f.dateRenouvellement+'</strong>' : '<span class="td-muted">Non applicable (vente non recurrente)</span>'],
     ['Devis d\'origine', f.devisOrigine || '<span class="td-muted">Vente directe (sans devis)</span>'],
     ['Sortie de stock', f.sortieAppliquee ? '<span style="color:var(--red);font-weight:700">✓ Stock reel sorti pour ces lignes</span>' : '<span class="td-muted">Pas encore expedie</span>']
   ];
@@ -2627,12 +2711,15 @@ function openFactureBuilder(factureId, fromDevisId){
   if(existingFact){
     FACTURE_BUILDER_LIGNES = JSON.parse(JSON.stringify(existingFact.lignes));
     el('fb-mode').value = existingFact.mode_paiement;
+    el('fb-renouvellement').value = existingFact.dateRenouvellement || '';
   } else if(sourceDevis){
     FACTURE_BUILDER_LIGNES = JSON.parse(JSON.stringify(sourceDevis.lignes));
     el('fb-mode').value = 'Especes';
+    el('fb-renouvellement').value = '';
   } else {
     FACTURE_BUILDER_LIGNES = [];
     el('fb-mode').value = 'Especes';
+    el('fb-renouvellement').value = '';
   }
 
   renderFactureBuilderLignes();
@@ -2706,6 +2793,7 @@ function saveFactureBuilder(){
     f.client = client;
     f.mode_paiement = el('fb-mode').value;
     f.lignes = JSON.parse(JSON.stringify(FACTURE_BUILDER_LIGNES));
+    f.dateRenouvellement = el('fb-renouvellement').value || '';
     stampModification(f);
     logAction('Facture modifiee', f.id + ' — ' + client, 'gold');
   } else {
@@ -2713,7 +2801,8 @@ function saveFactureBuilder(){
     const newFact = {
       id: id, client: client, date: new Date().toLocaleDateString('fr-FR'), statut: 'Impayee',
       mode_paiement: el('fb-mode').value, lignes: JSON.parse(JSON.stringify(FACTURE_BUILDER_LIGNES)),
-      sortieAppliquee: false, devisOrigine: FACTURE_BUILDER_DEVIS_ORIGINE
+      sortieAppliquee: false, devisOrigine: FACTURE_BUILDER_DEVIS_ORIGINE,
+      dateRenouvellement: el('fb-renouvellement').value || ''
     };
     FACTURES.unshift(newFact);
     logAction('Facture generee', id + ' — ' + client + (FACTURE_BUILDER_DEVIS_ORIGINE ? ' (depuis devis ' + FACTURE_BUILDER_DEVIS_ORIGINE + ')' : ''), 'green');
@@ -2935,11 +3024,42 @@ function renderControle(c){
   refreshBackupHistory();
   el('tbl-backups').insertAdjacentHTML('afterend', '<div style="margin-top:10px;display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-ghost btn-sm" onclick="downloadFullBackup()">⬇️ Telecharger une sauvegarde complete (.json)</button><button class="btn btn-red btn-sm" onclick="runBackupNow()">Lancer une sauvegarde maintenant</button></div>');
 
-  el('sensitive-matrix').innerHTML = '<table class="perm-table"><thead><tr><th>Action</th><th>Collab.</th><th>Resp.</th><th>Admin</th><th>S.Admin</th></tr></thead><tbody>' +
-    [["Voir stock","voir_stock"],["Modifier stock","modifier_stock"],["Supprimer mouvement","supprimer_mouvement"],["Modifier prix d'achat","modifier_prix_achat"],["Modifier cout fournisseur","modifier_cout_fournisseur"]].map(function(row){
-      function cell(role){ return SENSITIVE_PERMS[role][row[1]] ? '<span class="dot-yes">✓</span>' : '<span class="dot-no">✗</span>'; }
+  el('sensitive-matrix').innerHTML = '<div class="td-muted" style="margin-bottom:8px;font-size:11px">Cliquez sur ✓ / ✗ pour activer ou desactiver une permission pour un role. Chaque changement est trace dans le journal d\'audit.</div><table class="perm-table"><thead><tr><th>Action</th><th>Collab.</th><th>Resp.</th><th>Admin</th><th>S.Admin</th></tr></thead><tbody>' +
+    [["Voir stock","voir_stock"],["Modifier Produits & Stocks","modifier_stock"],["Supprimer mouvement","supprimer_mouvement"],["Modifier prix d'achat","modifier_prix_achat"],["Modifier cout fournisseur","modifier_cout_fournisseur"],
+     ["Voir et modifier : Fournisseurs & Approvisionnement","fournisseurs_approvisionnement"],
+     ["Voir et modifier : Reservations, Mouvements, Previsions, Entrepots","logistique_stock"]].map(function(row){
+      function cell(role){
+        const on = SENSITIVE_PERMS[role][row[1]];
+        // Super Admin's own row is fixed (always all-access) and not clickable —
+        // disabling his own permissions could lock him out of the app.
+        if(role === 'superadmin'){
+          return '<span class="dot-yes" title="Toujours actif pour le Super Admin">✓</span>';
+        }
+        return '<span class="'+(on?'dot-yes':'dot-no')+'" style="cursor:pointer" title="Cliquer pour '+(on?'desactiver':'activer')+'" onclick="toggleSensitivePerm(\''+role+'\',\''+row[1]+'\')">'+(on?'✓':'✗')+'</span>';
+      }
       return '<tr><td>'+row[0]+'</td><td>'+cell('collaborateur')+'</td><td>'+cell('responsable')+'</td><td>'+cell('admin')+'</td><td>'+cell('superadmin')+'</td></tr>';
     }).join('') + '</tbody></table>';
+}
+
+// Super Admin toggles a sensitive permission on/off for a role. Persists to
+// Postgres (table sensitive_perms) so the change survives a refresh, and is
+// reflected immediately for everyone the next time they load a page that
+// checks it (nav visibility re-evaluates on next login; in-page checks like
+// canModifyStock()/canAccessFournisseurs() re-evaluate on every render).
+function toggleSensitivePerm(role, perm){
+  if(!isSuperAdmin()) return;
+  if(role === 'superadmin') return; // never disable Super Admin's own access
+  const label = SENSITIVE_PERM_LABELS[perm] || perm;
+  const current = !!(SENSITIVE_PERMS[role] && SENSITIVE_PERMS[role][perm]);
+  const next = !current;
+  if(!confirm('Confirmer : '+(next?'ACTIVER':'DESACTIVER')+' la permission\n"'+label+'"\npour le role '+(ROLE_LABELS[role]||role)+' ?')) return;
+  SENSITIVE_PERMS[role][perm] = next;
+  if(typeof dbUpdate === 'function'){
+    const patch = {}; patch[perm] = next;
+    dbUpdate('sensitive_perms', role, patch);
+  }
+  logAction('Permission sensible modifiee', label + ' — ' + (ROLE_LABELS[role]||role) + ' \u2192 ' + (next ? 'Activee' : 'Desactivee'), 'gold');
+  go('controle');
 }
 
 function forceDisconnect(idx){
@@ -3065,10 +3185,10 @@ function buildModals(){
   // ── Modal: Nouveau Prospect (pipeline) ──
   const prospectBody =
     fieldRow(fieldText('pr-nom','Nom'), fieldSelect('pr-type','Type',['B2C — Famille','B2B — Hotel','B2B — Restaurant','B2B — Clinique'])) +
-    fieldRow(fieldText('pr-valeur','Valeur estimee (FCFA)','70000'), fieldSelect('pr-etape','Etape',PIPELINE_STAGES)) +
-    fieldRow(fieldSelect('m-ville-3','Ville — Niger',[]), fieldDate('pr-dateest','Date estimee de signature')) +
-    fieldRow(fieldSelect('pr-sku','Produit lie', PRODUITS.map(function(p){return p.sku+' — '+p.nom;})), fieldText('pr-qte','Quantite','1')) +
-    fieldSelect('pr-entrepot','Entrepot prevu', ENTREPOTS.map(function(e){return e.nom;}));
+    fieldRow(fieldText('pr-tel','Telephone','+227 XX XX XX XX'), fieldText('pr-valeur','Valeur estimee (FCFA)','70000')) +
+    fieldRow(fieldSelect('pr-etape','Etape',PIPELINE_STAGES), fieldSelect('m-ville-3','Ville — Niger',[])) +
+    fieldRow(fieldDate('pr-dateest','Date estimee de signature'), fieldSelect('pr-sku','Produit lie', PRODUITS.map(function(p){return p.sku+' — '+p.nom;}))) +
+    fieldRow(fieldText('pr-qte','Quantite','1'), fieldSelect('pr-entrepot','Entrepot prevu', ENTREPOTS.map(function(e){return e.nom;})));
   modals += modalShell('modal-prospect', 'Nouveau Prospect — Pipeline', prospectBody,
     btnGhost('Annuler', "closeModal('modal-prospect')") + btnRed('Ajouter', 'addProspect()'));
 
@@ -3222,6 +3342,7 @@ function fieldClientPicker(selectId, textId){
     '<h3 id="modal-facture-title" style="font-family:Syne,sans-serif;font-size:14px;margin-bottom:12px">Nouvelle Facture</h3>' +
     fieldClientPicker('fb-client-select','fb-client') +
     fieldRow(fieldSelect('fb-client-type','Type de client (nouveau client)',['B2C','B2B']), fieldSelect('fb-mode','Mode de paiement',['Especes','Virement','Cheque','Mobile Money','Carte bancaire'])) +
+    fieldDate('fb-renouvellement','Date de renouvellement (optionnel — produits/abonnements a racheter)') +
     '<div class="form-label" style="margin-top:10px">Produits</div>' +
     '<div id="facture-builder-lignes"></div>';
   modals += modalShell('modal-facture-builder', 'Facture', factureBuilderBody,
@@ -3275,7 +3396,7 @@ function detailRow(label, value){
   return '<tr><td style="font-weight:600;color:var(--muted2);width:38%;padding:7px 10px;border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.05em">' + label + '</td><td style="padding:7px 10px;border-bottom:1px solid var(--border);font-size:13px">' + value + '</td></tr>';
 }
 
-// type: 'text' (default), 'select' (value must be array of {label, selected}), 'readonly' (display only, not saved)
+// type: 'text' (default), 'select' (value must be array of {label, selected}), 'textarea' (multi-line), 'readonly' (display only, not saved)
 function detailRowEditable(label, fieldKey, value, type){
   type = type || 'text';
   const inputId = 'detail-edit-' + fieldKey;
@@ -3284,6 +3405,8 @@ function detailRowEditable(label, fieldKey, value, type){
     input = '<div style="padding:7px 0;color:var(--muted);font-size:13px">' + value + ' <span class="td-muted">(non modifiable)</span></div>';
   } else if(type === 'select' && Array.isArray(value)){
     input = '<select class="form-select" id="' + inputId + '">' + value.map(function(o){ return '<option' + (o.selected?' selected':'') + '>' + o.label + '</option>'; }).join('') + '</select>';
+  } else if(type === 'textarea'){
+    input = '<textarea class="form-textarea" id="' + inputId + '">' + String(value||'').replace(/</g,'&lt;') + '</textarea>';
   } else {
     input = '<input class="form-input" id="' + inputId + '" value="' + String(value).replace(/"/g,'&quot;') + '"/>';
   }
@@ -3382,10 +3505,10 @@ function syncDetailEditToDb(entity, record){
 
   if(entity === 'clients'){
     dbUpdate('clients', record.id, { nom:record.nom, type:record.type, tel:record.tel, email:record.email,
-      ville:record.ville, zone:record.zone, source:record.source, produit:record.produit, asg:record.asg, statut:record.statut,
-      last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
+      ville:record.ville, zone:record.zone, source:record.source, produit:record.produit, asg:record.asg, notes:record.notes,
+      statut:record.statut, last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
   } else if(entity === 'pipeline'){
-    dbUpdate('pipeline', record.id, { nom:record.nom, val:record.val, ville:record.ville, date_estimee:record.dateEstimee,
+    dbUpdate('pipeline', record.id, { nom:record.nom, val:record.val, ville:record.ville, tel:record.tel, date_estimee:record.dateEstimee,
       last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
   } else if(entity === 'tasks'){
     dbUpdate('tasks', record.id, { titre:record.titre, pri:record.pri, date_limite:record.date, statut:record.statut,
@@ -3433,7 +3556,7 @@ function renderDepenses(c){
   c.innerHTML = h;
 
   el('tbl-depenses').innerHTML = '<thead><tr><th>Libelle</th><th>Categorie</th><th>Montant</th><th>Date</th><th>Paye par</th><th>Statut</th><th></th></tr></thead><tbody>' +
-    DEPENSES.map(function(d){
+    DEPENSES.filter(function(d){ return searchMatch(d, ['libelle','categorie','payePar']); }).map(function(d){
       let actions = '<button class="btn btn-ghost btn-sm" onclick="viewDepenseDetail('+d.id+')">👁 Details</button>';
       if(isSuperAdmin()) actions += ' <button class="btn btn-ghost btn-sm" onclick="openDepenseBuilder('+d.id+')">✏️ Modifier</button>';
       return '<tr><td class="td-bold">'+d.libelle+'</td><td>'+tag(d.categorie,'tag-blue')+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(d.montant)+'</td><td class="td-muted">'+d.date+'</td><td class="td-muted">'+d.payePar+'</td><td>'+statusTag(d.statut)+'</td><td>'+actions+'</td></tr>';
@@ -3566,7 +3689,7 @@ function addClient(){
     ville: ville, zone: zone || ville, tel: el('cl-tel').value, email:'',
     societe:'', source: el('cl-source').value,
     statut: el('cl-statut').value, produit: produitLabel,
-    asg: el('m-asg-1').value, date: new Date().toLocaleDateString('fr-FR'),
+    asg: el('m-asg-1').value, notes: el('cl-notes').value.trim(), date: new Date().toLocaleDateString('fr-FR'),
     locked: false, historique: []
   };
   CLIENTS.unshift(client);
@@ -3684,7 +3807,7 @@ function addProspect(){
   const p = {
     id: Date.now(), nom: nom, type: el('pr-type').value.split(' ')[0],
     val: parseInt(el('pr-valeur').value) || 30000, etape: etape,
-    asg: CU.nom, ville: el('m-ville-3').value, dateEstimee: el('pr-dateest').value || '—', locked: false,
+    asg: CU.nom, ville: el('m-ville-3').value, tel: el('pr-tel').value.trim(), dateEstimee: el('pr-dateest').value || '—', locked: false,
     sku: sku, qte: parseInt(el('pr-qte').value) || 1, entrepot: el('pr-entrepot').value, reservationFaite: false
   };
   PIPELINE.push(p);
@@ -3696,7 +3819,7 @@ function addProspect(){
   // fix for prospects being invisible outside the Pipeline screen.
   if(typeof ensureClientExists === 'function'){
     const produitLabel = p.qte + 'x ' + p.sku;
-    ensureClientExists(nom, produitLabel, pipelineEtapeToClientStatut(etape), p.type, p.ville, 'Pipeline');
+    ensureClientExists(nom, produitLabel, pipelineEtapeToClientStatut(etape), p.type, p.ville, 'Pipeline', p.tel);
   }
   logAction('Prospect ajoute au pipeline', nom + ' — ' + p.ville + ' — ' + fcfa(p.val), 'gold');
   closeModal('modal-prospect');
@@ -4050,12 +4173,12 @@ function dbLoadAll(entity){
 // ── MAP DB ROWS (snake_case) BACK TO THE APP'S CAMELCASE IN-MEMORY SHAPE ────
 function mapClientFromDb(r){
   return { id:r.id, nom:r.nom, type:r.type, ville:r.ville, zone:r.zone, tel:r.tel, email:r.email,
-    societe:r.societe, source:r.source, statut:r.statut, produit:r.produit, asg:r.asg,
+    societe:r.societe, source:r.source, statut:r.statut, produit:r.produit, asg:r.asg, notes:r.notes||'',
     date:r.date_creation, locked:r.locked, historique:r.historique||[],
     lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapPipelineFromDb(r){
-  return { id:r.id, nom:r.nom, type:r.type, val:r.val, etape:r.etape, asg:r.asg, ville:r.ville,
+  return { id:r.id, nom:r.nom, type:r.type, val:r.val, etape:r.etape, asg:r.asg, ville:r.ville, tel:r.tel||'',
     dateEstimee:r.date_estimee, locked:r.locked, sku:r.sku, qte:r.qte, entrepot:r.entrepot,
     reservationFaite:r.reservation_faite, lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
@@ -4115,6 +4238,7 @@ function mapDevisFromDb(r){
 function mapFactureFromDb(r){
   return { id:r.id, client:r.client, date:r.date_fact, statut:r.statut, mode_paiement:r.mode_paiement,
     lignes:r.lignes||[], sortieAppliquee:r.sortie_appliquee, devisOrigine:r.devis_origine,
+    dateRenouvellement:r.date_renouvellement||'',
     lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapDepenseFromDb(r){
@@ -4124,6 +4248,18 @@ function mapDepenseFromDb(r){
 }
 function mapNotificationFromDb(r){
   return { id:r.id, icon:r.icon, text:r.texte, target:r.cible, read:r.lu, time:'' };
+}
+// sensitive_perms is a config object keyed by role, not a list-style entity —
+// merge the DB rows into SENSITIVE_PERMS rather than replacing a JS array.
+function applySensitivePermsFromDb(rows){
+  if(!rows || rows.length === 0) return; // keep the hardcoded fallback until /api/init-db has been run
+  rows.forEach(function(r){
+    SENSITIVE_PERMS[r.role] = {
+      voir_stock: !!r.voir_stock, modifier_stock: !!r.modifier_stock, supprimer_mouvement: !!r.supprimer_mouvement,
+      modifier_prix_achat: !!r.modifier_prix_achat, modifier_cout_fournisseur: !!r.modifier_cout_fournisseur,
+      fournisseurs_approvisionnement: !!r.fournisseurs_approvisionnement, logistique_stock: !!r.logistique_stock
+    };
+  });
 }
 
 // ── LOAD EVERYTHING FROM DB INTO THE IN-MEMORY ARRAYS USED BY THE UI ───────
@@ -4149,6 +4285,7 @@ function applyBulkData(data){
   DOCUMENTS = (data.documents||[]).map(mapDocumentFromDb);
   RH_PRESENCE = (data.rh_presence||[]).map(mapRhPresenceFromDb);
   RH_CONGES = (data.rh_conges||[]).map(mapRhCongesFromDb);
+  applySensitivePermsFromDb(data.sensitive_perms);
 }
 
 // Loads every business table in ONE request via /api/bulk-load, instead of
@@ -4202,6 +4339,7 @@ function loadAllDataFromDbLegacy(){
     dbLoadAll('documents').then(function(rows){ DOCUMENTS = rows.map(mapDocumentFromDb); }),
     dbLoadAll('rh_presence').then(function(rows){ RH_PRESENCE = rows.map(mapRhPresenceFromDb); }),
     dbLoadAll('rh_conges').then(function(rows){ RH_CONGES = rows.map(mapRhCongesFromDb); }),
+    dbLoadAll('sensitive_perms').then(function(rows){ applySensitivePermsFromDb(rows); }),
   ]);
 }
 
@@ -4739,7 +4877,7 @@ wrapAfter('addClient', function(){
   const c = CLIENTS[0];
   if(c) dbInsert('clients', { id:c.id, nom:c.nom, type:c.type, ville:c.ville, zone:c.zone, tel:c.tel,
     email:c.email||'', societe:c.societe||'', source:c.source, statut:c.statut, produit:c.produit,
-    asg:c.asg, date_creation:c.date, locked:c.locked, historique:c.historique||[] });
+    asg:c.asg, notes:c.notes||'', date_creation:c.date, locked:c.locked, historique:c.historique||[] });
 });
 
 // TASKS — addTache() unshifts into TASKS[0]
@@ -4755,7 +4893,7 @@ wrapAfter('markTaskDone', function(id){
 wrapAfter('addProspect', function(){
   const p = PIPELINE[PIPELINE.length-1];
   if(p) dbInsert('pipeline', { id:p.id, nom:p.nom, type:p.type, val:p.val, etape:p.etape, asg:p.asg,
-    ville:p.ville, date_estimee:p.dateEstimee, locked:p.locked, sku:p.sku, qte:p.qte, entrepot:p.entrepot,
+    ville:p.ville, tel:p.tel||'', date_estimee:p.dateEstimee, locked:p.locked, sku:p.sku, qte:p.qte, entrepot:p.entrepot,
     reservation_faite:p.reservationFaite });
 });
 wrapAfter('advancePipelineStage', function(id){
@@ -4891,7 +5029,7 @@ wrapAfter('saveFactureBuilder', function(){
   const f = FACTURE_BUILDER_EDIT_ID ? FACTURES.find(function(x){return x.id===FACTURE_BUILDER_EDIT_ID;}) : FACTURES[0];
   if(!f) return;
   const payload = { client:f.client, date_fact:f.date, statut:f.statut, mode_paiement:f.mode_paiement,
-    lignes:f.lignes, sortie_appliquee:f.sortieAppliquee, devis_origine:f.devisOrigine };
+    lignes:f.lignes, sortie_appliquee:f.sortieAppliquee, devis_origine:f.devisOrigine, date_renouvellement:f.dateRenouvellement||'' };
   if(FACTURE_BUILDER_EDIT_ID){
     dbUpdate('factures', f.id, Object.assign(payload, { last_modified_by:f.lastModifiedBy, last_modified_at:f.lastModifiedAt }));
   } else {

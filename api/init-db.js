@@ -21,13 +21,13 @@ const COLUMN_TYPES = {
   clients: {
     id: 'BIGINT', nom: 'TEXT', type: "TEXT DEFAULT 'B2C'", ville: 'TEXT', zone: 'TEXT',
     tel: 'TEXT', email: 'TEXT', societe: 'TEXT', source: 'TEXT', statut: "TEXT DEFAULT 'Prospect froid'",
-    produit: 'TEXT', asg: 'TEXT', date_creation: 'TEXT', locked: 'BOOLEAN DEFAULT false',
+    produit: 'TEXT', asg: 'TEXT', notes: 'TEXT', date_creation: 'TEXT', locked: 'BOOLEAN DEFAULT false',
     historique: "JSONB DEFAULT '[]'", last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP',
     created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   pipeline: {
     id: 'BIGINT', nom: 'TEXT', type: "TEXT DEFAULT 'B2C'", val: 'INT DEFAULT 0',
-    etape: "TEXT DEFAULT 'Nouveau prospect'", asg: 'TEXT', ville: 'TEXT', date_estimee: 'TEXT',
+    etape: "TEXT DEFAULT 'Nouveau prospect'", asg: 'TEXT', ville: 'TEXT', tel: 'TEXT', date_estimee: 'TEXT',
     locked: 'BOOLEAN DEFAULT false', sku: 'TEXT', qte: 'INT DEFAULT 1', entrepot: 'TEXT',
     reservation_faite: 'BOOLEAN DEFAULT false', last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP',
     created_at: 'TIMESTAMP DEFAULT NOW()'
@@ -97,6 +97,7 @@ const COLUMN_TYPES = {
   factures: {
     id: 'TEXT', client: 'TEXT', date_fact: 'TEXT', statut: "TEXT DEFAULT 'Impayee'", mode_paiement: 'TEXT',
     lignes: "JSONB DEFAULT '[]'", sortie_appliquee: 'BOOLEAN DEFAULT false', devis_origine: 'TEXT',
+    date_renouvellement: 'TEXT',
     last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP', created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   depenses: {
@@ -126,6 +127,15 @@ const COLUMN_TYPES = {
     dernier_login: 'TIMESTAMP', reset_code: 'TEXT', reset_code_expires: 'TIMESTAMP',
     created_at: 'TIMESTAMP DEFAULT NOW()'
   },
+  // Persists the "Permissions sensibles" matrix (Centre de Controle) so that
+  // toggles made by the Super Admin survive a refresh/redeploy instead of
+  // always resetting to the hardcoded defaults baked into index.html.
+  sensitive_perms: {
+    role: 'TEXT', voir_stock: 'BOOLEAN DEFAULT true', modifier_stock: 'BOOLEAN DEFAULT false',
+    supprimer_mouvement: 'BOOLEAN DEFAULT false', modifier_prix_achat: 'BOOLEAN DEFAULT false',
+    modifier_cout_fournisseur: 'BOOLEAN DEFAULT false',
+    fournisseurs_approvisionnement: 'BOOLEAN DEFAULT true', logistique_stock: 'BOOLEAN DEFAULT true'
+  },
 };
 
 // Primary key column per table (used only for initial CREATE TABLE; ALTER never touches these)
@@ -133,7 +143,8 @@ const PRIMARY_KEYS = {
   clients: 'id', pipeline: 'id', tasks: 'id', comm_perf: 'id', campagnes: 'id', publications: 'id',
   produits: 'sku', entrepots: 'id', stock: 'id', mouvements_stock: 'id', fournisseurs: 'id',
   commandes_fournisseur: 'id', demandes_achat: 'id', inventaires: 'id', devis: 'id', factures: 'id',
-  depenses: 'id', notifications: 'id', rh_presence: 'id', rh_conges: 'id', documents: 'id', users: 'id'
+  depenses: 'id', notifications: 'id', rh_presence: 'id', rh_conges: 'id', documents: 'id', users: 'id',
+  sensitive_perms: 'role'
 };
 
 module.exports = async function handler(req, res) {
@@ -267,6 +278,33 @@ module.exports = async function handler(req, res) {
       await sql`INSERT INTO users (nom,email,pass,role,departement,ini,col,ville)
                  VALUES ('Yvan Leunkeu Djine','yvan@acquadue.ne','Admin@2026','superadmin','Direction','YL','av-red','Niamey')
                  ON CONFLICT (email) DO NOTHING`;
+    }
+
+    // ── Seed default sensitive permissions per role if the table is empty ──
+    // These mirror exactly the values that were previously hardcoded in
+    // index.html, so migrating to this persisted table changes nothing for
+    // existing users until the Super Admin explicitly toggles something in
+    // Centre de Controle -> Permissions sensibles. The two new permissions
+    // (fournisseurs_approvisionnement, logistique_stock) default to true for
+    // every role to preserve today's behaviour (those areas are currently
+    // open to everyone) — the Super Admin can restrict them from the UI.
+    const existingPerms = await sql`SELECT COUNT(*) as count FROM sensitive_perms`;
+    if (parseInt(existingPerms[0].count) === 0) {
+      const defaultPerms = {
+        collaborateur: { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:false, modifier_cout_fournisseur:false, fournisseurs_approvisionnement:true, logistique_stock:true },
+        responsable:   { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:false, modifier_cout_fournisseur:false, fournisseurs_approvisionnement:true, logistique_stock:true },
+        // modifier_stock is now false for admin: only the Super Admin may
+        // add/modify Produits & Stocks, per explicit request.
+        admin:         { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:true,  modifier_cout_fournisseur:true,  fournisseurs_approvisionnement:true, logistique_stock:true },
+        superadmin:    { voir_stock:true,  modifier_stock:true,  supprimer_mouvement:true,  modifier_prix_achat:true,  modifier_cout_fournisseur:true,  fournisseurs_approvisionnement:true, logistique_stock:true },
+      };
+      for (const role of Object.keys(defaultPerms)) {
+        const p = defaultPerms[role];
+        await sql`INSERT INTO sensitive_perms
+                   (role, voir_stock, modifier_stock, supprimer_mouvement, modifier_prix_achat, modifier_cout_fournisseur, fournisseurs_approvisionnement, logistique_stock)
+                   VALUES (${role}, ${p.voir_stock}, ${p.modifier_stock}, ${p.supprimer_mouvement}, ${p.modifier_prix_achat}, ${p.modifier_cout_fournisseur}, ${p.fournisseurs_approvisionnement}, ${p.logistique_stock})
+                   ON CONFLICT (role) DO NOTHING`;
+      }
     }
 
     return res.status(200).json({

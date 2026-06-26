@@ -35,13 +35,14 @@ const ENTITY_MAP = {
   rh_presence:    { table: 'rh_presence', idCol: 'id' },
   rh_conges:      { table: 'rh_conges', idCol: 'id' },
   documents:      { table: 'documents', idCol: 'id' },
+  sensitive_perms:{ table: 'sensitive_perms', idCol: 'role' },
 };
 
 // Whitelist of valid column names per table, to safely build dynamic INSERT/UPDATE
 // without risking SQL injection through arbitrary keys.
 const COLUMNS = {
-  clients: ['id','nom','type','ville','zone','tel','email','societe','source','statut','produit','asg','date_creation','locked','historique','last_modified_by','last_modified_at'],
-  pipeline: ['id','nom','type','val','etape','asg','ville','date_estimee','locked','sku','qte','entrepot','reservation_faite','last_modified_by','last_modified_at'],
+  clients: ['id','nom','type','ville','zone','tel','email','societe','source','statut','produit','asg','notes','date_creation','locked','historique','last_modified_by','last_modified_at'],
+  pipeline: ['id','nom','type','val','etape','asg','ville','tel','date_estimee','locked','sku','qte','entrepot','reservation_faite','last_modified_by','last_modified_at'],
   tasks: ['id','titre','asg','dept','pri','statut','date_limite','locked','last_modified_by','last_modified_at'],
   comm_perf: ['id','nom','ville','zone','obj','ventes','nb','tx','date_enregistrement','historique_modifs'],
   campagnes: ['id','nom','canal','budget','statut','leads','cout_lead','debut','fin','resp','locked','last_modified_by','last_modified_at'],
@@ -55,12 +56,13 @@ const COLUMNS = {
   demandes_achat: ['id','produit','qte','motif','demandeur','etape','date_demande'],
   inventaires: ['id','entrepot','type','date_inv','statut','ecarts'],
   devis: ['id','client','date_devis','statut','validite','lignes','reservation_faite','last_modified_by','last_modified_at'],
-  factures: ['id','client','date_fact','statut','mode_paiement','lignes','sortie_appliquee','devis_origine','last_modified_by','last_modified_at'],
+  factures: ['id','client','date_fact','statut','mode_paiement','lignes','sortie_appliquee','devis_origine','date_renouvellement','last_modified_by','last_modified_at'],
   depenses: ['id','libelle','categorie','montant','date_dep','paye_par','justificatif','statut','last_modified_by','last_modified_at'],
   notifications: ['id','icon','texte','cible','lu'],
   rh_presence: ['id','nom','date_p','arrivee','depart','statut'],
   rh_conges: ['id','nom','debut','fin','motif','statut'],
   documents: ['id','nom','categorie','taille','date_doc','par_qui','data','mime_type'],
+  sensitive_perms: ['role','voir_stock','modifier_stock','supprimer_mouvement','modifier_prix_achat','modifier_cout_fournisseur','fournisseurs_approvisionnement','logistique_stock'],
 };
 
 module.exports = async function handler(req, res) {
