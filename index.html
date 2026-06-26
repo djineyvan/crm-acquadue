@@ -400,6 +400,22 @@ const MAX_TENTATIVES = 5;
 
 // ── HELPER FUNCTIONS (avoid nested-quote bugs by centralizing HTML snippets) ──
 function el(id){ return document.getElementById(id); }
+// <input type="date"> always gives/needs "YYYY-MM-DD" (ISO), but every date
+// already displayed in the app's tables is "DD/MM/YYYY" (fr-FR). These two
+// helpers convert between them so a user-editable date field stays visually
+// consistent with the rest of a table instead of mixing both formats.
+function isoDateToFr(iso){
+  if(!iso) return '';
+  const parts = iso.split('-');
+  if(parts.length !== 3) return iso; // not ISO — leave untouched rather than guess
+  return parts[2] + '/' + parts[1] + '/' + parts[0];
+}
+function frDateToIso(fr){
+  if(!fr) return '';
+  const parts = fr.split('/');
+  if(parts.length !== 3) return ''; // unrecognized format — input just starts blank
+  return parts[2] + '-' + String(parts[1]).padStart(2,'0') + '-' + String(parts[0]).padStart(2,'0');
+}
 function ini(nom){ return nom.split(" ").map(function(n){return n[0];}).join("").slice(0,2).toUpperCase(); }
 function avColor(i){ return AVC[i % 5]; }
 function fcfa(n){ return Number(n).toLocaleString("fr-FR") + " FCFA"; }
@@ -1239,24 +1255,115 @@ function validatePublication(titre){
 function renderClients(c){
   let h = '<div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">';
   h += '<div class="tabs"><button class="tab active" onclick="switchTab(this,\'tl\',\'a\')">Tous</button><button class="tab" onclick="switchTab(this,\'tl\',\'b\')">B2C</button><button class="tab" onclick="switchTab(this,\'tl\',\'c\')">B2B</button></div>';
+  h += '<div style="display:flex;gap:6px">';
+  h += '<button class="btn btn-ghost btn-sm" onclick="toggleClientFiltersPanel()">🔎 Filtres' + (countActiveClientFilters() > 0 ? ' (' + countActiveClientFilters() + ')' : '') + '</button>';
   h += '<button class="btn btn-red btn-sm" onclick="openClientCreate()">+ Client</button>';
-  h += '</div>';
+  h += '</div></div>';
+  if(CLIENT_FILTERS_VISIBLE){
+    h += '<div class="card" style="margin-bottom:11px">' + clientFiltersPanelHtml() + '</div>';
+  }
   h += '<div id="tl-a"><div class="card"><div class="table-wrap"><table id="tbl-cli"></table></div></div></div>';
   h += '<div id="tl-b" style="display:none"><div class="card"><div class="table-wrap"><table id="tbl-b2c"></table></div></div></div>';
   h += '<div id="tl-c" style="display:none"><div class="card"><div class="table-wrap"><table id="tbl-b2b"></table></div></div></div>';
   c.innerHTML = h;
 
-  const data = CLIENTS.filter(visibleClientFilter).filter(function(x){ return searchMatch(x, ['nom','tel','ville','zone','produit','asg','statut','source','notes']); });
+  const data = CLIENTS.filter(visibleClientFilter).filter(matchesClientFilters).filter(function(x){ return searchMatch(x, ['nom','tel','ville','zone','produit','asg','statut','source','notes']); });
   function mkTable(d){
-    return '<thead><tr><th>Client</th><th>Type</th><th>Ville</th><th>Source</th><th>Produit</th><th>Commercial</th><th>Notes</th><th>Statut</th><th>Date</th><th></th></tr></thead><tbody>' +
+    return '<thead><tr><th>#</th><th>Client</th><th>Type</th><th>Ville</th><th>Source</th><th>Produit</th><th>Commercial</th><th>Notes</th><th>Statut</th><th>Date</th><th></th></tr></thead><tbody>' +
       d.map(function(cl,i){
         const notesPreview = cl.notes ? ((cl.notes.length > 28 ? cl.notes.slice(0,28)+'…' : cl.notes)) : '<span class="td-muted">-</span>';
-        return '<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar '+avColor(i)+'">'+ini(cl.nom)+'</div><div><div class="td-bold">'+cl.nom+(cl.locked?' 🔒':'')+'</div><div class="td-muted">'+cl.tel+'</div></div></div></td><td>'+typeTag(cl.type)+'</td><td class="td-muted">'+cl.ville+'</td><td class="td-muted">'+(cl.source||'-')+'</td><td class="td-muted">'+cl.produit+'</td><td class="td-muted">'+cl.asg.split(' ')[0]+'</td><td class="td-muted" title="'+(cl.notes?cl.notes.replace(/"/g,'&quot;'):'')+'">'+notesPreview+'</td><td>'+statusTag(cl.statut)+'</td><td class="td-muted">'+cl.date+'</td><td><button class="btn btn-ghost btn-sm" onclick="viewClientDetail('+cl.id+')">👁 Details</button></td></tr>';
-      }).join('') + (d.length === 0 ? '<tr><td colspan="10" class="td-muted" style="text-align:center;padding:14px">'+(GLOBAL_SEARCH?'Aucun resultat pour "'+GLOBAL_SEARCH+'"':'Aucun client')+'</td></tr>' : '') + '</tbody>';
+        return '<tr><td class="td-muted" style="text-align:center">'+(i+1)+'</td><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar '+avColor(i)+'">'+ini(cl.nom)+'</div><div><div class="td-bold">'+cl.nom+(cl.locked?' 🔒':'')+'</div><div class="td-muted">'+cl.tel+'</div></div></div></td><td>'+typeTag(cl.type)+'</td><td class="td-muted">'+cl.ville+'</td><td class="td-muted">'+(cl.source||'-')+'</td><td class="td-muted">'+cl.produit+'</td><td class="td-muted">'+cl.asg.split(' ')[0]+'</td><td class="td-muted" title="'+(cl.notes?cl.notes.replace(/"/g,'&quot;'):'')+'">'+notesPreview+'</td><td>'+statusTag(cl.statut)+'</td><td class="td-muted">'+cl.date+'</td><td><button class="btn btn-ghost btn-sm" onclick="viewClientDetail('+cl.id+')">👁 Details</button></td></tr>';
+      }).join('') + (d.length === 0 ? '<tr><td colspan="11" class="td-muted" style="text-align:center;padding:14px">'+(GLOBAL_SEARCH || countActiveClientFilters()>0 ?'Aucun resultat avec ces criteres':'Aucun client')+'</td></tr>' : '') + '</tbody>';
   }
   el('tbl-cli').innerHTML = mkTable(data);
   el('tbl-b2c').innerHTML = mkTable(data.filter(function(x){return x.type==="B2C";}));
   el('tbl-b2b').innerHTML = mkTable(data.filter(function(x){return x.type==="B2B";}));
+}
+
+// ── FILTRES AVANCES — Clients & Prospects ───────────────────────────────────
+// Type est deja filtrable via les onglets Tous/B2C/B2B ci-dessus ; ce panneau
+// couvre les 7 autres colonnes demandees : Ville, Source, Produit, Commercial,
+// Notes, Statut, Date. Separe de la barre de recherche globale (qui reste un
+// filtre rapide tous-champs) pour permettre de cibler precisement une colonne.
+let CLIENT_FILTERS = { ville:'', source:'', statut:'', asg:'', produit:'', notes:'', dateFrom:'', dateTo:'' };
+let CLIENT_FILTERS_VISIBLE = false;
+
+function countActiveClientFilters(){
+  return Object.keys(CLIENT_FILTERS).filter(function(k){ return !!CLIENT_FILTERS[k]; }).length;
+}
+
+function toggleClientFiltersPanel(){
+  CLIENT_FILTERS_VISIBLE = !CLIENT_FILTERS_VISIBLE;
+  renderView('clients');
+}
+
+function distinctSortedValues(arr, key){
+  const seen = {};
+  arr.forEach(function(x){ if(x[key]) seen[x[key]] = true; });
+  return Object.keys(seen).sort(function(a,b){ return a.localeCompare(b); });
+}
+
+function applyClientFilters(){
+  CLIENT_FILTERS.ville = el('cf-ville').value;
+  CLIENT_FILTERS.source = el('cf-source').value;
+  CLIENT_FILTERS.statut = el('cf-statut').value;
+  CLIENT_FILTERS.asg = el('cf-asg').value;
+  CLIENT_FILTERS.produit = el('cf-produit').value.trim().toLowerCase();
+  CLIENT_FILTERS.notes = el('cf-notes').value.trim().toLowerCase();
+  CLIENT_FILTERS.dateFrom = el('cf-date-from').value;
+  CLIENT_FILTERS.dateTo = el('cf-date-to').value;
+  renderView('clients');
+}
+
+function resetClientFilters(){
+  CLIENT_FILTERS = { ville:'', source:'', statut:'', asg:'', produit:'', notes:'', dateFrom:'', dateTo:'' };
+  renderView('clients');
+}
+
+function matchesClientFilters(cl){
+  if(CLIENT_FILTERS.ville && cl.ville !== CLIENT_FILTERS.ville) return false;
+  if(CLIENT_FILTERS.source && (cl.source||'') !== CLIENT_FILTERS.source) return false;
+  if(CLIENT_FILTERS.statut && cl.statut !== CLIENT_FILTERS.statut) return false;
+  if(CLIENT_FILTERS.asg && cl.asg !== CLIENT_FILTERS.asg) return false;
+  if(CLIENT_FILTERS.produit && (cl.produit||'').toLowerCase().indexOf(CLIENT_FILTERS.produit) < 0) return false;
+  if(CLIENT_FILTERS.notes && (cl.notes||'').toLowerCase().indexOf(CLIENT_FILTERS.notes) < 0) return false;
+  if(CLIENT_FILTERS.dateFrom || CLIENT_FILTERS.dateTo){
+    const iso = frDateToIso(cl.date);
+    if(iso){
+      if(CLIENT_FILTERS.dateFrom && iso < CLIENT_FILTERS.dateFrom) return false;
+      if(CLIENT_FILTERS.dateTo && iso > CLIENT_FILTERS.dateTo) return false;
+    }
+  }
+  return true;
+}
+
+function clientFiltersPanelHtml(){
+  function opt(value, currentValue, label){
+    return '<option value="' + value + '"' + (value === currentValue ? ' selected' : '') + '>' + label + '</option>';
+  }
+  function selectField(id, label, currentValue, choices){
+    return '<div class="form-group"><label class="form-label">' + label + '</label><select class="form-select" id="' + id + '" onchange="applyClientFilters()">' +
+      opt('', currentValue, 'Tous / Toutes') + choices.map(function(v){ return opt(v, currentValue, v); }).join('') +
+      '</select></div>';
+  }
+  const villes = distinctSortedValues(CLIENTS, 'ville');
+  const sources = ['Pipeline','Prospection terrain','Bouche a oreille','Recommandation','Reseaux sociaux','Salon professionnel','Devis/Facturation'];
+  const statuts = ['Prospect froid','Prospect chaud','Demonstration faite','Offre envoyee','Client actif','Client perdu'];
+  const commerciaux = distinctSortedValues(CLIENTS, 'asg');
+
+  let h = '<div style="font-size:11px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Filtrer la liste</div>';
+  h += '<div class="form-row">' + selectField('cf-ville','Ville', CLIENT_FILTERS.ville, villes) + selectField('cf-source','Source', CLIENT_FILTERS.source, sources) + '</div>';
+  h += '<div class="form-row">' + selectField('cf-statut','Statut', CLIENT_FILTERS.statut, statuts) + selectField('cf-asg','Commercial', CLIENT_FILTERS.asg, commerciaux) + '</div>';
+  h += '<div class="form-row">' +
+    '<div class="form-group"><label class="form-label">Produit (contient)</label><input class="form-input" id="cf-produit" value="' + CLIENT_FILTERS.produit.replace(/"/g,'&quot;') + '" oninput="applyClientFilters()" placeholder="Ex: bougie"/></div>' +
+    '<div class="form-group"><label class="form-label">Notes (contient)</label><input class="form-input" id="cf-notes" value="' + CLIENT_FILTERS.notes.replace(/"/g,'&quot;') + '" oninput="applyClientFilters()" placeholder="Ex: rappeler"/></div>' +
+    '</div>';
+  h += '<div class="form-row">' +
+    '<div class="form-group"><label class="form-label">Date de creation — du</label><input class="form-input" type="date" id="cf-date-from" value="' + CLIENT_FILTERS.dateFrom + '" onchange="applyClientFilters()"/></div>' +
+    '<div class="form-group"><label class="form-label">au</label><input class="form-input" type="date" id="cf-date-to" value="' + CLIENT_FILTERS.dateTo + '" onchange="applyClientFilters()"/></div>' +
+    '</div>';
+  h += '<div style="text-align:right;margin-top:6px">' + btnGhost('Reinitialiser les filtres', 'resetClientFilters()') + '</div>';
+  return h;
 }
 
 function viewClientDetail(id){
@@ -3361,8 +3468,8 @@ function fieldClientPicker(selectId, textId){
     '<h3 id="modal-depense-title" style="font-family:Syne,sans-serif;font-size:14px;margin-bottom:12px">Nouvelle Depense</h3>' +
     fieldText('dp-libelle','Libelle','Ex: Loyer entrepot Niamey') +
     fieldRow(fieldSelect('dp-categorie','Categorie', CATEGORIES_DEPENSES), fieldText('dp-montant','Montant (FCFA)')) +
-    fieldRow(fieldText('dp-payepar','Paye par'), fieldSelect('dp-statut','Statut',['Payee','En attente'])) +
-    fieldText('dp-justificatif','Justificatif','Ex: Recu signe, Facture n°...');
+    fieldRow(fieldDate('dp-date','Date de la depense'), fieldText('dp-payepar','Paye par')) +
+    fieldRow(fieldSelect('dp-statut','Statut',['Payee','En attente']), fieldText('dp-justificatif','Justificatif','Ex: Recu signe, Facture n°...'));
   modals += modalShell('modal-depense', 'Depense', depenseBody,
     btnGhost('Annuler', "closeModal('modal-depense')") + btnRed('Enregistrer', 'saveDepense()'));
 
@@ -3586,6 +3693,7 @@ function openDepenseBuilder(id){
   el('dp-libelle').value = existing ? existing.libelle : '';
   el('dp-categorie').value = existing ? existing.categorie : CATEGORIES_DEPENSES[0];
   el('dp-montant').value = existing ? existing.montant : '';
+  el('dp-date').value = existing ? frDateToIso(existing.date) : new Date().toISOString().slice(0,10);
   el('dp-payepar').value = existing ? existing.payePar : '';
   el('dp-justificatif').value = existing ? existing.justificatif : '';
   el('dp-statut').value = existing ? existing.statut : 'En attente';
@@ -3597,6 +3705,9 @@ function saveDepense(){
   const libelle = el('dp-libelle').value.trim();
   if(!libelle){ alert('Entrez un libelle'); return; }
   const montant = parseInt(el('dp-montant').value) || 0;
+  // Convert from the date input's ISO format back to the fr-FR format used
+  // everywhere else in the table. Falls back to today if left empty.
+  const dateChoisie = isoDateToFr(el('dp-date').value) || new Date().toLocaleDateString('fr-FR');
 
   if(DEPENSE_EDIT_ID){
     if(!isSuperAdmin()) return alert('Seul le Super Admin peut modifier une depense existante.');
@@ -3605,6 +3716,7 @@ function saveDepense(){
     d.libelle = libelle;
     d.categorie = el('dp-categorie').value;
     d.montant = montant;
+    d.date = dateChoisie;
     d.payePar = el('dp-payepar').value;
     d.justificatif = el('dp-justificatif').value;
     d.statut = el('dp-statut').value;
@@ -3613,7 +3725,7 @@ function saveDepense(){
   } else {
     DEPENSES.unshift({
       id: Date.now(), libelle: libelle, categorie: el('dp-categorie').value, montant: montant,
-      date: new Date().toLocaleDateString('fr-FR'), payePar: el('dp-payepar').value || CU.nom,
+      date: dateChoisie, payePar: el('dp-payepar').value || CU.nom,
       justificatif: el('dp-justificatif').value, statut: el('dp-statut').value
     });
     logAction('Depense ajoutee', libelle + ' — ' + fcfa(montant), 'red');
@@ -5050,7 +5162,7 @@ wrapAfter('saveDepense', function(){
   if(DEPENSE_EDIT_ID){
     const d = DEPENSES.find(function(x){return String(x.id)===String(DEPENSE_EDIT_ID);});
     if(d) dbUpdate('depenses', d.id, { libelle:d.libelle, categorie:d.categorie, montant:d.montant,
-      paye_par:d.payePar, justificatif:d.justificatif, statut:d.statut,
+      date_dep:d.date, paye_par:d.payePar, justificatif:d.justificatif, statut:d.statut,
       last_modified_by:d.lastModifiedBy, last_modified_at:d.lastModifiedAt });
   } else {
     const d = DEPENSES[0];
