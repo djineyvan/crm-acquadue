@@ -387,6 +387,9 @@ let BACKUPS = [];
 let DEPENSES = [];
 const CATEGORIES_DEPENSES = ["Loyer","Transport","Marketing","Charges","Salaires","Fournitures","Maintenance","Autre"];
 
+// ── ROI — prix bouteilles concurrentes (reference editable par le Super Admin) ──
+let ROI_CONCURRENTS = [];
+
 
 // ════════════════════════════════════════════════════════════════════════════
 // CRM LORENZETTI — ACQUA DUE NIGER — APPLICATION LOGIC
@@ -960,6 +963,7 @@ function renderDash(c){
 function renderPipe(c){
   let h = '<div style="margin-bottom:11px;display:flex;gap:8px;align-items:center">';
   h += '<div class="tabs"><button class="tab active">Tous</button><button class="tab">B2C</button><button class="tab">B2B</button></div>';
+  h += '<button class="btn btn-ghost btn-sm" onclick="openRoiCalc()">🧮 Calculateur ROI</button>';
   h += '<button class="btn btn-red btn-sm" onclick="openModal(\'modal-prospect\')">+ Nouveau prospect</button>';
   h += '</div><div class="pipeline" id="pipe-board"></div>';
   c.innerHTML = h;
@@ -1631,7 +1635,10 @@ function renderRapports(c){
   h += '<div style="display:flex;gap:6px"><button class="btn btn-ghost btn-sm" onclick="exportReport(\'pdf\')">📄 Export PDF</button><button class="btn btn-ghost btn-sm" onclick="exportReport(\'excel\')">📊 Export Excel</button><button class="btn btn-ghost btn-sm" onclick="exportReport(\'csv\')">📋 Export CSV</button></div>';
   h += '</div>';
   h += '<div class="grid2" style="margin-bottom:12px"><div class="card"><div class="card-title">Rapport Commercial</div><div id="rpt-comm"></div></div><div class="card"><div class="card-title">Rapport Marketing</div><div id="rpt-mkt"></div></div></div>';
-  h += '<div class="card"><div class="card-title">ROI — Acqua Due vs Bouteilles Niger</div><div id="rpt-roi"></div></div>';
+  h += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><div class="card-title">ROI — Acqua Due vs Bouteilles Niger</div><div style="display:flex;gap:6px">';
+  h += '<button class="btn btn-red btn-sm" onclick="openRoiCalc()">🧮 Calculateur ROI</button>';
+  if(isSuperAdmin()) h += '<button class="btn btn-ghost btn-sm" onclick="openRoiPricesEditor()">✏️ Modifier les prix</button>';
+  h += '</div></div><div id="rpt-roi"></div></div>';
   c.innerHTML = h;
 
   // Meme calcul reel que partout ailleurs (factures payees), pas COMM_PERF.ventes
@@ -1646,12 +1653,16 @@ function renderRapports(c){
   el('rpt-mkt').innerHTML = '<div class="grid2" style="margin-bottom:11px"><div style="background:var(--blue-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--blue)">LEADS</div><div style="font-size:18px;font-weight:800;color:var(--blue)">'+tl+'</div></div><div style="background:var(--gold-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--gold)">BUDGET</div><div style="font-size:18px;font-weight:800;color:var(--gold)">'+fcfa(tb)+'</div></div></div>' +
     CAMPAGNES.map(function(cp){ return '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><div><div style="font-size:12px;font-weight:600">'+cp.nom+'</div><div class="td-muted">'+cp.canal+'</div></div><div style="font-weight:700;color:var(--blue)">'+cp.leads+' leads</div></div>'; }).join('');
 
-  el('rpt-roi').innerHTML = '<div class="grid2"><div>' +
-    '<table><thead><tr><th>Format bouteille</th><th>Prix</th></tr></thead><tbody>' +
-    [["Pack 0,35L x12-15","1.000-1.400 FCFA"],["Pack 1L x12","1.800 FCFA"],["Pack 1,5L x6","1.500 FCFA"],["Bonbonne 19L","2.000 FCFA"]].map(function(r){return '<tr><td class="td-bold">'+r[0]+'</td><td style="color:var(--red);font-weight:600">'+r[1]+'</td></tr>';}).join('') +
-    '</tbody></table></div><div>' +
-    '<div style="background:var(--blue-light);border-radius:8px;padding:12px"><div class="kpi-lbl" style="color:var(--blue)">ECONOMIE ANNUELLE CLIENT</div><div style="font-size:22px;font-weight:800;color:var(--blue)">63.600 FCFA/an</div><div class="td-muted">Rentabilise en moins de 6 mois</div></div>' +
-    '</div></div>';
+  // Le tableau de prix concurrents et le chiffre d'economie etaient fixes en
+  // dur dans le code (et l'economie n'etait meme calculee a partir de rien).
+  // Desormais : prix issus de ROI_CONCURRENTS (editable par le Super Admin),
+  // et l'economie reelle se calcule dans le Calculateur ROI (bouton ci-dessus),
+  // qui utilise exactement les memes prix — une seule source de verite.
+  el('rpt-roi').innerHTML = ROI_CONCURRENTS.length === 0
+    ? '<div class="td-muted" style="padding:10px">Aucun prix concurrent enregistre. Cliquez "Modifier les prix" pour en ajouter.</div>'
+    : '<table><thead><tr><th>Format bouteille</th><th>Volume total</th><th>Prix</th><th>Prix / litre</th></tr></thead><tbody>' +
+      ROI_CONCURRENTS.map(function(r){ return '<tr><td class="td-bold">'+r.format+'</td><td class="td-muted">'+r.volumeLitres+' L</td><td style="color:var(--red);font-weight:600">'+fcfa(r.prix)+'</td><td class="td-muted">'+fcfa(Math.round(r.prix/r.volumeLitres))+'/L</td></tr>'; }).join('') +
+      '</tbody></table>';
 }
 
 function exportReport(format){
@@ -1661,6 +1672,112 @@ function exportReport(format){
     exportReportPDF();
   }
   logAction("Export rapport", "Format: " + format.toUpperCase(), "blue");
+}
+
+// ── EDITION DES PRIX CONCURRENTS (Super Admin) ──────────────────────────────
+// Table de reference courte (quelques lignes) : remplacer entierement est
+// plus simple et tout aussi fiable que de comparer ligne par ligne.
+let ROI_EDIT_ROWS = [];
+
+function openRoiPricesEditor(){
+  if(!isSuperAdmin()) return;
+  ROI_EDIT_ROWS = ROI_CONCURRENTS.map(function(r){ return { format:r.format, volumeLitres:r.volumeLitres, prix:r.prix }; });
+  renderRoiPricesEditorRows();
+  openModal('modal-roi-prices');
+}
+
+function renderRoiPricesEditorRows(){
+  el('roi-prices-rows').innerHTML = ROI_EDIT_ROWS.length === 0
+    ? '<div class="td-muted" style="margin-bottom:8px">Aucune ligne. Cliquez "+ Ajouter une ligne" ci-dessous.</div>'
+    : ROI_EDIT_ROWS.map(function(r,i){
+        return '<div class="form-row" style="align-items:flex-end;gap:6px">' +
+          '<div class="form-group" style="flex:2"><label class="form-label">Format</label><input class="form-input" id="rp-format-'+i+'" value="'+String(r.format||'').replace(/"/g,'&quot;')+'" placeholder="Ex: Pack 1L x12"/></div>' +
+          '<div class="form-group"><label class="form-label">Volume total (L)</label><input class="form-input" id="rp-vol-'+i+'" value="'+(r.volumeLitres||'')+'" placeholder="Ex: 12"/></div>' +
+          '<div class="form-group"><label class="form-label">Prix (FCFA)</label><input class="form-input" id="rp-prix-'+i+'" value="'+(r.prix||'')+'" placeholder="Ex: 1800"/></div>' +
+          '<button class="btn btn-ghost btn-sm" onclick="removeRoiEditRow('+i+')" title="Supprimer cette ligne">🗑</button>' +
+          '</div>';
+      }).join('');
+}
+
+// Reads whatever is currently typed in the rows back into ROI_EDIT_ROWS
+// before adding/removing a row or saving, so nothing typed gets lost.
+function syncRoiEditRowsFromInputs(){
+  ROI_EDIT_ROWS.forEach(function(r,i){
+    const f = el('rp-format-'+i), v = el('rp-vol-'+i), p = el('rp-prix-'+i);
+    if(f) r.format = f.value;
+    if(v) r.volumeLitres = v.value;
+    if(p) r.prix = p.value;
+  });
+}
+function addRoiEditRow(){
+  syncRoiEditRowsFromInputs();
+  ROI_EDIT_ROWS.push({ format:'', volumeLitres:'', prix:'' });
+  renderRoiPricesEditorRows();
+}
+function removeRoiEditRow(i){
+  syncRoiEditRowsFromInputs();
+  ROI_EDIT_ROWS.splice(i,1);
+  renderRoiPricesEditorRows();
+}
+
+function saveRoiPrices(){
+  syncRoiEditRowsFromInputs();
+  const valid = ROI_EDIT_ROWS
+    .map(function(r){ return { format: (r.format||'').trim(), volumeLitres: parseFloat(r.volumeLitres), prix: parseFloat(r.prix) }; })
+    .filter(function(r){ return r.format && r.volumeLitres > 0 && r.prix > 0; });
+  if(valid.length === 0){ alert('Ajoutez au moins une ligne valide : format, volume (>0) et prix (>0) renseignes.'); return; }
+
+  const oldIds = ROI_CONCURRENTS.map(function(r){ return r.id; });
+  ROI_CONCURRENTS = valid.map(function(r, i){ return { id: Date.now()+i, format: r.format, volumeLitres: r.volumeLitres, prix: r.prix }; });
+  oldIds.forEach(function(id){ if(typeof dbDelete === 'function') dbDelete('roi_concurrents', id); });
+  ROI_CONCURRENTS.forEach(function(r){
+    if(typeof dbInsert === 'function') dbInsert('roi_concurrents', { id:r.id, format:r.format, volume_litres:r.volumeLitres, prix:r.prix });
+  });
+  logAction('Prix concurrents ROI mis a jour', valid.length + ' ligne(s)', 'gold');
+  closeModal('modal-roi-prices');
+  go('rapports');
+}
+
+// ── CALCULATEUR ROI — outil de vente (Pipeline / Rapports) ─────────────────
+// Montre a un commercial, en direct pendant la discussion avec un prospect,
+// l'economie reelle d'acheter un produit Acqua Due plutot que des bouteilles,
+// a partir des memes prix concurrents que le tableau de Rapports.
+function openRoiCalc(){
+  if(ROI_CONCURRENTS.length === 0){
+    alert('Aucun prix concurrent enregistre encore. Demandez au Super Admin de les ajouter depuis Rapports → Modifier les prix.');
+    return;
+  }
+  el('rc-concurrent').innerHTML = ROI_CONCURRENTS.map(function(r){ return '<option value="'+r.id+'">'+r.format+' ('+fcfa(r.prix)+')</option>'; }).join('');
+  el('rc-produit').innerHTML = PRODUITS.map(function(p){ return '<option value="'+p.sku+'">'+p.nom+' — '+fcfa(p.prix_vente)+'</option>'; }).join('');
+  openModal('modal-roi-calc');
+  updateRoiCalc();
+}
+
+function updateRoiCalc(){
+  const conc = ROI_CONCURRENTS.find(function(r){ return String(r.id) === String(el('rc-concurrent').value); });
+  const consoJour = parseFloat(el('rc-conso').value) || 0;
+  const produit = PRODUITS.find(function(p){ return p.sku === el('rc-produit').value; });
+  const resultEl = el('rc-resultat');
+
+  if(!conc || !produit || consoJour <= 0){
+    resultEl.innerHTML = '<div class="td-muted">Renseignez la consommation quotidienne, le format concurrent et le produit Acqua Due pour voir le calcul.</div>';
+    return;
+  }
+
+  const prixParLitre = conc.prix / conc.volumeLitres;
+  const coutAnnuelBouteilles = consoJour * 365 * prixParLitre;
+  const coutProduit = produit.prix_vente;
+  const economieAn1 = coutAnnuelBouteilles - coutProduit;
+  const moisRentabilisation = coutAnnuelBouteilles > 0 ? (coutProduit / (coutAnnuelBouteilles / 12)) : 0;
+
+  resultEl.innerHTML =
+    '<div class="grid2" style="margin-bottom:10px">' +
+    '<div style="background:var(--red-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--red)">Cout bouteilles / an</div><div style="font-size:16px;font-weight:800;color:var(--red)">'+fcfa(Math.round(coutAnnuelBouteilles))+'</div></div>' +
+    '<div style="background:var(--blue-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--blue)">Cout '+produit.nom+'</div><div style="font-size:16px;font-weight:800;color:var(--blue)">'+fcfa(coutProduit)+'</div></div>' +
+    '</div>' +
+    '<div style="background:var(--green-light);border-radius:8px;padding:12px;margin-bottom:8px"><div class="kpi-lbl" style="color:var(--green)">Economie 1ere annee</div><div style="font-size:22px;font-weight:800;color:'+(economieAn1>=0?'var(--green)':'var(--red)')+'">'+fcfa(Math.round(economieAn1))+'</div></div>' +
+    '<div class="td-muted">Rentabilise en environ <strong>'+(coutAnnuelBouteilles>0 ? Math.ceil(moisRentabilisation) : '-')+' mois</strong>. A partir de l\'annee 2 (produit deja paye), l\'economie complete d\'environ <strong>'+fcfa(Math.round(coutAnnuelBouteilles))+'/an</strong> est conservee.</div>' +
+    '<div class="td-muted" style="margin-top:6px;font-size:10px">Estimation hors entretien / remplacement eventuel de filtres.</div>';
 }
 
 function csvEscape(val){
@@ -3544,6 +3661,26 @@ function fieldClientPicker(selectId, textId){
   modals += modalShell('modal-depense', 'Depense', depenseBody,
     btnGhost('Annuler', "closeModal('modal-depense')") + btnRed('Enregistrer', 'saveDepense()'));
 
+  // ── Modal: Modifier les prix concurrents (Super Admin) — alimente le tableau Rapports ET le Calculateur ROI ──
+  const roiPricesBody =
+    '<div class="td-muted" style="margin-bottom:10px;font-size:11px">Ces prix servent au tableau de comparaison dans Rapports et au Calculateur ROI utilisable par les commerciaux.</div>' +
+    '<div id="roi-prices-rows"></div>' +
+    '<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="addRoiEditRow()">+ Ajouter une ligne</button>';
+  modals += modalShell('modal-roi-prices', 'Prix concurrents (bouteilles)', roiPricesBody,
+    btnGhost('Annuler', "closeModal('modal-roi-prices')") + btnRed('Enregistrer', 'saveRoiPrices()'));
+
+  // ── Modal: Calculateur ROI (outil de vente — Pipeline / Rapports) ──
+  const roiCalcBody =
+    '<div class="td-muted" style="margin-bottom:10px;font-size:11px">Montrez en direct au prospect l\'economie reelle d\'un produit Acqua Due par rapport a l\'achat de bouteilles.</div>' +
+    fieldRow(
+      '<div class="form-group"><label class="form-label">Consommation quotidienne (litres)</label><input class="form-input" type="number" min="0" step="0.5" id="rc-conso" value="5" oninput="updateRoiCalc()"/></div>',
+      '<div class="form-group"><label class="form-label">Format bouteille concurrent</label><select class="form-select" id="rc-concurrent" onchange="updateRoiCalc()"></select></div>'
+    ) +
+    '<div class="form-group"><label class="form-label">Produit Acqua Due propose</label><select class="form-select" id="rc-produit" onchange="updateRoiCalc()"></select></div>' +
+    '<div id="rc-resultat" style="margin-top:10px"></div>';
+  modals += modalShell('modal-roi-calc', 'Calculateur ROI — Acqua Due vs Bouteilles', roiCalcBody,
+    btnGhost('Fermer', "closeModal('modal-roi-calc')"));
+
   // ── Modal: Reinitialisation complete (Super Admin, confirmation par mot de passe) ──
   const resetAllBody =
     '<div style="background:var(--red-light);border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;color:var(--red)">⚠️ Cette action supprime DEFINITIVEMENT toutes les donnees (clients, ventes, stock, factures, depenses, autres comptes utilisateurs...). Elle est IRREVERSIBLE.</div>' +
@@ -4445,6 +4582,9 @@ function applySensitivePermsFromDb(rows){
     };
   });
 }
+function mapRoiConcurrentFromDb(r){
+  return { id:r.id, format:r.format, volumeLitres:Number(r.volume_litres), prix:Number(r.prix) };
+}
 
 // ── LOAD EVERYTHING FROM DB INTO THE IN-MEMORY ARRAYS USED BY THE UI ───────
 function applyBulkData(data){
@@ -4470,6 +4610,7 @@ function applyBulkData(data){
   RH_PRESENCE = (data.rh_presence||[]).map(mapRhPresenceFromDb);
   RH_CONGES = (data.rh_conges||[]).map(mapRhCongesFromDb);
   applySensitivePermsFromDb(data.sensitive_perms);
+  ROI_CONCURRENTS = (data.roi_concurrents||[]).map(mapRoiConcurrentFromDb);
 }
 
 // Loads every business table in ONE request via /api/bulk-load, instead of
@@ -4524,6 +4665,7 @@ function loadAllDataFromDbLegacy(){
     dbLoadAll('rh_presence').then(function(rows){ RH_PRESENCE = rows.map(mapRhPresenceFromDb); }),
     dbLoadAll('rh_conges').then(function(rows){ RH_CONGES = rows.map(mapRhCongesFromDb); }),
     dbLoadAll('sensitive_perms').then(function(rows){ applySensitivePermsFromDb(rows); }),
+    dbLoadAll('roi_concurrents').then(function(rows){ ROI_CONCURRENTS = rows.map(mapRoiConcurrentFromDb); }),
   ]);
 }
 

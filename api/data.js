@@ -36,6 +36,7 @@ const ENTITY_MAP = {
   rh_conges:      { table: 'rh_conges', idCol: 'id' },
   documents:      { table: 'documents', idCol: 'id' },
   sensitive_perms:{ table: 'sensitive_perms', idCol: 'role' },
+  roi_concurrents:{ table: 'roi_concurrents', idCol: 'id' },
 };
 
 // Whitelist of valid column names per table, to safely build dynamic INSERT/UPDATE
@@ -63,6 +64,7 @@ const COLUMNS = {
   rh_conges: ['id','nom','debut','fin','motif','statut'],
   documents: ['id','nom','categorie','taille','date_doc','par_qui','data','mime_type'],
   sensitive_perms: ['role','voir_stock','modifier_stock','supprimer_mouvement','modifier_prix_achat','modifier_cout_fournisseur','fournisseurs_approvisionnement','logistique_stock'],
+  roi_concurrents: ['id','format','volume_litres','prix'],
 };
 
 module.exports = async function handler(req, res) {

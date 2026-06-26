@@ -136,6 +136,13 @@ const COLUMN_TYPES = {
     modifier_cout_fournisseur: 'BOOLEAN DEFAULT false',
     fournisseurs_approvisionnement: 'BOOLEAN DEFAULT true', logistique_stock: 'BOOLEAN DEFAULT true'
   },
+  // Reference prices for competing bottled-water formats, used both by the
+  // static comparison table in Rapports and by the interactive ROI
+  // calculator (Pipeline). Editable by the Super Admin instead of being
+  // hardcoded, since these prices drift over time.
+  roi_concurrents: {
+    id: 'BIGINT', format: 'TEXT', volume_litres: 'NUMERIC', prix: 'NUMERIC', created_at: 'TIMESTAMP DEFAULT NOW()'
+  },
 };
 
 // Primary key column per table (used only for initial CREATE TABLE; ALTER never touches these)
@@ -144,7 +151,7 @@ const PRIMARY_KEYS = {
   produits: 'sku', entrepots: 'id', stock: 'id', mouvements_stock: 'id', fournisseurs: 'id',
   commandes_fournisseur: 'id', demandes_achat: 'id', inventaires: 'id', devis: 'id', factures: 'id',
   depenses: 'id', notifications: 'id', rh_presence: 'id', rh_conges: 'id', documents: 'id', users: 'id',
-  sensitive_perms: 'role'
+  sensitive_perms: 'role', roi_concurrents: 'id'
 };
 
 module.exports = async function handler(req, res) {
@@ -304,6 +311,26 @@ module.exports = async function handler(req, res) {
                    (role, voir_stock, modifier_stock, supprimer_mouvement, modifier_prix_achat, modifier_cout_fournisseur, fournisseurs_approvisionnement, logistique_stock)
                    VALUES (${role}, ${p.voir_stock}, ${p.modifier_stock}, ${p.supprimer_mouvement}, ${p.modifier_prix_achat}, ${p.modifier_cout_fournisseur}, ${p.fournisseurs_approvisionnement}, ${p.logistique_stock})
                    ON CONFLICT (role) DO NOTHING`;
+      }
+    }
+
+    // ── Seed default competitor bottled-water prices if the table is empty ──
+    // Mirrors the values that were previously hardcoded directly in the
+    // Rapports page. Ranges like "1.000-1.400 FCFA" became a single
+    // representative price, since the ROI calculator needs a real number to
+    // compute with. The Super Admin can edit these at any time.
+    const existingRoi = await sql`SELECT COUNT(*) as count FROM roi_concurrents`;
+    if (parseInt(existingRoi[0].count) === 0) {
+      const defaultRoi = [
+        { format: 'Pack 0,35L x12', volume_litres: 4.2, prix: 1200 },
+        { format: 'Pack 1L x12', volume_litres: 12, prix: 1800 },
+        { format: 'Pack 1,5L x6', volume_litres: 9, prix: 1500 },
+        { format: 'Bonbonne 19L', volume_litres: 19, prix: 2000 },
+      ];
+      for (let i = 0; i < defaultRoi.length; i++) {
+        const r = defaultRoi[i];
+        await sql`INSERT INTO roi_concurrents (id, format, volume_litres, prix)
+                   VALUES (${Date.now() + i}, ${r.format}, ${r.volume_litres}, ${r.prix})`;
       }
     }
 
