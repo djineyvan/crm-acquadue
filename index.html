@@ -1572,7 +1572,7 @@ function clientFiltersPanelHtml(){
   }
   const villes = distinctSortedValues(CLIENTS, 'ville');
   const sources = ['Pipeline','Prospection terrain','Bouche a oreille','Recommandation','Reseaux sociaux','Salon professionnel','Devis/Facturation'];
-  const statuts = ['Prospect froid','Prospect chaud','Demonstration faite','Offre envoyee','Client actif','Client perdu'];
+  const statuts = ['Nouveau prospect','Contacte','Offre envoyee','En negociation','Client actif','Client perdu'];
   const commerciaux = distinctSortedValues(CLIENTS, 'asg');
 
   let h = '<div style="font-size:11px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Filtrer la liste</div>';
@@ -1637,10 +1637,10 @@ function viewClientDetail(id){
       ['Commercial assigne', 'asg', USERS.filter(function(u){return u.departement==='Commercial';}).map(function(u){ return {label:u.nom, selected:u.nom===cl.asg}; }), 'select'],
       ['Notes', 'notes', cl.notes || '', 'textarea'],
       ['Statut', 'statut', [
-        {label:'Prospect froid',selected:cl.statut==='Prospect froid'},
-        {label:'Prospect chaud',selected:cl.statut==='Prospect chaud'},
-        {label:'Demonstration faite',selected:cl.statut==='Demonstration faite'},
+        {label:'Nouveau prospect',selected:cl.statut==='Nouveau prospect'},
+        {label:'Contacte',selected:cl.statut==='Contacte'},
         {label:'Offre envoyee',selected:cl.statut==='Offre envoyee'},
+        {label:'En negociation',selected:cl.statut==='En negociation'},
         {label:'Client actif',selected:cl.statut==='Client actif'},
         {label:'Client perdu',selected:cl.statut==='Client perdu'}
       ], 'select']
@@ -3178,6 +3178,67 @@ function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType,
   return cl;
 }
 
+// ── LIEN PIPELINE <-> CLIENTS & PROSPECTS (demande explicite) ───────────────
+// Les deux modules sont retrouves l'un par rapport a l'autre via le NOM
+// (insensible a la casse), comme le fait deja ensureClientExists(). Quand on
+// modifie le telephone, la ville ou le type d'une fiche d'un cote, l'autre
+// cote (s'il existe) est mis a jour automatiquement et immediatement —
+// jusqu'ici, ce n'etait jamais le cas pour les modifications directes.
+function syncPipelineToClient(p){
+  const cl = CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === p.nom.trim().toLowerCase(); });
+  if(!cl) return;
+  let changed = false;
+  if(p.tel && cl.tel !== p.tel){ cl.tel = p.tel; changed = true; }
+  if(p.ville && cl.ville !== p.ville){ cl.ville = p.ville; changed = true; }
+  if(changed){
+    stampModification(cl);
+    if(typeof dbUpdate === 'function') dbUpdate('clients', cl.id, { tel:cl.tel, ville:cl.ville, last_modified_by:cl.lastModifiedBy, last_modified_at:cl.lastModifiedAt });
+  }
+}
+
+// Convertit un statut Client en etape Pipeline. Comme les deux modules
+// partagent desormais le meme vocabulaire pour les stades "prospect"
+// (Nouveau prospect, Contacte, Offre envoyee, En negociation), seuls les
+// etats finaux (Client actif/perdu) ont besoin d'une vraie traduction.
+function clientStatutToPipelineEtape(statut){
+  if(statut === 'Client actif') return 'Gagne';
+  if(statut === 'Client perdu') return 'Perdu';
+  if(PIPELINE_STAGES.indexOf(statut) >= 0) return statut;
+  return 'Nouveau prospect';
+}
+
+function syncClientToPipeline(cl){
+  let p = PIPELINE.find(function(x){ return x.nom.trim().toLowerCase() === cl.nom.trim().toLowerCase(); });
+  if(!p){
+    // Demande explicite : si la Source choisie est "Pipeline" et qu'aucune
+    // fiche Pipeline ne correspond encore a ce nom, on la cree automatiquement.
+    if(cl.source !== 'Pipeline') return;
+    p = {
+      id: Date.now(), nom: cl.nom, type: cl.type, val: 30000,
+      etape: clientStatutToPipelineEtape(cl.statut), asg: cl.asg, ville: cl.ville,
+      tel: cl.tel || '', dateEstimee: '—', locked: false, sku: '', qte: 1, entrepot: '', reservationFaite: false
+    };
+    PIPELINE.push(p);
+    logAction('Prospect ajoute au pipeline (depuis Clients & Prospects)', cl.nom, 'blue');
+    if(typeof dbInsert === 'function') dbInsert('pipeline', { id:p.id, nom:p.nom, type:p.type, val:p.val, etape:p.etape, asg:p.asg,
+      ville:p.ville, tel:p.tel, date_estimee:p.dateEstimee, locked:p.locked, sku:p.sku, qte:p.qte, entrepot:p.entrepot,
+      reservation_faite:p.reservationFaite });
+    return;
+  }
+  let changed = false;
+  if(cl.tel && p.tel !== cl.tel){ p.tel = cl.tel; changed = true; }
+  if(cl.ville && p.ville !== cl.ville){ p.ville = cl.ville; changed = true; }
+  if(cl.type && p.type !== cl.type){ p.type = cl.type; changed = true; }
+  if(cl.statut){
+    const newEtape = clientStatutToPipelineEtape(cl.statut);
+    if(p.etape !== newEtape){ p.etape = newEtape; changed = true; }
+  }
+  if(changed){
+    stampModification(p);
+    if(typeof dbUpdate === 'function') dbUpdate('pipeline', p.id, { ville:p.ville, tel:p.tel, type:p.type, etape:p.etape, last_modified_by:p.lastModifiedBy, last_modified_at:p.lastModifiedAt });
+  }
+}
+
 function lignesTotalMontant(lignes){
   return lignes.reduce(function(sum, l){ return sum + (l.qte * l.prixUnitaire); }, 0);
 }
@@ -3979,7 +4040,7 @@ function buildModals(){
     fieldRow(fieldText('cl-nom','Nom','Ex: Amadou Mahamane'), fieldSelect('cl-type','Type',['B2C — Famille','B2B — Hotel','B2B — Restaurant','B2B — Clinique','B2B — Bureau','B2B — Ecole','B2B — Administration'])) +
     fieldRow(fieldText('cl-tel','Telephone','+227 XX XX XX XX'), fieldSelect('m-ville-1','Ville — Niger',[])) +
     fieldRow(fieldText('cl-zone','Quartier / Zone','Plateau, Centre...'), fieldSelect('cl-source','Source',['Pipeline','Devis/Facturation','Prospection terrain','Bouche a oreille','Recommandation','Reseaux sociaux','Salon professionnel'])) +
-    fieldRow(fieldSelect('cl-statut','Statut',['Prospect froid','Prospect chaud','Demonstration faite','Offre envoyee','Client actif','Client perdu']), fieldSelect('m-asg-1','Commercial assigne',[])) +
+    fieldRow(fieldSelect('cl-statut','Statut',['Nouveau prospect','Contacte','Offre envoyee','En negociation','Client actif','Client perdu']), fieldSelect('m-asg-1','Commercial assigne',[])) +
     '<div class="form-label" style="margin-top:8px">Produit(s) d\'interet</div>' +
     '<div id="client-builder-lignes"></div>' +
     fieldTextarea('cl-notes','Notes');
@@ -4435,9 +4496,11 @@ function syncDetailEditToDb(entity, record){
     dbUpdate('clients', record.id, { nom:record.nom, type:record.type, tel:record.tel, email:record.email,
       ville:record.ville, zone:record.zone, source:record.source, produit:record.produit, asg:record.asg, notes:record.notes,
       statut:record.statut, last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
+    syncClientToPipeline(record);
   } else if(entity === 'pipeline'){
     dbUpdate('pipeline', record.id, { nom:record.nom, val:record.val, ville:record.ville, tel:record.tel, date_estimee:record.dateEstimee,
       last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
+    syncPipelineToClient(record);
   } else if(entity === 'tasks'){
     dbUpdate('tasks', record.id, { titre:record.titre, pri:record.pri, date_limite:record.date, desc_tache:record.desc, statut:record.statut,
       last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
@@ -4573,7 +4636,7 @@ function openClientCreate(){
   el('cl-tel').value = '';
   el('cl-zone').value = '';
   el('cl-source').value = 'Prospection terrain';
-  el('cl-statut').value = 'Prospect froid';
+  el('cl-statut').value = 'Nouveau prospect';
   el('cl-notes').value = '';
   renderClientBuilderLignes();
   openModal('modal-client'); // refreshes ville/asg selects
@@ -4630,6 +4693,7 @@ function addClient(){
     locked: false, historique: []
   };
   CLIENTS.unshift(client);
+  syncClientToPipeline(client);
   logAction('Client ajoute', nom + ' — ' + ville + (zone ? ' / ' + zone : '') + ' — ' + produitLabel, 'green');
   closeModal('modal-client');
   updateAllBadges();
@@ -4744,16 +4808,16 @@ function addCampagne(){
 // correctif, "En negociation" se traduisait par erreur en "Demonstration
 // faite" (bug rapporte) — desormais chaque etape correspond a un statut
 // distinct et coherent, dans le meme ordre que PIPELINE_STAGES.
+// Pipeline et Clients & Prospects partagent maintenant LE MEME vocabulaire
+// pour les stades "prospect" (demande explicite, pour eliminer le bug de
+// raccordement "En negociation" -> "Demonstration faite"). Seuls les etats
+// finaux (Gagne/Perdu) sont traduits en un mot plus naturel cote Client
+// (Client actif/perdu) puisqu'un client n'est pas "gagne".
 function pipelineEtapeToClientStatut(etape){
-  const map = {
-    'Nouveau prospect': 'Prospect froid',
-    'Contacte': 'Prospect chaud',
-    'Offre envoyee': 'Offre envoyee',
-    'En negociation': 'Demonstration faite',
-    'Gagne': 'Client actif',
-    'Perdu': 'Client perdu'
-  };
-  return map[etape] || 'Prospect froid';
+  if(etape === 'Gagne') return 'Client actif';
+  if(etape === 'Perdu') return 'Client perdu';
+  if(PIPELINE_STAGES.indexOf(etape) >= 0) return etape; // meme mot des deux cotes
+  return 'Nouveau prospect';
 }
 
 function addProspect(){
@@ -4779,6 +4843,7 @@ function addProspect(){
     const produitLabel = p.qte + 'x ' + p.sku;
     ensureClientExists(nom, produitLabel, pipelineEtapeToClientStatut(etape), p.type, p.ville, 'Pipeline', p.tel);
   }
+  syncPipelineToClient(p);
   logAction('Prospect ajoute au pipeline', nom + ' — ' + p.ville + ' — ' + fcfa(p.val), 'gold');
   closeModal('modal-prospect');
   updateAllBadges();
@@ -5256,8 +5321,26 @@ function mapPromoPackFromDb(r){
 }
 
 // ── LOAD EVERYTHING FROM DB INTO THE IN-MEMORY ARRAYS USED BY THE UI ───────
+// Migration unique : les fiches Clients & Prospects creees avant l'unification
+// du vocabulaire Pipeline/Clients (demande explicite) utilisaient encore les
+// anciens libelles ("Prospect froid/chaud", "Demonstration faite"). On les
+// convertit silencieusement vers le nouveau vocabulaire partage, en base et
+// a l'ecran, la premiere fois qu'elles sont chargees. Sans effet sur les
+// fiches deja migrees (legacyMap ne les reconnait plus).
+function migrateLegacyClientStatuts(){
+  const legacyMap = { 'Prospect froid':'Nouveau prospect', 'Prospect chaud':'Contacte', 'Demonstration faite':'En negociation' };
+  CLIENTS.forEach(function(cl){
+    const nouveau = legacyMap[cl.statut];
+    if(nouveau){
+      cl.statut = nouveau;
+      if(typeof dbUpdate === 'function') dbUpdate('clients', cl.id, { statut: nouveau });
+    }
+  });
+}
+
 function applyBulkData(data){
   CLIENTS = (data.clients||[]).map(mapClientFromDb);
+  migrateLegacyClientStatuts();
   PIPELINE = (data.pipeline||[]).map(mapPipelineFromDb);
   TASKS = (data.tasks||[]).map(mapTaskFromDb);
   COMM_PERF = (data.comm_perf||[]).map(mapCommPerfFromDb);
@@ -5846,9 +5929,11 @@ function confirmRestoreBackup(){
   });
 }
 
-// ── Initialize DB schema + attempt auto-login on first page load ───────────
+// ── Initialize DB schema on first page load ─────────────────────────────────
+// La connexion automatique au rafraichissement de la page a ete retiree
+// (demande explicite) : on redemande desormais toujours l'email et le mot
+// de passe, meme si un onglet etait deja connecte juste avant.
 fetch('/api/init-db').catch(function(){});
-tryAutoLogin();
 
 // ════════════════════════════════════════════════════════════════════════════
 // AUTO-SYNC WRAPPER — wraps each create/edit function so that after it runs
