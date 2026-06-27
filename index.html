@@ -361,14 +361,21 @@ let SESSIONS_ACTIVES = [];
 // fallback used before the real values arrive from the DB (table
 // sensitive_perms, seeded by /api/init-db) — see applySensitivePermsFromDb().
 let SENSITIVE_PERMS = {
-  collaborateur:   { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:false, modifier_cout_fournisseur:false, fournisseurs_approvisionnement:true, logistique_stock:true },
-  responsable:     { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:false, modifier_cout_fournisseur:false, fournisseurs_approvisionnement:true, logistique_stock:true },
+  collaborateur:   { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:false, modifier_cout_fournisseur:false, fournisseurs_approvisionnement:true, logistique_stock:true, modifier_client:true, modifier_prospect:true },
+  responsable:     { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:false, modifier_cout_fournisseur:false, fournisseurs_approvisionnement:true, logistique_stock:true, modifier_client:true, modifier_prospect:true },
   // modifier_stock=false : seul le Super Admin a le droit d'ajouter/modifier
   // les Produits et les Stocks (demande explicite). Reglable depuis le
   // Centre de Controle si besoin d'assouplir plus tard.
-  admin:           { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:true,  modifier_cout_fournisseur:true,  fournisseurs_approvisionnement:true, logistique_stock:true },
-  superadmin:      { voir_stock:true,  modifier_stock:true,  supprimer_mouvement:true,  modifier_prix_achat:true,  modifier_cout_fournisseur:true,  fournisseurs_approvisionnement:true, logistique_stock:true },
+  admin:           { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:true,  modifier_cout_fournisseur:true,  fournisseurs_approvisionnement:true, logistique_stock:true, modifier_client:true, modifier_prospect:true },
+  superadmin:      { voir_stock:true,  modifier_stock:true,  supprimer_mouvement:true,  modifier_prix_achat:true,  modifier_cout_fournisseur:true,  fournisseurs_approvisionnement:true, logistique_stock:true, modifier_client:true, modifier_prospect:true },
 };
+// modifier_client / modifier_prospect : permissions ajoutees pour controler,
+// role par role, qui a le droit de MODIFIER (pas juste voir) une fiche
+// Client ou Prospect dans le module "Clients & Prospects". Par defaut a
+// true pour tous les roles afin de ne rien casser tant que le Super Admin
+// n'a pas explicitement restreint depuis Centre de Controle. S'applique en
+// PLUS de la regle generale (proprietaire + cree aujourd'hui) : voir
+// openDetailModal().
 
 // Labels used in the Centre de Controle matrix and in confirmation dialogs.
 const SENSITIVE_PERM_LABELS = {
@@ -376,7 +383,9 @@ const SENSITIVE_PERM_LABELS = {
   supprimer_mouvement: 'Supprimer un mouvement', modifier_prix_achat: "Modifier le prix d'achat",
   modifier_cout_fournisseur: 'Modifier le cout fournisseur',
   fournisseurs_approvisionnement: 'Voir et modifier : Fournisseurs & Approvisionnement',
-  logistique_stock: 'Voir et modifier : Reservations, Mouvements, Previsions, Entrepots'
+  logistique_stock: 'Voir et modifier : Reservations, Mouvements, Previsions, Entrepots',
+  modifier_client: 'Modifier les informations client',
+  modifier_prospect: 'Modifier les informations prospect'
 };
 
 // ── SAUVEGARDES (Super Admin centre de controle) ─────────────────────────────
@@ -2057,6 +2066,13 @@ function canModifyCoutFournisseur(){ return CU && SENSITIVE_PERMS[CU.role].modif
 // Super Admin always passes regardless of the toggle, same convention as the other can*() helpers.
 function canAccessFournisseurs(){ return CU && (isSuperAdmin() || (SENSITIVE_PERMS[CU.role] && SENSITIVE_PERMS[CU.role].fournisseurs_approvisionnement)); }
 function canAccessLogistiqueStock(){ return CU && (isSuperAdmin() || (SENSITIVE_PERMS[CU.role] && SENSITIVE_PERMS[CU.role].logistique_stock)); }
+// Module Clients & Prospects : une fiche au statut "Client actif"/"Client perdu"
+// est consideree CLIENT ; tout autre statut (Prospect froid/chaud, Demonstration
+// faite, Offre envoyee) est consideree PROSPECT. Sert a appliquer la bonne
+// permission sensible (modifier_client vs modifier_prospect) au bon enregistrement.
+function isClientStatut(statut){ return statut === 'Client actif' || statut === 'Client perdu'; }
+function canModifyClientInfo(){ return CU && (isSuperAdmin() || (SENSITIVE_PERMS[CU.role] && SENSITIVE_PERMS[CU.role].modifier_client)); }
+function canModifyProspectInfo(){ return CU && (isSuperAdmin() || (SENSITIVE_PERMS[CU.role] && SENSITIVE_PERMS[CU.role].modifier_prospect)); }
 
 // ── STOCK CORE MODEL ──────────────────────────────────────────────────────────
 // Stock Reel      = somme des mouvements (source de verite, jamais ecrase directement)
@@ -3364,7 +3380,9 @@ function renderControle(c){
   el('sensitive-matrix').innerHTML = '<div class="td-muted" style="margin-bottom:8px;font-size:11px">Cliquez sur ✓ / ✗ pour activer ou desactiver une permission pour un role. Chaque changement est trace dans le journal d\'audit.</div><table class="perm-table"><thead><tr><th>Action</th><th>Collab.</th><th>Resp.</th><th>Admin</th><th>S.Admin</th></tr></thead><tbody>' +
     [["Voir stock","voir_stock"],["Modifier Produits & Stocks","modifier_stock"],["Supprimer mouvement","supprimer_mouvement"],["Modifier prix d'achat","modifier_prix_achat"],["Modifier cout fournisseur","modifier_cout_fournisseur"],
      ["Voir et modifier : Fournisseurs & Approvisionnement","fournisseurs_approvisionnement"],
-     ["Voir et modifier : Reservations, Mouvements, Previsions, Entrepots","logistique_stock"]].map(function(row){
+     ["Voir et modifier : Reservations, Mouvements, Previsions, Entrepots","logistique_stock"],
+     ["Modifier informations client","modifier_client"],
+     ["Modifier informations prospect","modifier_prospect"]].map(function(row){
       function cell(role){
         const on = SENSITIVE_PERMS[role][row[1]];
         // Super Admin's own row is fixed (always all-access) and not clickable —
@@ -3787,7 +3805,14 @@ function openDetailModal(title, rows, editConfig){
   if(editConfig && editConfig.record){
     const dept = editConfig.dept || null;
     const owner = editConfig.owner || null;
-    const allowed = isSuperAdmin() || (dept !== null && owner !== null && canEditRecord(editConfig.record, dept, owner));
+    let allowed = isSuperAdmin() || (dept !== null && owner !== null && canEditRecord(editConfig.record, dept, owner));
+    // Permission sensible additionnelle, propre au module Clients & Prospects :
+    // meme si la regle generale (proprietaire + cree aujourd'hui) autorise la
+    // modification, le Super Admin peut desactiver modifier_client / modifier_prospect
+    // pour un role depuis Centre de Controle -> Permissions sensibles.
+    if(allowed && editConfig.entity === 'clients'){
+      allowed = isClientStatut(editConfig.record.statut) ? canModifyClientInfo() : canModifyProspectInfo();
+    }
     if(allowed){
       footer = btnGhost('Fermer', "closeModal('modal-detail')") + btnRed('✏️ Modifier', 'switchToEditMode()');
     }
@@ -4634,7 +4659,8 @@ function applySensitivePermsFromDb(rows){
     SENSITIVE_PERMS[r.role] = {
       voir_stock: !!r.voir_stock, modifier_stock: !!r.modifier_stock, supprimer_mouvement: !!r.supprimer_mouvement,
       modifier_prix_achat: !!r.modifier_prix_achat, modifier_cout_fournisseur: !!r.modifier_cout_fournisseur,
-      fournisseurs_approvisionnement: !!r.fournisseurs_approvisionnement, logistique_stock: !!r.logistique_stock
+      fournisseurs_approvisionnement: !!r.fournisseurs_approvisionnement, logistique_stock: !!r.logistique_stock,
+      modifier_client: !!r.modifier_client, modifier_prospect: !!r.modifier_prospect
     };
   });
 }

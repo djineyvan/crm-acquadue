@@ -138,7 +138,8 @@ const COLUMN_TYPES = {
     role: 'TEXT', voir_stock: 'BOOLEAN DEFAULT true', modifier_stock: 'BOOLEAN DEFAULT false',
     supprimer_mouvement: 'BOOLEAN DEFAULT false', modifier_prix_achat: 'BOOLEAN DEFAULT false',
     modifier_cout_fournisseur: 'BOOLEAN DEFAULT false',
-    fournisseurs_approvisionnement: 'BOOLEAN DEFAULT true', logistique_stock: 'BOOLEAN DEFAULT true'
+    fournisseurs_approvisionnement: 'BOOLEAN DEFAULT true', logistique_stock: 'BOOLEAN DEFAULT true',
+    modifier_client: 'BOOLEAN DEFAULT true', modifier_prospect: 'BOOLEAN DEFAULT true'
   },
   // Reference prices for competing bottled-water formats, used both by the
   // static comparison table in Rapports and by the interactive ROI
@@ -302,18 +303,18 @@ module.exports = async function handler(req, res) {
     const existingPerms = await sql`SELECT COUNT(*) as count FROM sensitive_perms`;
     if (parseInt(existingPerms[0].count) === 0) {
       const defaultPerms = {
-        collaborateur: { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:false, modifier_cout_fournisseur:false, fournisseurs_approvisionnement:true, logistique_stock:true },
-        responsable:   { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:false, modifier_cout_fournisseur:false, fournisseurs_approvisionnement:true, logistique_stock:true },
+        collaborateur: { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:false, modifier_cout_fournisseur:false, fournisseurs_approvisionnement:true, logistique_stock:true, modifier_client:true, modifier_prospect:true },
+        responsable:   { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:false, modifier_cout_fournisseur:false, fournisseurs_approvisionnement:true, logistique_stock:true, modifier_client:true, modifier_prospect:true },
         // modifier_stock is now false for admin: only the Super Admin may
         // add/modify Produits & Stocks, per explicit request.
-        admin:         { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:true,  modifier_cout_fournisseur:true,  fournisseurs_approvisionnement:true, logistique_stock:true },
-        superadmin:    { voir_stock:true,  modifier_stock:true,  supprimer_mouvement:true,  modifier_prix_achat:true,  modifier_cout_fournisseur:true,  fournisseurs_approvisionnement:true, logistique_stock:true },
+        admin:         { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:true,  modifier_cout_fournisseur:true,  fournisseurs_approvisionnement:true, logistique_stock:true, modifier_client:true, modifier_prospect:true },
+        superadmin:    { voir_stock:true,  modifier_stock:true,  supprimer_mouvement:true,  modifier_prix_achat:true,  modifier_cout_fournisseur:true,  fournisseurs_approvisionnement:true, logistique_stock:true, modifier_client:true, modifier_prospect:true },
       };
       for (const role of Object.keys(defaultPerms)) {
         const p = defaultPerms[role];
         await sql`INSERT INTO sensitive_perms
-                   (role, voir_stock, modifier_stock, supprimer_mouvement, modifier_prix_achat, modifier_cout_fournisseur, fournisseurs_approvisionnement, logistique_stock)
-                   VALUES (${role}, ${p.voir_stock}, ${p.modifier_stock}, ${p.supprimer_mouvement}, ${p.modifier_prix_achat}, ${p.modifier_cout_fournisseur}, ${p.fournisseurs_approvisionnement}, ${p.logistique_stock})
+                   (role, voir_stock, modifier_stock, supprimer_mouvement, modifier_prix_achat, modifier_cout_fournisseur, fournisseurs_approvisionnement, logistique_stock, modifier_client, modifier_prospect)
+                   VALUES (${role}, ${p.voir_stock}, ${p.modifier_stock}, ${p.supprimer_mouvement}, ${p.modifier_prix_achat}, ${p.modifier_cout_fournisseur}, ${p.fournisseurs_approvisionnement}, ${p.logistique_stock}, ${p.modifier_client}, ${p.modifier_prospect})
                    ON CONFLICT (role) DO NOTHING`;
       }
     }

@@ -63,7 +63,7 @@ const COLUMNS = {
   rh_presence: ['id','nom','date_p','arrivee','depart','statut'],
   rh_conges: ['id','nom','debut','fin','motif','statut'],
   documents: ['id','nom','categorie','taille','date_doc','par_qui','data','mime_type'],
-  sensitive_perms: ['role','voir_stock','modifier_stock','supprimer_mouvement','modifier_prix_achat','modifier_cout_fournisseur','fournisseurs_approvisionnement','logistique_stock'],
+  sensitive_perms: ['role','voir_stock','modifier_stock','supprimer_mouvement','modifier_prix_achat','modifier_cout_fournisseur','fournisseurs_approvisionnement','logistique_stock','modifier_client','modifier_prospect'],
   roi_concurrents: ['id','format','volume_litres','prix'],
 };
 
