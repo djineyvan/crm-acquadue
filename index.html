@@ -417,6 +417,36 @@ let CURRENT_VIEW = 'dash'; // tracks the active page so the search bar can re-re
 const AVC = ["av-red","av-blue","av-green","av-gold","av-purple"];
 const MAX_TENTATIVES = 5;
 
+// ── DETECTEUR DE NOUVELLE VERSION ───────────────────────────────────────────
+// Plusieurs confusions rapportees ("la correction n'a pas l'air d'avoir
+// marche") venaient en realite d'un onglet reste ouvert depuis AVANT le
+// dernier deploiement : le navigateur continue d'executer l'ancien code en
+// memoire tant que la page n'est pas rechargee, meme si le serveur a deja la
+// nouvelle version. Ce mecanisme verifie periodiquement /api/version (qui
+// change a chaque deploiement, via le SHA du commit Git fourni par Vercel)
+// et affiche un petit bandeau cliquable pour recharger si une nouvelle
+// version est detectee — au lieu de laisser l'utilisateur tester un ancien
+// code sans le savoir.
+let BOOT_VERSION = null;
+function checkAppVersion(){
+  fetch('/api/version').then(function(r){ return r.json(); }).then(function(d){
+    if(!d || !d.version) return;
+    if(BOOT_VERSION === null){ BOOT_VERSION = d.version; return; }
+    if(d.version !== BOOT_VERSION) showUpdateBanner();
+  }).catch(function(){ /* network hiccup — try again next interval */ });
+}
+function showUpdateBanner(){
+  if(document.getElementById('update-banner')) return; // deja affiche
+  const b = document.createElement('div');
+  b.id = 'update-banner';
+  b.style.cssText = 'position:fixed;bottom:16px;right:16px;background:var(--red);color:#fff;padding:11px 16px;border-radius:10px;font-size:12px;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.3);z-index:9999;cursor:pointer;font-family:Inter,sans-serif;display:flex;align-items:center;gap:8px';
+  b.innerHTML = '🔄 Nouvelle version disponible — cliquez pour recharger';
+  b.onclick = function(){ location.reload(); };
+  document.body.appendChild(b);
+}
+checkAppVersion();
+setInterval(checkAppVersion, 60000);
+
 // ── HELPER FUNCTIONS (avoid nested-quote bugs by centralizing HTML snippets) ──
 function el(id){ return document.getElementById(id); }
 // <input type="date"> always gives/needs "YYYY-MM-DD" (ISO), but every date
@@ -1665,6 +1695,7 @@ function submitTaskReport(){
   if(!rapport){ alert('Decrivez brievement ce qui a ete fait avant de valider.'); return; }
   t.statut = "Termine";
   t.rapport = rapport;
+  stampModification(t);
   logAction("Tache terminee", t.titre + ' — rapport: ' + (rapport.length > 60 ? rapport.slice(0,60)+'…' : rapport), "green");
   closeModal('modal-task-report');
   go('taches');
@@ -5858,7 +5889,7 @@ wrapAfter('submitTaskReport', function(){
   // submitTaskReport() s'est arretee tot et t.statut n'a pas change — dans
   // ce cas, ne rien persister (sinon on enregistrerait "Termine" en base
   // alors que l'ecran affiche encore la tache comme non terminee).
-  if(t && t.statut === 'Termine') dbUpdate('tasks', t.id, { statut: 'Termine', rapport: t.rapport });
+  if(t && t.statut === 'Termine') dbUpdate('tasks', t.id, { statut: 'Termine', rapport: t.rapport, last_modified_by:t.lastModifiedBy, last_modified_at:t.lastModifiedAt });
 });
 
 // PIPELINE — addProspect() pushes to end, advancePipelineStage() mutates existing
