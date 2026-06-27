@@ -4366,7 +4366,7 @@ function buildModals2(){
     '<h3 id="modal-depense-title" style="font-family:Syne,sans-serif;font-size:14px;margin-bottom:12px">Nouvelle Depense</h3>' +
     fieldText('dp-libelle','Libelle','Ex: Loyer entrepot Niamey') +
     fieldRow(fieldSelect('dp-categorie','Categorie', CATEGORIES_DEPENSES), fieldText('dp-montant','Montant (FCFA)')) +
-    fieldRow(fieldDate('dp-date','Date de la depense'), fieldText('dp-payepar','Paye par')) +
+    fieldRow(fieldDate('dp-date','Date de la depense'), fieldSelect('dp-payepar','Paye par', [])) +
     fieldRow(fieldSelect('dp-statut','Statut',['Payee','En attente']), fieldText('dp-justificatif','Justificatif','Ex: Recu signe, Facture n°...'));
   modals += modalShell('modal-depense', 'Depense', depenseBody,
     btnGhost('Annuler', "closeModal('modal-depense')") + btnRed('Enregistrer', 'saveDepense()'));
@@ -4683,7 +4683,8 @@ function openDepenseBuilder(id){
   el('dp-categorie').value = existing ? existing.categorie : CATEGORIES_DEPENSES[0];
   el('dp-montant').value = existing ? existing.montant : '';
   el('dp-date').value = existing ? frDateToIso(existing.date) : new Date().toISOString().slice(0,10);
-  el('dp-payepar').value = existing ? existing.payePar : '';
+  fillAssigneeSelect('dp-payepar');
+  el('dp-payepar').value = existing ? existing.payePar : CU.nom;
   el('dp-justificatif').value = existing ? existing.justificatif : '';
   el('dp-statut').value = existing ? existing.statut : 'En attente';
   el('modal-depense-title').textContent = existing ? 'Modifier la Depense' : 'Nouvelle Depense';
