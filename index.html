@@ -369,13 +369,15 @@ let SENSITIVE_PERMS = {
   admin:           { voir_stock:true,  modifier_stock:false, supprimer_mouvement:false, modifier_prix_achat:true,  modifier_cout_fournisseur:true,  fournisseurs_approvisionnement:true, logistique_stock:true, modifier_client:true, modifier_prospect:true },
   superadmin:      { voir_stock:true,  modifier_stock:true,  supprimer_mouvement:true,  modifier_prix_achat:true,  modifier_cout_fournisseur:true,  fournisseurs_approvisionnement:true, logistique_stock:true, modifier_client:true, modifier_prospect:true },
 };
-// modifier_client / modifier_prospect : permissions ajoutees pour controler,
-// role par role, qui a le droit de MODIFIER (pas juste voir) une fiche
-// Client ou Prospect dans le module "Clients & Prospects". Par defaut a
-// true pour tous les roles afin de ne rien casser tant que le Super Admin
-// n'a pas explicitement restreint depuis Centre de Controle. S'applique en
-// PLUS de la regle generale (proprietaire + cree aujourd'hui) : voir
-// openDetailModal().
+// modifier_client / modifier_prospect : permissions qui controlent, role par
+// role, qui a le droit de MODIFIER (pas juste voir) une fiche Client ou
+// Prospect dans le module "Clients & Prospects". Par defaut a true pour
+// tous les roles afin de ne rien casser tant que le Super Admin n'a pas
+// explicitement restreint depuis Centre de Controle. ATTENTION : pour ce
+// module specifiquement, cette permission REMPLACE la regle generale
+// "proprietaire + cree aujourd'hui" (voir openDetailModal()) : si active,
+// le role peut modifier N'IMPORTE QUELLE fiche du type concerne, peu importe
+// qui l'a creee ou quand.
 
 // Labels used in the Centre de Controle matrix and in confirmation dialogs.
 const SENSITIVE_PERM_LABELS = {
@@ -3805,13 +3807,18 @@ function openDetailModal(title, rows, editConfig){
   if(editConfig && editConfig.record){
     const dept = editConfig.dept || null;
     const owner = editConfig.owner || null;
-    let allowed = isSuperAdmin() || (dept !== null && owner !== null && canEditRecord(editConfig.record, dept, owner));
-    // Permission sensible additionnelle, propre au module Clients & Prospects :
-    // meme si la regle generale (proprietaire + cree aujourd'hui) autorise la
-    // modification, le Super Admin peut desactiver modifier_client / modifier_prospect
-    // pour un role depuis Centre de Controle -> Permissions sensibles.
-    if(allowed && editConfig.entity === 'clients'){
-      allowed = isClientStatut(editConfig.record.statut) ? canModifyClientInfo() : canModifyProspectInfo();
+    let allowed;
+    if(editConfig.entity === 'clients'){
+      // Module Clients & Prospects : la permission sensible (modifier_client /
+      // modifier_prospect) est L'AUTORITE UNIQUE pour ce module, et REMPLACE
+      // la regle generale "proprietaire + cree aujourd'hui" (demande explicite
+      // du Super Admin : si la permission est active pour un role, ce role
+      // peut modifier N'IMPORTE QUELLE fiche de ce type, peu importe qui l'a
+      // creee ou quand ; si elle est desactivee, personne de ce role ne peut
+      // la modifier, meme une fiche qu'il a lui-meme creee aujourd'hui).
+      allowed = isSuperAdmin() || (isClientStatut(editConfig.record.statut) ? canModifyClientInfo() : canModifyProspectInfo());
+    } else {
+      allowed = isSuperAdmin() || (dept !== null && owner !== null && canEditRecord(editConfig.record, dept, owner));
     }
     if(allowed){
       footer = btnGhost('Fermer', "closeModal('modal-detail')") + btnRed('✏️ Modifier', 'switchToEditMode()');
