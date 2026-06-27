@@ -823,6 +823,33 @@ function fillFournisseurSelect(id){
   sel.innerHTML = FOURNISSEURS.map(function(f){ return "<option>" + f.nom + "</option>"; }).join("");
 }
 
+// Confidentialite (demande explicite) : un Collaborateur ne peut choisir et
+// facturer que SES PROPRES clients enregistres ; Admin, Responsable et Super
+// Admin continuent de voir tous les noms (comportement deja en place).
+// CRITIQUE : cette fonction doit etre en PORTEE GLOBALE (pas imbriquee dans
+// une autre fonction) — elle est appelee par fillClientSelect() ci-dessous,
+// qui elle-meme est appelee par openModal() pour CHAQUE modal, y compris les
+// modals Devis/Facture Builder eux-memes. La definir a l'interieur de
+// buildModals2() (erreur precedente) la rendait invisible depuis
+// fillClientSelect — provoquant un ReferenceError qui interrompait
+// silencieusement openModal() en plein milieu, empechant tout le reste
+// (renderDevisBuilderLignes, le panier, les packs promo, le geste commercial)
+// de s'afficher.
+function visibleClientsPourFacturation(){
+  if(isAdmin() || CU.role === 'responsable') return CLIENTS;
+  return CLIENTS.filter(function(c){ return c.asg === CU.nom; });
+}
+function fieldClientPicker(selectId, textId){
+  const opts = visibleClientsPourFacturation().map(function(c){ return c.nom; });
+  return '<div class="form-group"><label class="form-label">Client</label>' +
+    '<select class="form-select" id="'+selectId+'" onchange="toggleNewClientField(\''+selectId+'\',\''+textId+'\')" style="margin-bottom:6px">' +
+    '<option value="">— Nouveau client —</option>' +
+    opts.map(function(o){ return '<option>'+o+'</option>'; }).join('') +
+    '</select>' +
+    '<input class="form-input" id="'+textId+'" placeholder="Nom du nouveau client"/>' +
+    '</div>';
+}
+
 function fillClientSelect(id){
   const sel = el(id);
   if(!sel) return;
@@ -4072,24 +4099,6 @@ function buildModals2(){
     fieldRow(fieldSelect('iv-type','Type',['Hebdomadaire','Mensuel','Trimestriel']), fieldDate('iv-date','Date prevue'));
   modals += modalShell('modal-inventaire', 'Planifier un Inventaire', inventaireBody,
     btnGhost('Annuler', "closeModal('modal-inventaire')") + btnRed('Planifier', 'addInventaire()'));
-
-// Confidentialite (demande explicite) : un Collaborateur ne peut choisir et
-// facturer que SES PROPRES clients enregistres ; Admin, Responsable et Super
-// Admin continuent de voir tous les noms (comportement deja en place).
-function visibleClientsPourFacturation(){
-  if(isAdmin() || CU.role === 'responsable') return CLIENTS;
-  return CLIENTS.filter(function(c){ return c.asg === CU.nom; });
-}
-function fieldClientPicker(selectId, textId){
-  const opts = visibleClientsPourFacturation().map(function(c){ return c.nom; });
-  return '<div class="form-group"><label class="form-label">Client</label>' +
-    '<select class="form-select" id="'+selectId+'" onchange="toggleNewClientField(\''+selectId+'\',\''+textId+'\')" style="margin-bottom:6px">' +
-    '<option value="">— Nouveau client —</option>' +
-    opts.map(function(o){ return '<option>'+o+'</option>'; }).join('') +
-    '</select>' +
-    '<input class="form-input" id="'+textId+'" placeholder="Nom du nouveau client"/>' +
-    '</div>';
-}
 
   // ── Modal: Devis Builder (multi-produits, creation ET edition) ──
   const devisBuilderBody =
