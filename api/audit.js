@@ -19,7 +19,39 @@ module.exports = async function handler(req, res) {
     const sql = getSql();
 
     if (req.method === 'GET' && req.query.createurs) {
-      const detail = req.query.createurs; // '1' (resume) ou 'devis'/'factures'/'depenses' (liste)
+      const detail = req.query.createurs; // '1' (resume), 'devis'/'factures'/'depenses' (liste), ou 'assign' (attribution)
+
+      if (detail === 'assign') {
+        // Attribution en une fois de TOUS les devis/factures/depenses sans
+        // createur connu a une personne donnee (?nom=...). Action manuelle,
+        // demandee explicitement par le Super Admin apres revue des listes
+        // (?createurs=devis/factures/depenses) - jamais automatique.
+        const nomDemande = (req.query.nom || '').trim();
+        if (!nomDemande) return res.status(400).json({ error: 'Parametre nom manquant' });
+
+        const userRows = await sql`SELECT nom, departement FROM users WHERE LOWER(nom) = LOWER(${nomDemande})`;
+        if (userRows.length === 0) {
+          return res.status(404).json({ error: 'Aucun utilisateur ne porte ce nom exact: ' + nomDemande });
+        }
+        const nomExact = userRows[0].nom;
+        const dept = userRows[0].departement;
+
+        const devisMaj = await sql`UPDATE devis SET cree_par = ${nomExact}
+                                    WHERE cree_par IS NULL OR cree_par = '' RETURNING id`;
+        const facturesMaj = await sql`UPDATE factures SET cree_par = ${nomExact}
+                                       WHERE cree_par IS NULL OR cree_par = '' RETURNING id`;
+        const depensesMaj = await sql`UPDATE depenses SET cree_par = ${nomExact},
+                                       departement = COALESCE(NULLIF(departement, ''), ${dept})
+                                       WHERE cree_par IS NULL OR cree_par = '' RETURNING id`;
+
+        return res.status(200).json({
+          attribue_a: nomExact,
+          departement_utilise: dept,
+          devis_mis_a_jour: devisMaj.length,
+          factures_mises_a_jour: facturesMaj.length,
+          depenses_mises_a_jour: depensesMaj.length
+        });
+      }
 
       if (detail === 'devis') {
         const rows = await sql`SELECT id, client, date_devis, statut, cree_par, created_at
