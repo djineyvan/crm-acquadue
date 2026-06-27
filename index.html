@@ -491,6 +491,24 @@ function showUpdateBanner(){
 checkAppVersion();
 setInterval(checkAppVersion, 60000);
 
+// ── ACTUALISATION AUTOMATIQUE (demande explicite) ───────────────────────────
+// Recharge les donnees depuis la base toutes les 5 secondes pendant qu'on est
+// connecte, et rafraichit l'ecran actuellement affiche — pour que deux
+// personnes connectees en meme temps voient les changements de l'une chez
+// l'autre sans avoir a recharger la page manuellement.
+// Garde-fous : ne fait rien si personne n'est connecte, et ne fait rien
+// pendant qu'une fenetre (creation/edition) est ouverte, pour ne jamais
+// interrompre une saisie en cours.
+function autoRefreshTick(){
+  if(!CU) return;
+  if(document.querySelector('.modal-overlay.open')) return;
+  Promise.all([loadAllDataFromDb(), loadAuditFromDb()]).then(function(){
+    updateAllBadges();
+    if(CURRENT_VIEW) renderView(CURRENT_VIEW);
+  }).catch(function(){ /* prochaine tentative dans 5 secondes */ });
+}
+setInterval(autoRefreshTick, 5000);
+
 // ── HELPER FUNCTIONS (avoid nested-quote bugs by centralizing HTML snippets) ──
 function el(id){ return document.getElementById(id); }
 // <input type="date"> always gives/needs "YYYY-MM-DD" (ISO), but every date
