@@ -505,6 +505,7 @@ function autoRefreshTick(){
   Promise.all([loadAllDataFromDb(), loadAuditFromDb()]).then(function(){
     updateAllBadges();
     if(CURRENT_VIEW) renderView(CURRENT_VIEW);
+    restoreSubTabs();
   }).catch(function(){ /* prochaine tentative dans 5 secondes */ });
 }
 setInterval(autoRefreshTick, 5000);
@@ -908,7 +909,13 @@ function closeMobileSidebar(){
   if(ov) ov.classList.remove('open');
 }
 
+// Retient le sous-onglet actif de chaque module (ex: "Factures" dans Devis &
+// Facturation), pour pouvoir le restaurer apres une actualisation
+// automatique (demande explicite : l'actualisation toutes les 5 secondes ne
+// doit pas faire revenir l'ecran sur le premier sous-onglet).
+let CURRENT_SUBTABS = {};
 function switchTab(btn, prefix, tab){
+  CURRENT_SUBTABS[prefix] = tab;
   btn.closest('.tabs').querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
   btn.classList.add('active');
   document.querySelectorAll('[id^="'+prefix+'-"]').forEach(function(t){
@@ -916,6 +923,18 @@ function switchTab(btn, prefix, tab){
   });
   const target = el(prefix+'-'+tab);
   if(target) target.style.display = 'block';
+}
+
+// Reapplique chaque sous-onglet retenu sur l'ecran qui vient d'etre
+// reconstruit. Sans effet sur les prefixes qui n'existent pas sur l'ecran
+// actuel (le bouton correspondant n'est simplement pas trouve).
+function restoreSubTabs(){
+  Object.keys(CURRENT_SUBTABS).forEach(function(prefix){
+    const tab = CURRENT_SUBTABS[prefix];
+    const selector = "[onclick*=\"switchTab(this,'" + prefix + "','" + tab + "')\"]";
+    const btn = document.querySelector(selector);
+    if(btn) switchTab(btn, prefix, tab);
+  });
 }
 
 function fillProduitSelect(id){
