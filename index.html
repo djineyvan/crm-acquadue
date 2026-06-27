@@ -1023,7 +1023,12 @@ function viewPipeCard(id){
     ['Statut de verrouillage', p.locked ? lockBadge() : '<span class="td-muted">Modifiable</span>']
   ];
 
-  if(isSuperAdmin() && p.etape !== 'Gagne' && p.etape !== 'Perdu'){
+  // Faire avancer / Marquer perdu : autorise au Super Admin, OU a tout role
+  // ayant la permission sensible "Modifier informations prospect" — une
+  // opportunite du Pipeline EST un prospect, donc cette permission s'applique
+  // ici aussi (demande explicite : "valider les etapes d'avancement du
+  // prospect dans le pipeline").
+  if((isSuperAdmin() || canModifyProspectInfo()) && p.etape !== 'Gagne' && p.etape !== 'Perdu'){
     rows.push(['Action', '<button class="btn btn-red btn-sm" onclick="advancePipelineStage(' + p.id + ')">Faire avancer a l\'etape suivante →</button> <button class="btn btn-ghost btn-sm" onclick="markPipelineLost(' + p.id + ')">✗ Marquer perdu</button>']);
   }
   if(p.lastModifiedBy){
@@ -1047,7 +1052,7 @@ function viewPipeCard(id){
 }
 
 function advancePipelineStage(id){
-  if(!isSuperAdmin()) return alert('Seul le Super Admin peut faire progresser une opportunite.');
+  if(!isSuperAdmin() && !canModifyProspectInfo()) return alert("Vous n'avez pas la permission de faire progresser une opportunite. Demandez au Super Admin d'activer 'Modifier informations prospect' pour votre role.");
   const p = PIPELINE.find(function(x){return String(x.id)===String(id);});
   if(!p) return;
   const idx = PIPELINE_STAGES.indexOf(p.etape);
@@ -1075,7 +1080,7 @@ function advancePipelineStage(id){
 }
 
 function markPipelineLost(id){
-  if(!isSuperAdmin()) return alert('Seul le Super Admin peut marquer une opportunite comme perdue.');
+  if(!isSuperAdmin() && !canModifyProspectInfo()) return alert("Vous n'avez pas la permission de marquer une opportunite comme perdue. Demandez au Super Admin d'activer 'Modifier informations prospect' pour votre role.");
   const p = PIPELINE.find(function(x){return String(x.id)===String(id);});
   if(!p) return;
   if(p.etape === 'Gagne' || p.etape === 'Perdu') return;
@@ -3817,6 +3822,12 @@ function openDetailModal(title, rows, editConfig){
       // creee ou quand ; si elle est desactivee, personne de ce role ne peut
       // la modifier, meme une fiche qu'il a lui-meme creee aujourd'hui).
       allowed = isSuperAdmin() || (isClientStatut(editConfig.record.statut) ? canModifyClientInfo() : canModifyProspectInfo());
+    } else if(editConfig.entity === 'pipeline'){
+      // Module Pipeline : une opportunite EST un prospect (etapes Nouveau ->
+      // Contacte -> ... -> Gagne/Perdu), donc la meme permission
+      // modifier_prospect s'applique ici aussi, et remplace de la meme facon
+      // la regle proprietaire + cree aujourd'hui.
+      allowed = isSuperAdmin() || canModifyProspectInfo();
     } else {
       allowed = isSuperAdmin() || (dept !== null && owner !== null && canEditRecord(editConfig.record, dept, owner));
     }
@@ -3840,28 +3851,36 @@ function openDetailModal(title, rows, editConfig){
 
   openModal('modal-detail');
 
-  // Live re-check for Clients & Prospects: the initial "allowed" above used
+  // Live re-check for Clients & Prospects AND Pipeline (both depend on
+  // modifier_prospect/modifier_client): the initial "allowed" above used
   // whatever SENSITIVE_PERMS this session loaded at login, which can be
-  // stale if the Super Admin changed modifier_client/modifier_prospect
-  // since then. Fetch the current value from the database and correct the
-  // button (add it or remove it) the moment the answer comes back — this
-  // is the fix for permission changes only applying after a fresh login.
-  if(editConfig && editConfig.record && editConfig.entity === 'clients'){
+  // stale if the Super Admin changed the permission since then. Fetch the
+  // current value from the database and correct the button (add it or
+  // remove it) the moment the answer comes back.
+  if(editConfig && editConfig.record && (editConfig.entity === 'clients' || editConfig.entity === 'pipeline')){
     refreshSensitivePerms().then(function(){ refreshDetailModalFooter(editConfig.record); });
   }
 }
 
 // Re-evaluates whether "Modifier" should be shown for a Clients & Prospects
-// record, using whatever refreshSensitivePerms() just fetched, and updates
-// the already-open modal's footer in place. Guards against: the modal
-// having since been closed/replaced by a different record (DETAIL_CTX.record
-// would no longer match), and the user already being mid-edit (don't yank
-// the "Enregistrer" button out from under them while they're typing).
+// or Pipeline record, using whatever refreshSensitivePerms() just fetched,
+// and updates the already-open modal's footer in place. Guards against: the
+// modal having since been closed/replaced by a different record
+// (DETAIL_CTX.record would no longer match), and the user already being
+// mid-edit (don't yank the "Enregistrer" button out from under them while
+// they're typing).
 function refreshDetailModalFooter(record){
   if(!DETAIL_CTX || DETAIL_CTX.record !== record || DETAIL_CTX.editing) return;
   const modal = el('modal-detail');
   if(!modal || !modal.classList.contains('open')) return;
-  const allowed = isSuperAdmin() || (isClientStatut(record.statut) ? canModifyClientInfo() : canModifyProspectInfo());
+  let allowed;
+  if(DETAIL_CTX.entity === 'clients'){
+    allowed = isSuperAdmin() || (isClientStatut(record.statut) ? canModifyClientInfo() : canModifyProspectInfo());
+  } else if(DETAIL_CTX.entity === 'pipeline'){
+    allowed = isSuperAdmin() || canModifyProspectInfo();
+  } else {
+    allowed = isSuperAdmin();
+  }
   const footerEl = modal.querySelector('.modal-footer');
   if(!footerEl) return;
   footerEl.innerHTML = allowed
