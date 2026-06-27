@@ -3834,14 +3834,44 @@ function openDetailModal(title, rows, editConfig){
   DETAIL_CTX = editConfig ? {
     title: title, record: editConfig.record, fields: editConfig.fields,
     onSave: editConfig.onSave, skipFields: editConfig.skipFields || [],
-    entity: editConfig.entity || null, idField: editConfig.idField || 'id'
+    entity: editConfig.entity || null, idField: editConfig.idField || 'id',
+    dept: editConfig.dept || null, owner: editConfig.owner || null, editing: false
   } : null;
 
   openModal('modal-detail');
+
+  // Live re-check for Clients & Prospects: the initial "allowed" above used
+  // whatever SENSITIVE_PERMS this session loaded at login, which can be
+  // stale if the Super Admin changed modifier_client/modifier_prospect
+  // since then. Fetch the current value from the database and correct the
+  // button (add it or remove it) the moment the answer comes back — this
+  // is the fix for permission changes only applying after a fresh login.
+  if(editConfig && editConfig.record && editConfig.entity === 'clients'){
+    refreshSensitivePerms().then(function(){ refreshDetailModalFooter(editConfig.record); });
+  }
+}
+
+// Re-evaluates whether "Modifier" should be shown for a Clients & Prospects
+// record, using whatever refreshSensitivePerms() just fetched, and updates
+// the already-open modal's footer in place. Guards against: the modal
+// having since been closed/replaced by a different record (DETAIL_CTX.record
+// would no longer match), and the user already being mid-edit (don't yank
+// the "Enregistrer" button out from under them while they're typing).
+function refreshDetailModalFooter(record){
+  if(!DETAIL_CTX || DETAIL_CTX.record !== record || DETAIL_CTX.editing) return;
+  const modal = el('modal-detail');
+  if(!modal || !modal.classList.contains('open')) return;
+  const allowed = isSuperAdmin() || (isClientStatut(record.statut) ? canModifyClientInfo() : canModifyProspectInfo());
+  const footerEl = modal.querySelector('.modal-footer');
+  if(!footerEl) return;
+  footerEl.innerHTML = allowed
+    ? btnGhost('Fermer', "closeModal('modal-detail')") + btnRed('✏️ Modifier', 'switchToEditMode()')
+    : btnGhost('Fermer', "closeModal('modal-detail')");
 }
 
 function switchToEditMode(){
   if(!DETAIL_CTX) return;
+  DETAIL_CTX.editing = true;
   const fields = DETAIL_CTX.fields;
   let body = '<table style="width:100%;border-collapse:collapse">' + fields.map(function(f){
     return detailRowEditable(f[0], f[1], f[2], f[3]);
@@ -4670,6 +4700,24 @@ function applySensitivePermsFromDb(rows){
       modifier_client: !!r.modifier_client, modifier_prospect: !!r.modifier_prospect
     };
   });
+}
+// Fetches the latest sensitive_perms straight from Postgres and merges them
+// into SENSITIVE_PERMS. Without this, a permission toggled by the Super
+// Admin in Centre de Controle stays INVISIBLE to anyone already logged in
+// until their NEXT full login — SENSITIVE_PERMS is otherwise only loaded
+// once, at boot (see loadAllDataFromDb()). This is what caused the reported
+// "ca marche pour Client mais pas pour Prospect" confusion: the Admin
+// account's browser was simply still running on permissions loaded several
+// minutes earlier. Called every time a Clients & Prospects detail view
+// opens (see openDetailModal/refreshDetailModalFooter) so the access
+// decision always reflects the current setting, not a stale snapshot.
+function refreshSensitivePerms(){
+  if(typeof apiGet !== 'function') return Promise.resolve();
+  return apiGet('/api/data?entity=sensitive_perms').then(function(result){
+    if(result.ok && result.data && result.data.rows){
+      applySensitivePermsFromDb(result.data.rows);
+    }
+  }).catch(function(){ /* network hiccup — keep using whatever was cached rather than blocking the UI */ });
 }
 function mapRoiConcurrentFromDb(r){
   return { id:r.id, format:r.format, volumeLitres:Number(r.volume_litres), prix:Number(r.prix) };
