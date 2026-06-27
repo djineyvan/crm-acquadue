@@ -45,7 +45,7 @@ const ENTITY_MAP = {
 const COLUMNS = {
   clients: ['id','nom','type','ville','zone','tel','email','societe','source','statut','produit','asg','notes','date_creation','locked','historique','last_modified_by','last_modified_at'],
   pipeline: ['id','nom','type','val','etape','asg','ville','tel','date_estimee','locked','sku','qte','entrepot','reservation_faite','last_modified_by','last_modified_at'],
-  tasks: ['id','titre','asg','dept','pri','statut','date_limite','desc_tache','locked','last_modified_by','last_modified_at'],
+  tasks: ['id','titre','asg','dept','pri','statut','date_limite','desc_tache','locked','rapport','last_modified_by','last_modified_at'],
   comm_perf: ['id','nom','ville','zone','obj','ventes','nb','tx','date_enregistrement','historique_modifs'],
   campagnes: ['id','nom','canal','budget','statut','leads','cout_lead','debut','fin','resp','locked','last_modified_by','last_modified_at'],
   publications: ['id','titre','plat','fmt','date_pub','statut','workflow','redacteur','locked','last_modified_by','last_modified_at'],

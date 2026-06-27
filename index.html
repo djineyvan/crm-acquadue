@@ -285,7 +285,7 @@ let USERS = [
 let AUDIT = [];
 
 // ── PIPELINE STAGES (6 etapes selon cahier des charges) ─────────────────────
-const PIPELINE_STAGES = ["Nouveau prospect","Contacte","En negociation","Offre envoyee","Gagne","Perdu"];
+const PIPELINE_STAGES = ["Nouveau prospect","Contacte","Offre envoyee","En negociation","Gagne","Perdu"];
 
 // ── CLIENTS / PROSPECTS ──────────────────────────────────────────────────────
 let CLIENTS = [];
@@ -756,12 +756,16 @@ function visiblePipeFilter(p){ return p.asg === CU.nom || isAdmin() || CU.role==
 // Admin et Responsable voient les depenses de leur DEPARTEMENT (leur equipe),
 // pas forcement les leurs personnellement ; Collaborateur ne voit QUE les
 // depenses qu'il a lui-meme enregistrees. Les depenses anciennes (avant
-// l'ajout de ce champ) n'ont pas de departement/createur connu — seul le
-// Super Admin les voit, pour eviter de fuiter une donnee non attribuee.
+// l'ajout de ce champ, ou enregistrees depuis un onglet pas encore
+// rafraichi a la derniere version) n'ont pas de departement/createur connu —
+// elles restent visibles pour Admin/Responsable (par defaut, plutot que de
+// les cacher completement — c'est ce qui causait "toutes les depenses
+// disparaissent chez lui") ; pour un Collaborateur, on se base alors sur
+// "Paye par" en dernier recours.
 function visibleDepenseFilter(d){
   if(isSuperAdmin()) return true;
-  if(CU.role === "admin" || CU.role === "responsable") return d.departement === CU.departement;
-  return d.creePar === CU.nom;
+  if(CU.role === "admin" || CU.role === "responsable") return !d.departement || d.departement === CU.departement;
+  return d.creePar ? d.creePar === CU.nom : d.payePar === CU.nom;
 }
 
 // ── NAVIGATION ─────────────────────────────────────────────────────────────────
@@ -1462,7 +1466,7 @@ function renderClients(c){
     return '<thead><tr><th>#</th><th>Client</th><th>Type</th><th>Ville</th><th>Source</th><th>Produit</th><th>Commercial</th><th>Notes</th><th>Statut</th><th>Date</th><th></th></tr></thead><tbody>' +
       d.map(function(cl,i){
         const notesPreview = cl.notes ? ((cl.notes.length > 28 ? cl.notes.slice(0,28)+'…' : cl.notes)) : '<span class="td-muted">-</span>';
-        return '<tr><td class="td-muted" style="text-align:center">'+(i+1)+'</td><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar '+avColor(i)+'">'+ini(cl.nom)+'</div><div><div class="td-bold">'+cl.nom+(cl.locked?' 🔒':'')+'</div><div class="td-muted">'+cl.tel+'</div></div></div></td><td>'+typeTag(cl.type)+'</td><td class="td-muted">'+cl.ville+'</td><td class="td-muted">'+(cl.source||'-')+'</td><td class="td-muted">'+cl.produit+'</td><td class="td-muted">'+cl.asg.split(' ')[0]+'</td><td class="td-muted" title="'+(cl.notes?cl.notes.replace(/"/g,'&quot;'):'')+'">'+notesPreview+'</td><td>'+statusTag(cl.statut)+'</td><td class="td-muted">'+cl.date+'</td><td><button class="btn btn-ghost btn-sm" onclick="viewClientDetail('+cl.id+')">👁 Details</button></td></tr>';
+        return '<tr><td class="td-muted" style="text-align:center">'+(i+1)+'</td><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar '+avColor(i)+'">'+ini(cl.nom)+'</div><div><div class="td-bold">'+cl.nom+(cl.locked?' 🔒':'')+'</div><div class="td-muted">'+cl.tel+'</div></div></div></td><td>'+typeTag(cl.type)+'</td><td class="td-muted">'+cl.ville+'</td><td class="td-muted">'+(cl.source||'-')+'</td><td class="td-muted">'+cl.produit+'</td><td class="td-muted">'+cl.asg.split(' ')[0]+'</td><td class="td-muted" title="'+(cl.notes?cl.notes.replace(/"/g,'&quot;'):'')+'">'+notesPreview+'</td><td>'+statusTag(cl.statut)+'</td><td class="td-muted">'+cl.date+'</td><td><button class="btn btn-ghost btn-sm" onclick="viewClientDetail('+cl.id+')">👁 Details</button>'+(isSuperAdmin()?' <button class="btn btn-ghost btn-sm" onclick="deleteClient('+cl.id+')">🗑 Supprimer</button>':'')+'</td></tr>';
       }).join('') + (d.length === 0 ? '<tr><td colspan="11" class="td-muted" style="text-align:center;padding:14px">'+(GLOBAL_SEARCH || countActiveClientFilters()>0 ?'Aucun resultat avec ces criteres':'Aucun client')+'</td></tr>' : '') + '</tbody>';
   }
   el('tbl-cli').innerHTML = mkTable(data);
@@ -1639,14 +1643,35 @@ function renderTaches(c){
   el('tbl-urg').innerHTML = mkTable(data.filter(function(t){return t.pri==="Haute";}));
 }
 
+let TASK_REPORT_ID = null;
+// Demande explicite : la personne assignee doit faire un court rapport au
+// moment de marquer sa tache terminee. Remplace l'ancien marquage en un clic
+// par une petite etape de confirmation avec un champ texte.
 function markTaskDone(id){
   const t = TASKS.find(function(x){return String(x.id)===String(id);});
   const isOwnTask = t && (t.asg === CU.nom || t.asg === "Toute l'equipe");
-  if(t && isOwnTask){
-    t.statut = "Termine";
-    logAction("Tache terminee", t.titre, "green");
-    go('taches');
-  }
+  if(!t || !isOwnTask) return;
+  TASK_REPORT_ID = id;
+  el('tr-titre').textContent = t.titre;
+  el('tr-rapport').value = '';
+  openModal('modal-task-report');
+}
+
+function submitTaskReport(){
+  if(!TASK_REPORT_ID) return;
+  const t = TASKS.find(function(x){return String(x.id)===String(TASK_REPORT_ID);});
+  if(!t) return;
+  const rapport = el('tr-rapport').value.trim();
+  if(!rapport){ alert('Decrivez brievement ce qui a ete fait avant de valider.'); return; }
+  t.statut = "Termine";
+  t.rapport = rapport;
+  logAction("Tache terminee", t.titre + ' — rapport: ' + (rapport.length > 60 ? rapport.slice(0,60)+'…' : rapport), "green");
+  closeModal('modal-task-report');
+  go('taches');
+  // TASK_REPORT_ID est volontairement laisse tel quel ici (pas remis a null) :
+  // le hook wrapAfter('submitTaskReport', ...) qui persiste en base s'execute
+  // APRES la fin de cette fonction et a besoin de le relire pour savoir
+  // quelle tache vient d'etre validee. Il sera ecrase au prochain markTaskDone().
 }
 
 function viewTaskDetail(id){
@@ -1662,6 +1687,7 @@ function viewTaskDetail(id){
     ['Statut', statusTag(t.statut)],
     ['Verrouillage', t.locked ? lockBadge() : '<span class="td-muted">Modifiable</span>']
   ];
+  if(t.rapport) rows.push(['Rapport de fin de tache', t.rapport.replace(/\n/g,'<br/>')]);
   if(t.lastModifiedBy) rows.push(['Derniere modification', modStampHtml(t)]);
 
   openDetailModal('Detail Tache', rows, {
@@ -3959,6 +3985,13 @@ function buildModals(){
   modals += modalShell('modal-tache', 'Nouvelle Tache', tacheBody,
     btnGhost('Annuler', "closeModal('modal-tache')") + btnRed('Creer', 'addTache()'));
 
+  // ── Modal: Rapport de fin de tache ──
+  const taskReportBody =
+    '<div style="margin-bottom:10px;font-size:12px">Tache : <strong id="tr-titre">-</strong></div>' +
+    fieldTextarea('tr-rapport','Qu\'avez-vous fait ? (obligatoire)','Ex: 12 familles visitees, 3 ventes conclues, 9 a relancer la semaine prochaine');
+  modals += modalShell('modal-task-report', 'Rapport de fin de tache', taskReportBody,
+    btnGhost('Annuler', "closeModal('modal-task-report')") + btnRed('Valider et terminer', 'submitTaskReport()'));
+
   // ── Modal: Nouvelle Campagne ──
   const campagneBody =
     fieldText('ca-nom','Nom','Campagne TikTok Juillet') +
@@ -4574,6 +4607,21 @@ function addClient(){
   CLIENT_BUILDER_LIGNES = [];
 }
 
+// Demande explicite : le Super Admin doit pouvoir supprimer N'IMPORTE QUEL
+// contact (client ou prospect), quel que soit qui l'a enregistre.
+function deleteClient(id){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer un contact.');
+  const cl = CLIENTS.find(function(x){return String(x.id)===String(id);});
+  if(!cl) return;
+  if(!confirm('Confirmer la suppression definitive de "'+cl.nom+'" ? Cette action est irreversible. Les devis/factures deja crees pour ce contact ne sont pas affectes.')) return;
+  const idx = CLIENTS.indexOf(cl);
+  CLIENTS.splice(idx,1);
+  logAction('Client/Prospect supprime', cl.nom, 'red');
+  if(typeof dbDelete === 'function') dbDelete('clients', cl.id);
+  updateAllBadges();
+  go('clients');
+}
+
 function addMembre(){
   const nom = el('me-nom').value.trim();
   if(!nom){ alert('Entrez un nom'); return; }
@@ -4660,12 +4708,17 @@ function addCampagne(){
 // Maps a Pipeline stage to the corresponding Clients & Prospects status, so
 // the two screens never drift apart — a prospect added to the Pipeline must
 // always be reflected in Clients & Prospects with a consistent status.
+// Correspondance 1-pour-1 entre les 6 etapes du Pipeline et les 6 statuts du
+// module Clients & Prospects (meme position dans chaque liste). Avant ce
+// correctif, "En negociation" se traduisait par erreur en "Demonstration
+// faite" (bug rapporte) — desormais chaque etape correspond a un statut
+// distinct et coherent, dans le meme ordre que PIPELINE_STAGES.
 function pipelineEtapeToClientStatut(etape){
   const map = {
     'Nouveau prospect': 'Prospect froid',
     'Contacte': 'Prospect chaud',
-    'En negociation': 'Demonstration faite',
     'Offre envoyee': 'Offre envoyee',
+    'En negociation': 'Demonstration faite',
     'Gagne': 'Client actif',
     'Perdu': 'Client perdu'
   };
@@ -5062,7 +5115,7 @@ function mapPipelineFromDb(r){
 }
 function mapTaskFromDb(r){
   return { id:r.id, titre:r.titre, asg:r.asg, dept:r.dept, pri:r.pri, statut:r.statut,
-    date:r.date_limite, desc:r.desc_tache||'', locked:r.locked, lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
+    date:r.date_limite, desc:r.desc_tache||'', locked:r.locked, rapport:r.rapport||'', lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapCommPerfFromDb(r){
   return { nom:r.nom, ville:r.ville, zone:r.zone, obj:r.obj, ventes:r.ventes, nb:r.nb, tx:Number(r.tx),
@@ -5797,8 +5850,15 @@ wrapAfter('addTache', function(){
   const t = TASKS[0];
   if(t) dbInsert('tasks', { id:t.id, titre:t.titre, asg:t.asg, dept:t.dept, pri:t.pri, statut:t.statut, date_limite:t.date, desc_tache:t.desc||'', locked:t.locked });
 });
-wrapAfter('markTaskDone', function(id){
-  dbUpdate('tasks', id, { statut: 'Termine' });
+// markTaskDone() n'ouvre plus qu'une petite fenetre demandant un rapport — la
+// tache n'est marquee terminee qu'apres soumission de ce rapport (submitTaskReport).
+wrapAfter('submitTaskReport', function(){
+  const t = TASKS.find(function(x){return String(x.id)===String(TASK_REPORT_ID);});
+  // Garde-fou : si la validation du formulaire a echoue (rapport vide),
+  // submitTaskReport() s'est arretee tot et t.statut n'a pas change — dans
+  // ce cas, ne rien persister (sinon on enregistrerait "Termine" en base
+  // alors que l'ecran affiche encore la tache comme non terminee).
+  if(t && t.statut === 'Termine') dbUpdate('tasks', t.id, { statut: 'Termine', rapport: t.rapport });
 });
 
 // PIPELINE — addProspect() pushes to end, advancePipelineStage() mutates existing
