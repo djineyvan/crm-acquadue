@@ -183,6 +183,50 @@ tr:last-child td{border-bottom:none}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
 .empty-state{text-align:center;padding:30px 20px;color:var(--muted)}
 .empty-state-icon{font-size:32px;margin-bottom:8px}
+
+/* ── MOBILE/TABLETTE — menu en tiroir + voile ────────────────────────────── */
+.mobile-menu-btn{display:none;background:none;border:none;color:var(--text);font-size:19px;cursor:pointer;padding:2px 6px;margin-right:2px;line-height:1}
+.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(10,15,25,.45);z-index:140}
+.sidebar-overlay.open{display:block}
+
+/* ── RESPONSIVE — tablette et telephone ──────────────────────────────────── */
+/* Objectif : rester correctement lisible et utilisable sur PC ET sur mobile
+   (navigateur ou ajout a l'ecran d'accueil), sans toucher a l'affichage
+   desktop existant au-dessus de 860px. */
+@media (max-width: 860px){
+  .mobile-menu-btn{display:inline-flex;align-items:center}
+  .sidebar{
+    position:fixed; top:0; left:0; height:100vh; width:240px; min-width:240px; z-index:150;
+    transform:translateX(-100%); transition:transform .22s ease;
+    box-shadow:6px 0 28px rgba(0,0,0,.3);
+  }
+  .sidebar.mobile-open{transform:translateX(0)}
+  .main{width:100%}
+  .topbar{padding:0 10px;gap:6px}
+  .tbt{font-size:14px}
+  .content{padding:10px}
+  .search-bar{max-width:120px;padding:6px 8px}
+  .grid2,.grid3,.grid4{grid-template-columns:1fr}
+  .form-row{grid-template-columns:1fr}
+  .modal{width:94vw;max-height:92vh}
+  .modal-body{padding:14px}
+  .login-box{width:92vw;max-width:380px;padding:26px 20px}
+  /* Le tableau Pipeline (6 colonnes) garde sa largeur de colonne et defile
+     horizontalement plutot que d'ecraser chaque colonne illisible. */
+  .pipeline{grid-template-columns:repeat(6,200px);overflow-x:auto;padding-bottom:6px}
+  .cal-grid{gap:2px}
+  .cal-day{padding:4px;min-height:44px;font-size:9px}
+}
+
+@media (max-width: 480px){
+  .btn-label{display:none} /* les boutons "+ Ajouter" / "Mon mot de passe" passent en icone seule */
+  .search-bar{max-width:84px}
+  .topbar{gap:4px}
+  .login-box{padding:22px 16px}
+  .kpi-val{font-size:19px}
+  table{font-size:11px}
+  th,td{padding:6px 6px}
+}
 </style>
 </head>
 <body>
@@ -683,7 +727,8 @@ function buildApp(){
   };
 
   let html = '';
-  html += '<aside class="sidebar">';
+  html += '<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeMobileSidebar()"></div>';
+  html += '<aside class="sidebar" id="sidebar">';
   html += '  <div class="logo-area"><div style="display:flex;align-items:center;gap:7px">';
   html += '    <div style="width:28px;height:28px;background:rgba(255,255,255,.2);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px">💧</div>';
   html += '    <div><div class="logo-name">CRM Lorenzetti</div><div class="logo-sub">Acqua Due Niger</div></div>';
@@ -728,11 +773,12 @@ function buildApp(){
 
   html += '<div class="main">';
   html += '  <div class="topbar">';
+  html += '    <button class="mobile-menu-btn" id="mobile-menu-btn" onclick="toggleMobileSidebar()" aria-label="Menu">☰</button>';
   html += '    <div class="tbt" id="ptitle">Tableau de bord</div>';
   html += '    <div style="display:flex;gap:8px;align-items:center">';
   html += '      <div class="search-bar">🔍 <input placeholder="Rechercher..." id="global-search" oninput="onGlobalSearch(this.value)"/></div>';
-  html += '      <button class="btn btn-ghost btn-sm" onclick="openModal(\'modal-mypwd\')">🔑 Mon mot de passe</button>';
-  html += '      <button class="btn btn-red" onclick="openModal(\'modal-add\')">+ Ajouter</button>';
+  html += '      <button class="btn btn-ghost btn-sm" onclick="openModal(\'modal-mypwd\')">🔑<span class="btn-label"> Mon mot de passe</span></button>';
+  html += '      <button class="btn btn-red" onclick="openModal(\'modal-add\')">+<span class="btn-label"> Ajouter</span></button>';
   html += '    </div>';
   html += '  </div>';
   html += '  <div class="content" id="main-content"></div>';
@@ -823,6 +869,25 @@ function go(view){
   const searchInput = el('global-search');
   if(searchInput) searchInput.value = '';
   renderView(view);
+  closeMobileSidebar(); // sur mobile, le menu se referme apres avoir choisi une page
+}
+
+// ── MENU MOBILE (affichage telephone) ───────────────────────────────────────
+// Sur petit ecran, la barre laterale est cachee par defaut (voir media query
+// CSS) et s'ouvre par-dessus le contenu via ce bouton — comme la plupart des
+// applications mobiles, plutot que de pousser un menu de 218px de large dans
+// un ecran de 360px.
+function toggleMobileSidebar(){
+  const sb = el('sidebar'), ov = el('sidebar-overlay');
+  if(!sb || !ov) return;
+  const opening = !sb.classList.contains('mobile-open');
+  sb.classList.toggle('mobile-open', opening);
+  ov.classList.toggle('open', opening);
+}
+function closeMobileSidebar(){
+  const sb = el('sidebar'), ov = el('sidebar-overlay');
+  if(sb) sb.classList.remove('mobile-open');
+  if(ov) ov.classList.remove('open');
 }
 
 function switchTab(btn, prefix, tab){
