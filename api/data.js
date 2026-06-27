@@ -59,7 +59,7 @@ const COLUMNS = {
   inventaires: ['id','entrepot','type','date_inv','statut','ecarts'],
   devis: ['id','client','date_devis','statut','validite','lignes','reservation_faite','geste_statut','last_modified_by','last_modified_at'],
   factures: ['id','client','date_fact','statut','mode_paiement','lignes','sortie_appliquee','devis_origine','date_renouvellement','geste_statut','last_modified_by','last_modified_at'],
-  depenses: ['id','libelle','categorie','montant','date_dep','paye_par','justificatif','statut','last_modified_by','last_modified_at'],
+  depenses: ['id','libelle','categorie','montant','date_dep','paye_par','justificatif','statut','departement','cree_par','last_modified_by','last_modified_at'],
   notifications: ['id','icon','texte','cible','lu'],
   rh_presence: ['id','nom','date_p','arrivee','depart','statut'],
   rh_conges: ['id','nom','debut','fin','motif','statut'],

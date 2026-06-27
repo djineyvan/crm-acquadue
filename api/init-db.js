@@ -111,6 +111,11 @@ const COLUMN_TYPES = {
   depenses: {
     id: 'BIGINT', libelle: 'TEXT', categorie: 'TEXT', montant: 'INT DEFAULT 0', date_dep: 'TEXT',
     paye_par: 'TEXT', justificatif: 'TEXT', statut: "TEXT DEFAULT 'En attente'",
+    // departement + cree_par : utilises pour la confidentialite par role (Super
+    // Admin voit tout ; Admin/Responsable voient leur departement ; Collaborateur
+    // ne voit que ce qu'il a lui-meme enregistre). Fixes a la creation, jamais
+    // modifies ensuite (meme si la depense est editee par le Super Admin).
+    departement: 'TEXT', cree_par: 'TEXT',
     last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP', created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   notifications: {
