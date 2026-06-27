@@ -25,7 +25,8 @@ const TABLES = [
   'clients', 'pipeline', 'tasks', 'comm_perf', 'campagnes', 'publications',
   'produits', 'entrepots', 'stock', 'mouvements_stock', 'fournisseurs',
   'commandes_fournisseur', 'demandes_achat', 'inventaires', 'devis', 'factures',
-  'depenses', 'notifications', 'documents', 'rh_presence', 'rh_conges', 'sensitive_perms', 'roi_concurrents'
+  'depenses', 'notifications', 'documents', 'rh_presence', 'rh_conges', 'sensitive_perms', 'roi_concurrents',
+  'promo_packs'
 ];
 
 module.exports = async function handler(req, res) {

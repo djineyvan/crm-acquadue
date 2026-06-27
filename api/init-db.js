@@ -148,6 +148,16 @@ const COLUMN_TYPES = {
   roi_concurrents: {
     id: 'BIGINT', format: 'TEXT', volume_litres: 'NUMERIC', prix: 'NUMERIC', created_at: 'TIMESTAMP DEFAULT NOW()'
   },
+  // Packs promotionnels (combinaisons de produits a prix fixe), geres par le
+  // Super Admin depuis le module Promotions, et selectionnables manuellement
+  // par n'importe qui dans le Devis Builder / Facture Builder. `lignes` est
+  // la composition du pack: [{sku, qte}, ...] (sans prix — le prix unitaire
+  // normal du produit au moment de l'application sert a calculer la remise).
+  promo_packs: {
+    id: 'BIGINT', nom: 'TEXT', lignes: "JSONB DEFAULT '[]'", prix_pack: 'NUMERIC DEFAULT 0',
+    actif: 'BOOLEAN DEFAULT true', last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP',
+    created_at: 'TIMESTAMP DEFAULT NOW()'
+  },
 };
 
 // Primary key column per table (used only for initial CREATE TABLE; ALTER never touches these)
@@ -156,7 +166,7 @@ const PRIMARY_KEYS = {
   produits: 'sku', entrepots: 'id', stock: 'id', mouvements_stock: 'id', fournisseurs: 'id',
   commandes_fournisseur: 'id', demandes_achat: 'id', inventaires: 'id', devis: 'id', factures: 'id',
   depenses: 'id', notifications: 'id', rh_presence: 'id', rh_conges: 'id', documents: 'id', users: 'id',
-  sensitive_perms: 'role', roi_concurrents: 'id'
+  sensitive_perms: 'role', roi_concurrents: 'id', promo_packs: 'id'
 };
 
 module.exports = async function handler(req, res) {

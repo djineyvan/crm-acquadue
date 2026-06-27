@@ -401,6 +401,11 @@ const CATEGORIES_DEPENSES = ["Loyer","Transport","Marketing","Charges","Salaires
 // ── ROI — prix bouteilles concurrentes (reference editable par le Super Admin) ──
 let ROI_CONCURRENTS = [];
 
+// ── PACKS PROMO — combinaisons de produits a prix fixe (module Promotions) ──
+// Geres par le Super Admin ; selectionnables par n'importe qui dans le Devis
+// Builder / Facture Builder (demande explicite : choix manuel dans une liste).
+let PROMO_PACKS = [];
+
 
 // ════════════════════════════════════════════════════════════════════════════
 // CRM LORENZETTI — ACQUA DUE NIGER — APPLICATION LOGIC
@@ -670,6 +675,7 @@ function buildApp(){
   html += navItem('💸','Depenses','depenses');
   html += '    <div class="nsec">Produits & Stocks</div>';
   html += navItem('📦','Produits','produits');
+  html += navItem('🎁','Promotions','promotions');
   html += navItem('🏬','Stocks','stock');
   html += navItem('🚚','Approvisionnement','approv');
   html += navItem('🛒','Achats','achats');
@@ -756,7 +762,7 @@ const VIEW_TITLES = {
   produits:"Catalogue Produits", stock:"Gestion des Stocks", approv:"Fournisseurs & Approvisionnement",
   achats:"Workflow des Achats", inventaires:"Inventaires", facturation:"Devis & Facturation",
   direction:"Tableau de Bord — Direction Generale", controle:"Centre de Controle — Super Admin",
-  depenses:"Depenses"
+  depenses:"Depenses", promotions:"Promotions & Packs"
 };
 
 function go(view){
@@ -859,7 +865,7 @@ function renderView(view){
     docs: renderDocs, rapports: renderRapports, users: renderUsers, journal: renderJournal, rh: renderRH,
     produits: renderProduits, stock: renderStock, approv: renderApprov, achats: renderAchats,
     inventaires: renderInventaires, facturation: renderFacturation, direction: renderDirection, controle: renderControle,
-    depenses: renderDepenses
+    depenses: renderDepenses, promotions: renderPromotions
   };
   if(renderers[view]) renderers[view](c);
 }
@@ -2269,6 +2275,181 @@ function viewProductDetail(sku){
   });
 }
 
+// ── PROMOTIONS — packs produits a prix fixe ──────────────────────────────────
+// Geres par le Super Admin ; selectionnables manuellement par n'importe qui
+// au moment de creer un Devis ou une Facture (choix dans une liste).
+function renderPromotions(c){
+  let h = '<div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">';
+  h += '<div class="td-muted">Combinaisons de produits a prix fixe (ex: 1 purificateur + 3 bougies = 70 000 FCFA). Utilisables depuis Devis &amp; Facturation.</div>';
+  if(isSuperAdmin()) h += '<button class="btn btn-red btn-sm" onclick="openPromoPackBuilder(null)">+ Pack</button>';
+  h += '</div><div class="card"><div class="table-wrap"><table id="tbl-promo-packs"></table></div></div>';
+  c.innerHTML = h;
+
+  el('tbl-promo-packs').innerHTML = PROMO_PACKS.length === 0
+    ? '<tbody><tr><td class="td-muted" style="padding:20px;text-align:center">Aucun pack promo cree encore.' + (isSuperAdmin() ? ' Cliquez "+ Pack" pour creer le premier.' : '') + '</td></tr></tbody>'
+    : '<thead><tr><th>Pack</th><th>Composition</th><th>Prix normal</th><th>Prix pack</th><th>Economie</th><th>Statut</th><th></th></tr></thead><tbody>' +
+      PROMO_PACKS.filter(function(pk){ return searchMatch(pk, ['nom']); }).map(function(pack){
+        const prixNormal = promoPackPrixNormal(pack);
+        const economie = prixNormal - pack.prixPack;
+        const composition = (pack.lignes||[]).map(function(l){
+          const p = PRODUITS.find(function(x){return x.sku===l.sku;});
+          return l.qte + 'x ' + (p ? p.nom : l.sku);
+        }).join(' + ');
+        let actions = '';
+        if(isSuperAdmin()){
+          actions = '<button class="btn btn-ghost btn-sm" onclick="openPromoPackBuilder('+pack.id+')">✏️ Modifier</button> ' +
+            '<button class="btn btn-ghost btn-sm" onclick="togglePromoPackActif('+pack.id+')">'+(pack.actif?'Desactiver':'Activer')+'</button> ' +
+            '<button class="btn btn-ghost btn-sm" onclick="deletePromoPack('+pack.id+')">🗑 Supprimer</button>';
+        }
+        return '<tr><td class="td-bold">'+pack.nom+'</td><td class="td-muted">'+composition+'</td><td class="td-muted">'+fcfa(prixNormal)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(pack.prixPack)+'</td><td style="color:var(--green);font-weight:700">'+(economie>0?'-'+fcfa(economie):'-')+'</td><td>'+(pack.actif?tag('Actif','tag-green'):tag('Inactif','tag-grey'))+'</td><td>'+actions+'</td></tr>';
+      }).join('') + '</tbody>';
+}
+
+// Somme des prix de vente ACTUELS des composants du pack (pas un prix figé a
+// la creation) — sert a afficher l'economie reelle et a calculer la remise
+// au moment ou le pack est applique dans un devis/facture.
+function promoPackPrixNormal(pack){
+  return (pack.lignes||[]).reduce(function(sum, l){
+    const p = PRODUITS.find(function(x){return x.sku===l.sku;});
+    return sum + (p ? p.prix_vente * l.qte : 0);
+  }, 0);
+}
+
+let PROMO_PACK_BUILDER_LIGNES = [];
+let PROMO_PACK_EDIT_ID = null;
+
+function openPromoPackBuilder(packId){
+  if(!isSuperAdmin()) return;
+  PROMO_PACK_EDIT_ID = packId || null;
+  const existing = packId ? PROMO_PACKS.find(function(x){return String(x.id)===String(packId);}) : null;
+  PROMO_PACK_BUILDER_LIGNES = existing ? JSON.parse(JSON.stringify(existing.lignes||[])) : [];
+  openModal('modal-promo-pack'); // refreshes product select first
+  el('pp-nom').value = existing ? existing.nom : '';
+  el('pp-prix').value = existing ? existing.prixPack : '';
+  renderPromoPackBuilderLignes();
+  el('modal-promo-pack-title').textContent = existing ? 'Modifier le Pack — ' + existing.nom : 'Nouveau Pack Promo';
+}
+
+function renderPromoPackBuilderLignes(){
+  const skuOptions = PRODUITS.map(function(p){ return p.sku+' — '+p.nom; });
+  let h = PROMO_PACK_BUILDER_LIGNES.map(function(l, i){
+    const p = PRODUITS.find(function(x){return x.sku===l.sku;});
+    return '<div style="display:grid;grid-template-columns:2fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center">' +
+      '<div class="td-bold" style="font-size:12px">'+(p?p.nom:l.sku)+' ('+l.sku+')</div>' +
+      '<div style="font-size:12px">Qte: <strong>'+l.qte+'</strong></div>' +
+      '<button class="btn btn-ghost btn-sm" onclick="removePromoPackBuilderLigne('+i+')">🗑</button>' +
+    '</div>';
+  }).join('') || '<div class="td-muted" style="margin-bottom:8px">Aucun produit ajoute encore — un pack doit en combiner au moins 2.</div>';
+
+  if(skuOptions.length === 0){
+    h += '<div style="background:var(--red-light);color:var(--red);border-radius:8px;padding:9px;font-size:11px;margin-top:8px">⚠️ Aucun produit n\'existe encore. Creez-en un dans Produits avant de creer un pack.</div>';
+  } else {
+    h += '<div style="display:grid;grid-template-columns:2fr 1fr auto;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">' +
+      '<select class="form-select" id="pp-add-sku">' + skuOptions.map(function(o){return '<option>'+o+'</option>';}).join('') + '</select>' +
+      '<input class="form-input" id="pp-add-qte" type="number" min="1" value="1" placeholder="Qte"/>' +
+      '<button class="btn btn-ghost btn-sm" onclick="addPromoPackBuilderLigne()">+ Ajouter</button>' +
+    '</div>';
+  }
+
+  let prixNormal = 0;
+  PROMO_PACK_BUILDER_LIGNES.forEach(function(l){ const p = PRODUITS.find(function(x){return x.sku===l.sku;}); if(p) prixNormal += p.prix_vente * l.qte; });
+  h += '<div style="margin-top:10px;text-align:right;font-size:13px">Prix normal (somme des produits) : <strong>' + fcfa(prixNormal) + '</strong></div>';
+
+  el('promo-pack-builder-lignes').innerHTML = h;
+}
+
+function addPromoPackBuilderLigne(){
+  const skuRaw = el('pp-add-sku').value;
+  const sku = skuRaw.split(' — ')[0];
+  const qte = parseInt(el('pp-add-qte').value) || 1;
+  const existingLigne = PROMO_PACK_BUILDER_LIGNES.find(function(l){return l.sku===sku;});
+  if(existingLigne){ existingLigne.qte += qte; } else { PROMO_PACK_BUILDER_LIGNES.push({ sku: sku, qte: qte }); }
+  renderPromoPackBuilderLignes();
+}
+function removePromoPackBuilderLigne(idx){
+  PROMO_PACK_BUILDER_LIGNES.splice(idx, 1);
+  renderPromoPackBuilderLignes();
+}
+
+function savePromoPack(){
+  if(!isSuperAdmin()) return;
+  const nom = el('pp-nom').value.trim();
+  if(!nom){ alert('Entrez un nom pour le pack.'); return; }
+  if(PROMO_PACK_BUILDER_LIGNES.length < 2){ alert("Un pack promo doit combiner au moins 2 produits (sinon ce n'est pas une combinaison)."); return; }
+  const prixPack = parseInt(el('pp-prix').value) || 0;
+  if(prixPack <= 0){ alert('Entrez un prix de pack valide (superieur a 0).'); return; }
+
+  if(PROMO_PACK_EDIT_ID){
+    const pack = PROMO_PACKS.find(function(x){return String(x.id)===String(PROMO_PACK_EDIT_ID);});
+    if(!pack) return;
+    pack.nom = nom; pack.prixPack = prixPack; pack.lignes = JSON.parse(JSON.stringify(PROMO_PACK_BUILDER_LIGNES));
+    stampModification(pack);
+    logAction('Pack promo modifie', nom + ' — ' + fcfa(prixPack), 'gold');
+    if(typeof dbUpdate === 'function') dbUpdate('promo_packs', pack.id, { nom:pack.nom, lignes:pack.lignes, prix_pack:pack.prixPack, last_modified_by:pack.lastModifiedBy, last_modified_at:pack.lastModifiedAt });
+  } else {
+    const pack = { id: Date.now(), nom: nom, lignes: JSON.parse(JSON.stringify(PROMO_PACK_BUILDER_LIGNES)), prixPack: prixPack, actif: true };
+    PROMO_PACKS.unshift(pack);
+    logAction('Pack promo cree', nom + ' — ' + fcfa(prixPack), 'blue');
+    if(typeof dbInsert === 'function') dbInsert('promo_packs', { id:pack.id, nom:pack.nom, lignes:pack.lignes, prix_pack:pack.prixPack, actif:true });
+  }
+  closeModal('modal-promo-pack');
+  go('promotions');
+}
+
+function togglePromoPackActif(id){
+  if(!isSuperAdmin()) return;
+  const pack = PROMO_PACKS.find(function(x){return String(x.id)===String(id);});
+  if(!pack) return;
+  pack.actif = !pack.actif;
+  logAction('Pack promo ' + (pack.actif?'active':'desactive'), pack.nom, pack.actif?'green':'gold');
+  if(typeof dbUpdate === 'function') dbUpdate('promo_packs', pack.id, { actif: pack.actif });
+  go('promotions');
+}
+
+function deletePromoPack(id){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer un pack promo.');
+  const pack = PROMO_PACKS.find(function(x){return String(x.id)===String(id);});
+  if(!pack) return;
+  if(!confirm('Confirmer la suppression du pack "'+pack.nom+'" ? Les devis/factures qui l\'ont deja utilise ne sont pas affectes.')) return;
+  const idx = PROMO_PACKS.indexOf(pack);
+  PROMO_PACKS.splice(idx,1);
+  logAction('Pack promo supprime', pack.nom, 'red');
+  if(typeof dbDelete === 'function') dbDelete('promo_packs', pack.id);
+  go('promotions');
+}
+
+// Applique un pack a un tableau de lignes (Devis Builder ou Facture Builder) :
+// ajoute les composants au prix normal (le calcul de stock n'est jamais
+// affecte par le prix, donc rien a changer cote stock), puis UNE ligne de
+// remise negative pour que le total affiche corresponde exactement au prix
+// fixe du pack. La ligne de remise a sku:null — elle est donc ignoree
+// partout ou le stock est reserve/consomme (voir acceptDevis,
+// markFacturePaid, deleteDevis, deleteFacture, qui filtrent sur ligne.sku).
+function applyPromoPackToLignes(lignesArray, packId, entrepot){
+  const pack = PROMO_PACKS.find(function(x){return String(x.id)===String(packId);});
+  if(!pack){ alert('Pack introuvable.'); return false; }
+  if(!entrepot){ alert("Choisissez un entrepot avant d'appliquer un pack."); return false; }
+
+  let prixNormal = 0;
+  let manque = null;
+  const nouvellesLignes = [];
+  (pack.lignes||[]).forEach(function(l){
+    const p = PRODUITS.find(function(x){return x.sku===l.sku;});
+    if(!p){ manque = l.sku; return; }
+    prixNormal += p.prix_vente * l.qte;
+    nouvellesLignes.push({ sku: p.sku, nom: p.nom, qte: l.qte, prixUnitaire: p.prix_vente, entrepot: entrepot });
+  });
+  if(manque){ alert('Le produit "'+manque+'" de ce pack n\'existe plus au catalogue — pack non applique.'); return false; }
+
+  nouvellesLignes.forEach(function(l){ lignesArray.push(l); });
+
+  const remise = prixNormal - pack.prixPack;
+  if(remise > 0){
+    lignesArray.push({ sku: null, nom: '🎁 Remise pack promo — ' + pack.nom, qte: 1, prixUnitaire: -remise, entrepot: null, isRemise: true });
+  }
+  return true;
+}
+
 // ── STOCKS — vue Reel / Reserve / Disponible ──────────────────────────────────
 function renderStock(c){
   const logistique = canAccessLogistiqueStock();
@@ -2838,14 +3019,19 @@ function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType,
 function lignesTotalMontant(lignes){
   return lignes.reduce(function(sum, l){ return sum + (l.qte * l.prixUnitaire); }, 0);
 }
+// Les lignes de remise (pack promo, sku:null) ne sont pas de vrais produits —
+// on les exclut du resume compact (deja visibles dans le detail/total).
 function lignesLabel(lignes){
-  return lignes.map(function(l){ return l.qte + 'x ' + l.sku; }).join(', ');
+  return lignes.filter(function(l){ return l.sku; }).map(function(l){ return l.qte + 'x ' + l.sku; }).join(', ');
 }
 function lignesTableHtml(lignes, editable){
   let h = '<table style="width:100%;font-size:12px;margin-top:4px"><thead><tr>' +
     '<th style="text-align:left;padding:4px">Produit</th><th style="text-align:right;padding:4px">Qte</th><th style="text-align:right;padding:4px">Prix unitaire</th><th style="text-align:right;padding:4px">Sous-total</th></tr></thead><tbody>';
   h += lignes.map(function(l){
-    return '<tr><td style="padding:4px">'+l.nom+' ('+l.sku+')</td><td style="text-align:right;padding:4px">'+l.qte+'</td><td style="text-align:right;padding:4px">'+fcfa(l.prixUnitaire)+'</td><td style="text-align:right;padding:4px;font-weight:700">'+fcfa(l.qte*l.prixUnitaire)+'</td></tr>';
+    const isRemise = !l.sku;
+    const couleur = isRemise ? 'var(--green)' : 'var(--text)';
+    const nomAffiche = l.sku ? (l.nom+' ('+l.sku+')') : l.nom;
+    return '<tr><td style="padding:4px;color:'+couleur+'">'+nomAffiche+'</td><td style="text-align:right;padding:4px">'+l.qte+'</td><td style="text-align:right;padding:4px;color:'+couleur+'">'+fcfa(l.prixUnitaire)+'</td><td style="text-align:right;padding:4px;font-weight:700;color:'+couleur+'">'+fcfa(l.qte*l.prixUnitaire)+'</td></tr>';
   }).join('');
   h += '<tr style="border-top:2px solid var(--border)"><td colspan="3" style="text-align:right;font-weight:700;padding:6px 4px">Total</td><td style="text-align:right;font-weight:700;color:var(--red);padding:6px 4px">'+fcfa(lignesTotalMontant(lignes))+'</td></tr>';
   h += '</tbody></table>';
@@ -2961,13 +3147,16 @@ function openDevisBuilder(devisId){
 function renderDevisBuilderLignes(){
   const skuOptions = PRODUITS.map(function(p){ return p.sku+' — '+p.nom; });
   const entrepotOptions = ENTREPOTS.map(function(e){ return e.nom; });
+  const packsActifs = PROMO_PACKS.filter(function(pk){ return pk.actif; });
   let h = DEVIS_BUILDER_LIGNES.map(function(l, i){
+    const isRemise = !l.sku;
+    const couleur = isRemise ? 'color:var(--green)' : '';
     return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1.4fr auto;gap:6px;margin-bottom:6px;align-items:center">' +
-      '<div class="td-bold" style="font-size:12px">'+l.nom+' ('+l.sku+')</div>' +
+      '<div class="td-bold" style="font-size:12px;'+couleur+'">'+(l.sku ? (l.nom+' ('+l.sku+')') : l.nom)+'</div>' +
       '<div style="font-size:12px">Qte: <strong>'+l.qte+'</strong></div>' +
-      '<div style="font-size:12px">'+fcfa(l.prixUnitaire)+'</div>' +
-      '<div style="font-size:12px;font-weight:700">'+fcfa(l.qte*l.prixUnitaire)+'</div>' +
-      '<div class="td-muted" style="font-size:11px">📦 '+(l.entrepot||'-')+'</div>' +
+      '<div style="font-size:12px;'+couleur+'">'+fcfa(l.prixUnitaire)+'</div>' +
+      '<div style="font-size:12px;font-weight:700;'+couleur+'">'+fcfa(l.qte*l.prixUnitaire)+'</div>' +
+      '<div class="td-muted" style="font-size:11px">'+(l.entrepot?'📦 '+l.entrepot:'')+'</div>' +
       '<button class="btn btn-ghost btn-sm" onclick="removeDevisBuilderLigne('+i+')">🗑</button>' +
     '</div>';
   }).join('') || '<div class="td-muted" style="margin-bottom:8px">Aucun produit ajoute encore.</div>';
@@ -2981,11 +3170,28 @@ function renderDevisBuilderLignes(){
       '<select class="form-select" id="db-add-entrepot">' + entrepotOptions.map(function(o){return '<option>'+o+'</option>';}).join('') + '</select>' +
       '<button class="btn btn-ghost btn-sm" onclick="addDevisBuilderLigne()">+ Ajouter</button>' +
     '</div>';
+    if(packsActifs.length > 0){
+      h += '<div style="display:grid;grid-template-columns:2fr auto;gap:6px;margin-top:8px">' +
+        '<select class="form-select" id="db-add-pack">' + packsActifs.map(function(pk){ return '<option value="'+pk.id+'">🎁 '+pk.nom+' — '+fcfa(pk.prixPack)+'</option>'; }).join('') + '</select>' +
+        '<button class="btn btn-ghost btn-sm" onclick="addDevisBuilderPack()">+ Appliquer le pack</button>' +
+      '</div>';
+    }
   }
 
   h += '<div style="margin-top:10px;text-align:right;font-size:14px;font-weight:700;color:var(--red)">Total: ' + fcfa(lignesTotalMontant(DEVIS_BUILDER_LIGNES)) + '</div>';
 
   el('devis-builder-lignes').innerHTML = h;
+}
+
+// Utilise l'entrepot deja selectionne dans le formulaire (meme select que
+// l'ajout manuel de produit) pour appliquer le pack a TOUS ses composants.
+function addDevisBuilderPack(){
+  const packId = el('db-add-pack').value;
+  const entrepotEl = el('db-add-entrepot');
+  const entrepot = entrepotEl ? entrepotEl.value : (ENTREPOTS[0] ? ENTREPOTS[0].nom : '');
+  if(applyPromoPackToLignes(DEVIS_BUILDER_LIGNES, packId, entrepot)){
+    renderDevisBuilderLignes();
+  }
 }
 
 function addDevisBuilderLigne(){
@@ -3081,13 +3287,16 @@ function openFactureBuilder(factureId, fromDevisId){
 function renderFactureBuilderLignes(){
   const skuOptions = PRODUITS.map(function(p){ return p.sku+' — '+p.nom; });
   const entrepotOptions = ENTREPOTS.map(function(e){ return e.nom; });
+  const packsActifs = PROMO_PACKS.filter(function(pk){ return pk.actif; });
   let h = FACTURE_BUILDER_LIGNES.map(function(l, i){
+    const isRemise = !l.sku;
+    const couleur = isRemise ? 'color:var(--green)' : '';
     return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1.4fr auto;gap:6px;margin-bottom:6px;align-items:center">' +
-      '<div class="td-bold" style="font-size:12px">'+l.nom+' ('+l.sku+')</div>' +
+      '<div class="td-bold" style="font-size:12px;'+couleur+'">'+(l.sku ? (l.nom+' ('+l.sku+')') : l.nom)+'</div>' +
       '<div style="font-size:12px">Qte: <strong>'+l.qte+'</strong></div>' +
-      '<div style="font-size:12px">'+fcfa(l.prixUnitaire)+'</div>' +
-      '<div style="font-size:12px;font-weight:700">'+fcfa(l.qte*l.prixUnitaire)+'</div>' +
-      '<div class="td-muted" style="font-size:11px">📦 '+(l.entrepot||'-')+'</div>' +
+      '<div style="font-size:12px;'+couleur+'">'+fcfa(l.prixUnitaire)+'</div>' +
+      '<div style="font-size:12px;font-weight:700;'+couleur+'">'+fcfa(l.qte*l.prixUnitaire)+'</div>' +
+      '<div class="td-muted" style="font-size:11px">'+(l.entrepot?'📦 '+l.entrepot:'')+'</div>' +
       '<button class="btn btn-ghost btn-sm" onclick="removeFactureBuilderLigne('+i+')">🗑</button>' +
     '</div>';
   }).join('') || '<div class="td-muted" style="margin-bottom:8px">Aucun produit ajoute encore.</div>';
@@ -3101,11 +3310,26 @@ function renderFactureBuilderLignes(){
       '<select class="form-select" id="fb-add-entrepot">' + entrepotOptions.map(function(o){return '<option>'+o+'</option>';}).join('') + '</select>' +
       '<button class="btn btn-ghost btn-sm" onclick="addFactureBuilderLigne()">+ Ajouter</button>' +
     '</div>';
+    if(packsActifs.length > 0){
+      h += '<div style="display:grid;grid-template-columns:2fr auto;gap:6px;margin-top:8px">' +
+        '<select class="form-select" id="fb-add-pack">' + packsActifs.map(function(pk){ return '<option value="'+pk.id+'">🎁 '+pk.nom+' — '+fcfa(pk.prixPack)+'</option>'; }).join('') + '</select>' +
+        '<button class="btn btn-ghost btn-sm" onclick="addFactureBuilderPack()">+ Appliquer le pack</button>' +
+      '</div>';
+    }
   }
 
   h += '<div style="margin-top:10px;text-align:right;font-size:14px;font-weight:700;color:var(--red)">Total: ' + fcfa(lignesTotalMontant(FACTURE_BUILDER_LIGNES)) + '</div>';
 
   el('facture-builder-lignes').innerHTML = h;
+}
+
+function addFactureBuilderPack(){
+  const packId = el('fb-add-pack').value;
+  const entrepotEl = el('fb-add-entrepot');
+  const entrepot = entrepotEl ? entrepotEl.value : (ENTREPOTS[0] ? ENTREPOTS[0].nom : '');
+  if(applyPromoPackToLignes(FACTURE_BUILDER_LIGNES, packId, entrepot)){
+    renderFactureBuilderLignes();
+  }
 }
 
 function addFactureBuilderLigne(){
@@ -3182,6 +3406,7 @@ function acceptDevis(devisId){
   d.statut = "Accepte";
   let allOk = true;
   d.lignes.forEach(function(ligne){
+    if(!ligne.sku) return; // ligne de remise (pack promo) — pas un produit, rien a reserver
     const ok = reserveStock(ligne.sku, ligne.qte, ligne.entrepot, 'Devis accepte: ' + d.id);
     if(!ok) allOk = false;
   });
@@ -3206,6 +3431,7 @@ function markFacturePaid(factureId){
   if(!f) return;
   f.statut = "Payee";
   f.lignes.forEach(function(ligne){
+    if(!ligne.sku) return; // ligne de remise (pack promo) — pas un produit, rien a sortir du stock
     consumeReservedStock(ligne.sku, ligne.qte, ligne.entrepot, 'Facture ' + f.id, CU?CU.nom:'Systeme');
   });
   f.sortieAppliquee = true;
@@ -3220,6 +3446,7 @@ function deleteDevis(devisId){
   if(d.reservationFaite){
     if(!confirm('Ce devis a du stock reserve. Le supprimer va liberer cette reservation. Continuer ?')) return;
     (d.lignes||[]).forEach(function(ligne){
+      if(!ligne.sku) return; // ligne de remise (pack promo) — pas un produit, rien a liberer
       const row = STOCK.find(function(s){return s.sku===ligne.sku && s.entrepot===ligne.entrepot;});
       if(row){ row.reserve = Math.max(0, (row.reserve||0) - ligne.qte); if(typeof syncStockRow==='function') syncStockRow(row); }
     });
@@ -3240,6 +3467,7 @@ function deleteFacture(factureId){
   if(f.sortieAppliquee){
     if(!confirm('Cette facture a deja fait sortir du stock reel. La supprimer va RESTITUER ce stock (entree de retour). Continuer ?')) return;
     (f.lignes||[]).forEach(function(ligne){
+      if(!ligne.sku) return; // ligne de remise (pack promo) — pas un produit, rien a restituer
       const row = STOCK.find(function(s){return s.sku===ligne.sku && s.entrepot===ligne.entrepot;}) || ensureStockRow(ligne.sku, ligne.entrepot);
       row.qte += ligne.qte;
       const p = PRODUITS.find(function(x){return x.sku===ligne.sku;});
@@ -3739,6 +3967,16 @@ function fieldClientPicker(selectId, textId){
     '<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="addRoiEditRow()">+ Ajouter une ligne</button>';
   modals += modalShell('modal-roi-prices', 'Prix concurrents (bouteilles)', roiPricesBody,
     btnGhost('Annuler', "closeModal('modal-roi-prices')") + btnRed('Enregistrer', 'saveRoiPrices()'));
+
+  // ── Modal: Pack Promo (creation et edition, Super Admin) ──
+  const promoPackBody =
+    '<h3 id="modal-promo-pack-title" style="font-family:Syne,sans-serif;font-size:14px;margin-bottom:12px">Nouveau Pack Promo</h3>' +
+    fieldText('pp-nom','Nom du pack','Ex: Pack Famille') +
+    fieldText('pp-prix','Prix du pack (FCFA)','Ex: 70000') +
+    '<div class="form-label" style="margin-top:10px">Produits inclus</div>' +
+    '<div id="promo-pack-builder-lignes"></div>';
+  modals += modalShell('modal-promo-pack', 'Pack Promo', promoPackBody,
+    btnGhost('Annuler', "closeModal('modal-promo-pack')") + btnRed('Enregistrer', 'savePromoPack()'));
 
   // ── Modal: Calculateur ROI (outil de vente — Pipeline / Rapports) ──
   const roiCalcBody =
@@ -4741,6 +4979,10 @@ function refreshSensitivePerms(){
 function mapRoiConcurrentFromDb(r){
   return { id:r.id, format:r.format, volumeLitres:Number(r.volume_litres), prix:Number(r.prix) };
 }
+function mapPromoPackFromDb(r){
+  return { id:r.id, nom:r.nom, lignes:r.lignes||[], prixPack:Number(r.prix_pack),
+    actif:r.actif, lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
+}
 
 // ── LOAD EVERYTHING FROM DB INTO THE IN-MEMORY ARRAYS USED BY THE UI ───────
 function applyBulkData(data){
@@ -4767,6 +5009,7 @@ function applyBulkData(data){
   RH_CONGES = (data.rh_conges||[]).map(mapRhCongesFromDb);
   applySensitivePermsFromDb(data.sensitive_perms);
   ROI_CONCURRENTS = (data.roi_concurrents||[]).map(mapRoiConcurrentFromDb);
+  PROMO_PACKS = (data.promo_packs||[]).map(mapPromoPackFromDb);
 }
 
 // Loads every business table in ONE request via /api/bulk-load, instead of

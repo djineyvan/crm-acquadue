@@ -37,6 +37,7 @@ const ENTITY_MAP = {
   documents:      { table: 'documents', idCol: 'id' },
   sensitive_perms:{ table: 'sensitive_perms', idCol: 'role' },
   roi_concurrents:{ table: 'roi_concurrents', idCol: 'id' },
+  promo_packs:    { table: 'promo_packs', idCol: 'id' },
 };
 
 // Whitelist of valid column names per table, to safely build dynamic INSERT/UPDATE
@@ -65,6 +66,7 @@ const COLUMNS = {
   documents: ['id','nom','categorie','taille','date_doc','par_qui','data','mime_type'],
   sensitive_perms: ['role','voir_stock','modifier_stock','supprimer_mouvement','modifier_prix_achat','modifier_cout_fournisseur','fournisseurs_approvisionnement','logistique_stock','modifier_client','modifier_prospect'],
   roi_concurrents: ['id','format','volume_litres','prix'],
+  promo_packs: ['id','nom','lignes','prix_pack','actif','last_modified_by','last_modified_at'],
 };
 
 module.exports = async function handler(req, res) {
