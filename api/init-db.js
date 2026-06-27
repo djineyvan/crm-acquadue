@@ -100,12 +100,15 @@ const COLUMN_TYPES = {
     // (un collaborateur a propose un geste, attend la validation d'un
     // superieur) ou 'valide' (approuve — auto si cree par un superieur).
     geste_statut: 'TEXT',
+    // cree_par : qui a rempli ce devis (affiche en colonne "Assigne a").
+    // Fixe a la creation, jamais modifie ensuite (meme si un Super Admin edite le devis).
+    cree_par: 'TEXT',
     last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP', created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   factures: {
     id: 'TEXT', client: 'TEXT', date_fact: 'TEXT', statut: "TEXT DEFAULT 'Impayee'", mode_paiement: 'TEXT',
     lignes: "JSONB DEFAULT '[]'", sortie_appliquee: 'BOOLEAN DEFAULT false', devis_origine: 'TEXT',
-    date_renouvellement: 'TEXT', geste_statut: 'TEXT',
+    date_renouvellement: 'TEXT', geste_statut: 'TEXT', cree_par: 'TEXT',
     last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP', created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   depenses: {

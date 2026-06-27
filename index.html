@@ -827,7 +827,13 @@ function fillClientSelect(id){
   const sel = el(id);
   if(!sel) return;
   const current = sel.value;
-  sel.innerHTML = '<option value="">— Nouveau client —</option>' + CLIENTS.map(function(c){ return "<option>" + c.nom + "</option>"; }).join("");
+  // Meme filtre que fieldClientPicker() — sans ca, openModal() (appele a
+  // CHAQUE ouverture de modal, donc aussi a chaque ouverture du Devis/Facture
+  // Builder lui-meme) ecrasait la liste deja filtree par la liste complete,
+  // non filtree, de tous les clients. C'est ce qui causait "la liste
+  // deroulante affiche toujours tous les contacts".
+  const clientsVisibles = visibleClientsPourFacturation();
+  sel.innerHTML = '<option value="">— Nouveau client —</option>' + clientsVisibles.map(function(c){ return "<option>" + c.nom + "</option>"; }).join("");
   if(current) sel.value = current;
 }
 
@@ -3135,8 +3141,8 @@ function renderFacturation(c){
   h += '</div>';
   c.innerHTML = h;
 
-  el('tbl-devis').innerHTML = '<thead><tr><th>N° Devis</th><th>Client</th><th>Produits</th><th>Montant</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>' +
-    DEVIS.filter(visibleDevisFactureFilter).filter(function(d){ return searchMatch(d, ['id','client']); }).map(function(d){
+  el('tbl-devis').innerHTML = '<thead><tr><th>N° Devis</th><th>Client</th><th>Assigne a</th><th>Produits</th><th>Montant</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>' +
+    DEVIS.filter(visibleDevisFactureFilter).filter(function(d){ return searchMatch(d, ['id','client','creePar']); }).map(function(d){
       const montant = lignesTotalMontant(d.lignes);
       const gesteEnAttente = d.gesteStatut === 'en_attente';
       let actions = '<button class="btn btn-ghost btn-sm" onclick="viewDevisDetail(\''+d.id+'\')">👁 Details</button>';
@@ -3156,11 +3162,11 @@ function renderFacturation(c){
         actions += ' <button class="btn btn-ghost btn-sm" onclick="deleteDevis(\''+d.id+'\')">🗑 Supprimer</button>';
       }
       const gesteBadge = d.gesteStatut === 'en_attente' ? ' <span class="tag tag-gold">🎁 Geste en attente</span>' : d.gesteStatut === 'valide' ? ' <span class="tag tag-green">🎁 Geste valide</span>' : '';
-      return '<tr><td class="td-bold">'+d.id+'</td><td>'+d.client+'</td><td class="td-muted">'+lignesLabel(d.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+d.date+'</td><td>'+statusTag(d.statut)+(d.reservationFaite?' <span class="locked-badge">📦 Reserve</span>':'')+gesteBadge+'</td><td>'+actions+'</td></tr>';
+      return '<tr><td class="td-bold">'+d.id+'</td><td>'+d.client+'</td><td class="td-muted">'+(d.creePar||'-')+'</td><td class="td-muted">'+lignesLabel(d.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+d.date+'</td><td>'+statusTag(d.statut)+(d.reservationFaite?' <span class="locked-badge">📦 Reserve</span>':'')+gesteBadge+'</td><td>'+actions+'</td></tr>';
     }).join('') + '</tbody>';
 
-  el('tbl-fact').innerHTML = '<thead><tr><th>N° Facture</th><th>Client</th><th>Produits</th><th>Montant</th><th>Date</th><th>Mode paiement</th><th>Statut</th><th>Renouvellement</th><th></th></tr></thead><tbody>' +
-    FACTURES.filter(visibleDevisFactureFilter).filter(function(f){ return searchMatch(f, ['id','client']); }).map(function(f){
+  el('tbl-fact').innerHTML = '<thead><tr><th>N° Facture</th><th>Client</th><th>Assigne a</th><th>Produits</th><th>Montant</th><th>Date</th><th>Mode paiement</th><th>Statut</th><th>Renouvellement</th><th></th></tr></thead><tbody>' +
+    FACTURES.filter(visibleDevisFactureFilter).filter(function(f){ return searchMatch(f, ['id','client','creePar']); }).map(function(f){
       const montant = lignesTotalMontant(f.lignes);
       const gesteEnAttente = f.gesteStatut === 'en_attente';
       let actions = '<button class="btn btn-ghost btn-sm" onclick="viewFactureDetail(\''+f.id+'\')">👁 Details</button>';
@@ -3177,7 +3183,7 @@ function renderFacturation(c){
         actions += ' <button class="btn btn-ghost btn-sm" onclick="deleteFacture(\''+f.id+'\')">🗑 Supprimer</button>';
       }
       const gesteBadge = f.gesteStatut === 'en_attente' ? ' <span class="tag tag-gold">🎁 Geste en attente</span>' : f.gesteStatut === 'valide' ? ' <span class="tag tag-green">🎁 Geste valide</span>' : '';
-      return '<tr><td class="td-bold">'+f.id+'</td><td>'+f.client+'</td><td class="td-muted">'+lignesLabel(f.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+f.date+'</td><td class="td-muted">'+f.mode_paiement+'</td><td>'+statusTag(f.statut)+(f.sortieAppliquee?' <span class="locked-badge">📤 Stock sorti</span>':'')+gesteBadge+'</td><td class="td-muted">'+(f.dateRenouvellement?f.dateRenouvellement:'-')+'</td><td>'+actions+'</td></tr>';
+      return '<tr><td class="td-bold">'+f.id+'</td><td>'+f.client+'</td><td class="td-muted">'+(f.creePar||'-')+'</td><td class="td-muted">'+lignesLabel(f.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+f.date+'</td><td class="td-muted">'+f.mode_paiement+'</td><td>'+statusTag(f.statut)+(f.sortieAppliquee?' <span class="locked-badge">📤 Stock sorti</span>':'')+gesteBadge+'</td><td class="td-muted">'+(f.dateRenouvellement?f.dateRenouvellement:'-')+'</td><td>'+actions+'</td></tr>';
     }).join('') + '</tbody>';
 }
 
@@ -3187,6 +3193,7 @@ function viewDevisDetail(devisId){
   const rows = [
     ['N° Devis', '<strong>'+d.id+'</strong>'],
     ['Client', d.client],
+    ['Assigne a', d.creePar || '<span class="td-muted">-</span>'],
     ['Produits', lignesTableHtml(d.lignes)],
     ['Date', d.date],
     ['Validite', d.validite],
@@ -3205,6 +3212,7 @@ function viewFactureDetail(factureId){
   const rows = [
     ['N° Facture', '<strong>'+f.id+'</strong>'],
     ['Client', f.client],
+    ['Assigne a', f.creePar || '<span class="td-muted">-</span>'],
     ['Produits', lignesTableHtml(f.lignes)],
     ['Date', f.date],
     ['Mode de paiement', f.mode_paiement],
@@ -3354,7 +3362,7 @@ function saveDevisBuilder(){
     DEVIS.unshift({
       id: id, client: client, date: new Date().toLocaleDateString('fr-FR'), statut: 'Envoye',
       validite: el('db-validite').value, lignes: JSON.parse(JSON.stringify(DEVIS_BUILDER_LIGNES)), reservationFaite: false,
-      gesteStatut: gesteStatut
+      gesteStatut: gesteStatut, creePar: CU.nom
     });
     logAction('Devis cree', id + ' — ' + client + (gesteStatut==='en_attente' ? ' — ⚠️ geste commercial en attente de validation' : ''), 'blue');
     ensureClientExists(client, lignesLabel(DEVIS_BUILDER_LIGNES), 'Offre envoyee');
@@ -3508,7 +3516,7 @@ function saveFactureBuilder(){
       id: id, client: client, date: new Date().toLocaleDateString('fr-FR'), statut: 'Impayee',
       mode_paiement: el('fb-mode').value, lignes: JSON.parse(JSON.stringify(FACTURE_BUILDER_LIGNES)),
       sortieAppliquee: false, devisOrigine: FACTURE_BUILDER_DEVIS_ORIGINE,
-      dateRenouvellement: el('fb-renouvellement').value || '', gesteStatut: gesteStatut
+      dateRenouvellement: el('fb-renouvellement').value || '', gesteStatut: gesteStatut, creePar: CU.nom
     };
     FACTURES.unshift(newFact);
     logAction('Facture generee', id + ' — ' + client + (FACTURE_BUILDER_DEVIS_ORIGINE ? ' (depuis devis ' + FACTURE_BUILDER_DEVIS_ORIGINE + ')' : '') + (gesteStatut==='en_attente' ? ' — ⚠️ geste commercial en attente de validation' : ''), 'green');
@@ -5092,13 +5100,13 @@ function mapInventaireFromDb(r){
 }
 function mapDevisFromDb(r){
   return { id:r.id, client:r.client, date:r.date_devis, statut:r.statut, validite:r.validite,
-    lignes:r.lignes||[], reservationFaite:r.reservation_faite, gesteStatut:r.geste_statut||null,
+    lignes:r.lignes||[], reservationFaite:r.reservation_faite, gesteStatut:r.geste_statut||null, creePar:r.cree_par||null,
     lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapFactureFromDb(r){
   return { id:r.id, client:r.client, date:r.date_fact, statut:r.statut, mode_paiement:r.mode_paiement,
     lignes:r.lignes||[], sortieAppliquee:r.sortie_appliquee, devisOrigine:r.devis_origine,
-    dateRenouvellement:r.date_renouvellement||'', gesteStatut:r.geste_statut||null,
+    dateRenouvellement:r.date_renouvellement||'', gesteStatut:r.geste_statut||null, creePar:r.cree_par||null,
     lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapDepenseFromDb(r){
@@ -5904,7 +5912,7 @@ wrapAfter('addInventaire', function(){
 wrapAfter('saveDevisBuilder', function(){
   const d = DEVIS_BUILDER_EDIT_ID ? DEVIS.find(function(x){return x.id===DEVIS_BUILDER_EDIT_ID;}) : DEVIS[0];
   if(!d) return;
-  const payload = { client:d.client, date_devis:d.date, statut:d.statut, validite:d.validite, lignes:d.lignes, reservation_faite:d.reservationFaite, geste_statut:d.gesteStatut||null };
+  const payload = { client:d.client, date_devis:d.date, statut:d.statut, validite:d.validite, lignes:d.lignes, reservation_faite:d.reservationFaite, geste_statut:d.gesteStatut||null, cree_par:d.creePar||null };
   if(DEVIS_BUILDER_EDIT_ID){
     dbUpdate('devis', d.id, Object.assign(payload, { last_modified_by:d.lastModifiedBy, last_modified_at:d.lastModifiedAt }));
   } else {
@@ -5925,7 +5933,7 @@ wrapAfter('saveFactureBuilder', function(){
   const f = FACTURE_BUILDER_EDIT_ID ? FACTURES.find(function(x){return x.id===FACTURE_BUILDER_EDIT_ID;}) : FACTURES[0];
   if(!f) return;
   const payload = { client:f.client, date_fact:f.date, statut:f.statut, mode_paiement:f.mode_paiement,
-    lignes:f.lignes, sortie_appliquee:f.sortieAppliquee, devis_origine:f.devisOrigine, date_renouvellement:f.dateRenouvellement||'', geste_statut:f.gesteStatut||null };
+    lignes:f.lignes, sortie_appliquee:f.sortieAppliquee, devis_origine:f.devisOrigine, date_renouvellement:f.dateRenouvellement||'', geste_statut:f.gesteStatut||null, cree_par:f.creePar||null };
   if(FACTURE_BUILDER_EDIT_ID){
     dbUpdate('factures', f.id, Object.assign(payload, { last_modified_by:f.lastModifiedBy, last_modified_at:f.lastModifiedAt }));
   } else {
