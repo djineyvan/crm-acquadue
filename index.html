@@ -3203,7 +3203,7 @@ function renderFacturation(c){
       if(gesteEnAttente && isResponsableOrAbove()){
         actions += ' <button class="btn btn-red btn-sm" onclick="validateGesteFacture(\''+f.id+'\')">✓ Valider le geste commercial</button>';
       }
-      if(f.statut === "Impayee" && !gesteEnAttente){
+      if(f.statut === "Impayee" && !gesteEnAttente && (isSuperAdmin() || f.creePar === CU.nom)){
         actions += ' <button class="btn btn-red btn-sm" onclick="markFacturePaid(\''+f.id+'\')">✓ Marquer payee / Expedier</button>';
       }
       if(isSuperAdmin()){
@@ -3608,6 +3608,11 @@ function convertDevisToFacture(devisId){
 function markFacturePaid(factureId){
   const f = FACTURES.find(function(x){return x.id===factureId;});
   if(!f) return;
+  // Demande explicite : seul le Super Admin OU le createur de la facture
+  // peut la valider. Les factures anciennes (avant l'ajout du champ
+  // "Assigne a") n'ont pas de createur connu — seul le Super Admin peut
+  // alors les valider, pour ne pas attribuer cette action a la mauvaise personne.
+  if(!isSuperAdmin() && f.creePar !== CU.nom) return alert("Seul le Super Admin ou " + (f.creePar || 'le createur de cette facture') + " peut valider cette facture.");
   if(f.gesteStatut === 'en_attente') return alert("Cette facture contient un geste commercial qui n'a pas encore ete valide par un superieur (Responsable, Admin ou Super Admin). Elle ne peut pas etre marquee payee tant qu'il n'est pas valide.");
   f.statut = "Payee";
   f.lignes.forEach(function(ligne){
