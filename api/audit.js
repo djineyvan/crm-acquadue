@@ -18,6 +18,18 @@ module.exports = async function handler(req, res) {
   try {
     const sql = getSql();
 
+    if (req.method === 'GET' && req.query.clients_stats) {
+      // Diagnostic lecture-seule : repartition reelle des clients/prospects
+      // par statut, pour comparer avec le KPI "Clients & Prospects actifs"
+      // du Tableau de bord (qui exclut volontairement 'Client perdu').
+      const total = await sql`SELECT COUNT(*) AS n FROM clients`;
+      const parStatut = await sql`SELECT statut, COUNT(*) AS n FROM clients GROUP BY statut ORDER BY n DESC`;
+      return res.status(200).json({
+        total: Number(total[0].n),
+        par_statut: parStatut.map(function(r){ return { statut: r.statut, n: Number(r.n) }; })
+      });
+    }
+
     if (req.method === 'GET' && req.query.createurs) {
       const detail = req.query.createurs; // '1' (resume), 'devis'/'factures'/'depenses' (liste), ou 'assign' (attribution)
 
