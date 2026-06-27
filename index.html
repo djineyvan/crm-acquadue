@@ -2385,12 +2385,10 @@ function savePromoPack(){
     pack.nom = nom; pack.prixPack = prixPack; pack.lignes = JSON.parse(JSON.stringify(PROMO_PACK_BUILDER_LIGNES));
     stampModification(pack);
     logAction('Pack promo modifie', nom + ' — ' + fcfa(prixPack), 'gold');
-    if(typeof dbUpdate === 'function') dbUpdate('promo_packs', pack.id, { nom:pack.nom, lignes:pack.lignes, prix_pack:pack.prixPack, last_modified_by:pack.lastModifiedBy, last_modified_at:pack.lastModifiedAt });
   } else {
     const pack = { id: Date.now(), nom: nom, lignes: JSON.parse(JSON.stringify(PROMO_PACK_BUILDER_LIGNES)), prixPack: prixPack, actif: true };
     PROMO_PACKS.unshift(pack);
     logAction('Pack promo cree', nom + ' — ' + fcfa(prixPack), 'blue');
-    if(typeof dbInsert === 'function') dbInsert('promo_packs', { id:pack.id, nom:pack.nom, lignes:pack.lignes, prix_pack:pack.prixPack, actif:true });
   }
   closeModal('modal-promo-pack');
   go('promotions');
@@ -3056,11 +3054,15 @@ function renderFacturation(c){
   el('tbl-devis').innerHTML = '<thead><tr><th>N° Devis</th><th>Client</th><th>Produits</th><th>Montant</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>' +
     DEVIS.filter(function(d){ return searchMatch(d, ['id','client']); }).map(function(d){
       const montant = lignesTotalMontant(d.lignes);
+      const gesteEnAttente = d.gesteStatut === 'en_attente';
       let actions = '<button class="btn btn-ghost btn-sm" onclick="viewDevisDetail(\''+d.id+'\')">👁 Details</button>';
       if(isSuperAdmin() && d.statut !== 'Accepte'){
         actions += ' <button class="btn btn-ghost btn-sm" onclick="openDevisBuilder(\''+d.id+'\')">✏️ Modifier</button>';
       }
-      if(d.statut === "Envoye"){
+      if(gesteEnAttente && isResponsableOrAbove()){
+        actions += ' <button class="btn btn-red btn-sm" onclick="validateGesteDevis(\''+d.id+'\')">✓ Valider le geste commercial</button>';
+      }
+      if(d.statut === "Envoye" && !gesteEnAttente){
         actions += ' <button class="btn btn-ghost btn-sm" onclick="acceptDevis(\''+d.id+'\')">✓ Accepter</button>';
       }
       if(d.statut === "Accepte"){
@@ -3069,23 +3071,29 @@ function renderFacturation(c){
       if(isSuperAdmin()){
         actions += ' <button class="btn btn-ghost btn-sm" onclick="deleteDevis(\''+d.id+'\')">🗑 Supprimer</button>';
       }
-      return '<tr><td class="td-bold">'+d.id+'</td><td>'+d.client+'</td><td class="td-muted">'+lignesLabel(d.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+d.date+'</td><td>'+statusTag(d.statut)+(d.reservationFaite?' <span class="locked-badge">📦 Reserve</span>':'')+'</td><td>'+actions+'</td></tr>';
+      const gesteBadge = d.gesteStatut === 'en_attente' ? ' <span class="tag tag-gold">🎁 Geste en attente</span>' : d.gesteStatut === 'valide' ? ' <span class="tag tag-green">🎁 Geste valide</span>' : '';
+      return '<tr><td class="td-bold">'+d.id+'</td><td>'+d.client+'</td><td class="td-muted">'+lignesLabel(d.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+d.date+'</td><td>'+statusTag(d.statut)+(d.reservationFaite?' <span class="locked-badge">📦 Reserve</span>':'')+gesteBadge+'</td><td>'+actions+'</td></tr>';
     }).join('') + '</tbody>';
 
   el('tbl-fact').innerHTML = '<thead><tr><th>N° Facture</th><th>Client</th><th>Produits</th><th>Montant</th><th>Date</th><th>Mode paiement</th><th>Statut</th><th>Renouvellement</th><th></th></tr></thead><tbody>' +
     FACTURES.filter(function(f){ return searchMatch(f, ['id','client']); }).map(function(f){
       const montant = lignesTotalMontant(f.lignes);
+      const gesteEnAttente = f.gesteStatut === 'en_attente';
       let actions = '<button class="btn btn-ghost btn-sm" onclick="viewFactureDetail(\''+f.id+'\')">👁 Details</button>';
       if(isSuperAdmin() && f.statut === 'Impayee'){
         actions += ' <button class="btn btn-ghost btn-sm" onclick="openFactureBuilder(\''+f.id+'\')">✏️ Modifier</button>';
       }
-      if(f.statut === "Impayee"){
+      if(gesteEnAttente && isResponsableOrAbove()){
+        actions += ' <button class="btn btn-red btn-sm" onclick="validateGesteFacture(\''+f.id+'\')">✓ Valider le geste commercial</button>';
+      }
+      if(f.statut === "Impayee" && !gesteEnAttente){
         actions += ' <button class="btn btn-red btn-sm" onclick="markFacturePaid(\''+f.id+'\')">✓ Marquer payee / Expedier</button>';
       }
       if(isSuperAdmin()){
         actions += ' <button class="btn btn-ghost btn-sm" onclick="deleteFacture(\''+f.id+'\')">🗑 Supprimer</button>';
       }
-      return '<tr><td class="td-bold">'+f.id+'</td><td>'+f.client+'</td><td class="td-muted">'+lignesLabel(f.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+f.date+'</td><td class="td-muted">'+f.mode_paiement+'</td><td>'+statusTag(f.statut)+(f.sortieAppliquee?' <span class="locked-badge">📤 Stock sorti</span>':'')+'</td><td class="td-muted">'+(f.dateRenouvellement?f.dateRenouvellement:'-')+'</td><td>'+actions+'</td></tr>';
+      const gesteBadge = f.gesteStatut === 'en_attente' ? ' <span class="tag tag-gold">🎁 Geste en attente</span>' : f.gesteStatut === 'valide' ? ' <span class="tag tag-green">🎁 Geste valide</span>' : '';
+      return '<tr><td class="td-bold">'+f.id+'</td><td>'+f.client+'</td><td class="td-muted">'+lignesLabel(f.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+f.date+'</td><td class="td-muted">'+f.mode_paiement+'</td><td>'+statusTag(f.statut)+(f.sortieAppliquee?' <span class="locked-badge">📤 Stock sorti</span>':'')+gesteBadge+'</td><td class="td-muted">'+(f.dateRenouvellement?f.dateRenouvellement:'-')+'</td><td>'+actions+'</td></tr>';
     }).join('') + '</tbody>';
 }
 
@@ -3101,6 +3109,8 @@ function viewDevisDetail(devisId){
     ['Statut', statusTag(d.statut)],
     ['Reservation stock', d.reservationFaite ? '<span style="color:var(--gold);font-weight:700">✓ Stock reserve pour ces lignes</span>' : '<span class="td-muted">Pas encore reserve</span>']
   ];
+  if(d.gesteStatut === 'en_attente') rows.push(['Geste commercial', '<span style="color:var(--gold);font-weight:700">🎁 En attente de validation par un superieur</span>']);
+  if(d.gesteStatut === 'valide') rows.push(['Geste commercial', '<span style="color:var(--green);font-weight:700">🎁 Valide</span>']);
   if(d.lastModifiedBy) rows.push(['Derniere modification', modStampHtml(d)]);
   openDetailModal('Detail Devis — ' + d.id, rows, null); // read-only here; editing goes through openDevisBuilder
 }
@@ -3119,6 +3129,8 @@ function viewFactureDetail(factureId){
     ['Devis d\'origine', f.devisOrigine || '<span class="td-muted">Vente directe (sans devis)</span>'],
     ['Sortie de stock', f.sortieAppliquee ? '<span style="color:var(--red);font-weight:700">✓ Stock reel sorti pour ces lignes</span>' : '<span class="td-muted">Pas encore expedie</span>']
   ];
+  if(f.gesteStatut === 'en_attente') rows.push(['Geste commercial', '<span style="color:var(--gold);font-weight:700">🎁 En attente de validation par un superieur</span>']);
+  if(f.gesteStatut === 'valide') rows.push(['Geste commercial', '<span style="color:var(--green);font-weight:700">🎁 Valide</span>']);
   if(f.lastModifiedBy) rows.push(['Derniere modification', modStampHtml(f)]);
   openDetailModal('Detail Facture — ' + f.id, rows, null);
 }
@@ -3150,7 +3162,7 @@ function renderDevisBuilderLignes(){
   const packsActifs = PROMO_PACKS.filter(function(pk){ return pk.actif; });
   let h = DEVIS_BUILDER_LIGNES.map(function(l, i){
     const isRemise = !l.sku;
-    const couleur = isRemise ? 'color:var(--green)' : '';
+    const couleur = isRemise ? 'color:var(--green)' : (l.geste ? 'color:var(--gold)' : '');
     return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1.4fr auto;gap:6px;margin-bottom:6px;align-items:center">' +
       '<div class="td-bold" style="font-size:12px;'+couleur+'">'+(l.sku ? (l.nom+' ('+l.sku+')') : l.nom)+'</div>' +
       '<div style="font-size:12px">Qte: <strong>'+l.qte+'</strong></div>' +
@@ -3170,6 +3182,7 @@ function renderDevisBuilderLignes(){
       '<select class="form-select" id="db-add-entrepot">' + entrepotOptions.map(function(o){return '<option>'+o+'</option>';}).join('') + '</select>' +
       '<button class="btn btn-ghost btn-sm" onclick="addDevisBuilderLigne()">+ Ajouter</button>' +
     '</div>';
+    h += '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gold);margin-top:6px"><input type="checkbox" id="db-add-geste"/> 🎁 Geste commercial (offert gratuitement au client — necessitera une validation)</label>';
     if(packsActifs.length > 0){
       h += '<div style="display:grid;grid-template-columns:2fr auto;gap:6px;margin-top:8px">' +
         '<select class="form-select" id="db-add-pack">' + packsActifs.map(function(pk){ return '<option value="'+pk.id+'">🎁 '+pk.nom+' — '+fcfa(pk.prixPack)+'</option>'; }).join('') + '</select>' +
@@ -3205,12 +3218,24 @@ function addDevisBuilderLigne(){
   const p = PRODUITS.find(function(x){return x.sku===sku;});
   if(!p) return;
 
-  const existingLigne = DEVIS_BUILDER_LIGNES.find(function(l){return l.sku===sku && l.entrepot===entrepot;});
-  if(existingLigne){
-    existingLigne.qte += qte;
-    existingLigne.prixUnitaire = prixApresRemise(p, existingLigne.qte, p.prix_vente);
+  const gesteEl = el('db-add-geste');
+  const isGeste = !!(gesteEl && gesteEl.checked);
+
+  if(isGeste){
+    // Toujours une nouvelle ligne (jamais fusionnee avec une ligne normale du
+    // meme produit) — le prix offert ne doit pas se mélanger avec le prix
+    // catalogue. Le stock EST quand meme reserve/sorti normalement : un
+    // produit physique part reellement, meme s'il est facture 0.
+    DEVIS_BUILDER_LIGNES.push({ sku: sku, nom: nom + ' (🎁 Geste commercial)', qte: qte, prixUnitaire: 0, entrepot: entrepot, geste: true });
+    if(gesteEl) gesteEl.checked = false;
   } else {
-    DEVIS_BUILDER_LIGNES.push({ sku: sku, nom: nom, qte: qte, prixUnitaire: prixApresRemise(p, qte, p.prix_vente), entrepot: entrepot });
+    const existingLigne = DEVIS_BUILDER_LIGNES.find(function(l){return l.sku===sku && l.entrepot===entrepot && !l.geste;});
+    if(existingLigne){
+      existingLigne.qte += qte;
+      existingLigne.prixUnitaire = prixApresRemise(p, existingLigne.qte, p.prix_vente);
+    } else {
+      DEVIS_BUILDER_LIGNES.push({ sku: sku, nom: nom, qte: qte, prixUnitaire: prixApresRemise(p, qte, p.prix_vente), entrepot: entrepot });
+    }
   }
   renderDevisBuilderLignes();
 }
@@ -3225,20 +3250,29 @@ function saveDevisBuilder(){
   if(!client){ alert('Entrez un nom de client'); return; }
   if(DEVIS_BUILDER_LIGNES.length === 0){ alert('Ajoutez au moins un produit'); return; }
 
+  // Geste commercial : un collaborateur peut le PROPOSER, mais il reste "en
+  // attente" jusqu'a validation par un superieur (Responsable/Admin/Super
+  // Admin). Si c'est deja un superieur qui cree/modifie le devis, il est
+  // auto-valide (il a deja l'autorite pour l'approuver lui-meme).
+  const contientGeste = DEVIS_BUILDER_LIGNES.some(function(l){ return l.geste; });
+  const gesteStatut = contientGeste ? (isResponsableOrAbove() ? 'valide' : 'en_attente') : null;
+
   if(DEVIS_BUILDER_EDIT_ID){
     const d = DEVIS.find(function(x){return x.id===DEVIS_BUILDER_EDIT_ID;});
     d.client = client;
     d.validite = el('db-validite').value;
     d.lignes = JSON.parse(JSON.stringify(DEVIS_BUILDER_LIGNES));
+    d.gesteStatut = gesteStatut;
     stampModification(d);
-    logAction('Devis modifie', d.id + ' — ' + client, 'gold');
+    logAction('Devis modifie', d.id + ' — ' + client + (gesteStatut==='en_attente' ? ' — ⚠️ geste commercial en attente de validation' : ''), 'gold');
   } else {
     const id = "DEV-2026-" + Math.floor(Math.random()*900+100);
     DEVIS.unshift({
       id: id, client: client, date: new Date().toLocaleDateString('fr-FR'), statut: 'Envoye',
-      validite: el('db-validite').value, lignes: JSON.parse(JSON.stringify(DEVIS_BUILDER_LIGNES)), reservationFaite: false
+      validite: el('db-validite').value, lignes: JSON.parse(JSON.stringify(DEVIS_BUILDER_LIGNES)), reservationFaite: false,
+      gesteStatut: gesteStatut
     });
-    logAction('Devis cree', id + ' — ' + client, 'blue');
+    logAction('Devis cree', id + ' — ' + client + (gesteStatut==='en_attente' ? ' — ⚠️ geste commercial en attente de validation' : ''), 'blue');
     ensureClientExists(client, lignesLabel(DEVIS_BUILDER_LIGNES), 'Offre envoyee');
   }
   closeModal('modal-devis-builder');
@@ -3290,7 +3324,7 @@ function renderFactureBuilderLignes(){
   const packsActifs = PROMO_PACKS.filter(function(pk){ return pk.actif; });
   let h = FACTURE_BUILDER_LIGNES.map(function(l, i){
     const isRemise = !l.sku;
-    const couleur = isRemise ? 'color:var(--green)' : '';
+    const couleur = isRemise ? 'color:var(--green)' : (l.geste ? 'color:var(--gold)' : '');
     return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1.4fr auto;gap:6px;margin-bottom:6px;align-items:center">' +
       '<div class="td-bold" style="font-size:12px;'+couleur+'">'+(l.sku ? (l.nom+' ('+l.sku+')') : l.nom)+'</div>' +
       '<div style="font-size:12px">Qte: <strong>'+l.qte+'</strong></div>' +
@@ -3310,6 +3344,7 @@ function renderFactureBuilderLignes(){
       '<select class="form-select" id="fb-add-entrepot">' + entrepotOptions.map(function(o){return '<option>'+o+'</option>';}).join('') + '</select>' +
       '<button class="btn btn-ghost btn-sm" onclick="addFactureBuilderLigne()">+ Ajouter</button>' +
     '</div>';
+    h += '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gold);margin-top:6px"><input type="checkbox" id="fb-add-geste"/> 🎁 Geste commercial (offert gratuitement au client — necessitera une validation)</label>';
     if(packsActifs.length > 0){
       h += '<div style="display:grid;grid-template-columns:2fr auto;gap:6px;margin-top:8px">' +
         '<select class="form-select" id="fb-add-pack">' + packsActifs.map(function(pk){ return '<option value="'+pk.id+'">🎁 '+pk.nom+' — '+fcfa(pk.prixPack)+'</option>'; }).join('') + '</select>' +
@@ -3343,12 +3378,20 @@ function addFactureBuilderLigne(){
   const p = PRODUITS.find(function(x){return x.sku===sku;});
   if(!p) return;
 
-  const existingLigne = FACTURE_BUILDER_LIGNES.find(function(l){return l.sku===sku && l.entrepot===entrepot;});
-  if(existingLigne){
-    existingLigne.qte += qte;
-    existingLigne.prixUnitaire = prixApresRemise(p, existingLigne.qte, p.prix_vente);
+  const gesteEl = el('fb-add-geste');
+  const isGeste = !!(gesteEl && gesteEl.checked);
+
+  if(isGeste){
+    FACTURE_BUILDER_LIGNES.push({ sku: sku, nom: nom + ' (🎁 Geste commercial)', qte: qte, prixUnitaire: 0, entrepot: entrepot, geste: true });
+    if(gesteEl) gesteEl.checked = false;
   } else {
-    FACTURE_BUILDER_LIGNES.push({ sku: sku, nom: nom, qte: qte, prixUnitaire: prixApresRemise(p, qte, p.prix_vente), entrepot: entrepot });
+    const existingLigne = FACTURE_BUILDER_LIGNES.find(function(l){return l.sku===sku && l.entrepot===entrepot && !l.geste;});
+    if(existingLigne){
+      existingLigne.qte += qte;
+      existingLigne.prixUnitaire = prixApresRemise(p, existingLigne.qte, p.prix_vente);
+    } else {
+      FACTURE_BUILDER_LIGNES.push({ sku: sku, nom: nom, qte: qte, prixUnitaire: prixApresRemise(p, qte, p.prix_vente), entrepot: entrepot });
+    }
   }
   renderFactureBuilderLignes();
 }
@@ -3363,24 +3406,28 @@ function saveFactureBuilder(){
   if(!client){ alert('Entrez un nom de client'); return; }
   if(FACTURE_BUILDER_LIGNES.length === 0){ alert('Ajoutez au moins un produit'); return; }
 
+  const contientGeste = FACTURE_BUILDER_LIGNES.some(function(l){ return l.geste; });
+  const gesteStatut = contientGeste ? (isResponsableOrAbove() ? 'valide' : 'en_attente') : null;
+
   if(FACTURE_BUILDER_EDIT_ID){
     const f = FACTURES.find(function(x){return x.id===FACTURE_BUILDER_EDIT_ID;});
     f.client = client;
     f.mode_paiement = el('fb-mode').value;
     f.lignes = JSON.parse(JSON.stringify(FACTURE_BUILDER_LIGNES));
     f.dateRenouvellement = el('fb-renouvellement').value || '';
+    f.gesteStatut = gesteStatut;
     stampModification(f);
-    logAction('Facture modifiee', f.id + ' — ' + client, 'gold');
+    logAction('Facture modifiee', f.id + ' — ' + client + (gesteStatut==='en_attente' ? ' — ⚠️ geste commercial en attente de validation' : ''), 'gold');
   } else {
     const id = "FACT-2026-" + Math.floor(Math.random()*9000+1000);
     const newFact = {
       id: id, client: client, date: new Date().toLocaleDateString('fr-FR'), statut: 'Impayee',
       mode_paiement: el('fb-mode').value, lignes: JSON.parse(JSON.stringify(FACTURE_BUILDER_LIGNES)),
       sortieAppliquee: false, devisOrigine: FACTURE_BUILDER_DEVIS_ORIGINE,
-      dateRenouvellement: el('fb-renouvellement').value || ''
+      dateRenouvellement: el('fb-renouvellement').value || '', gesteStatut: gesteStatut
     };
     FACTURES.unshift(newFact);
-    logAction('Facture generee', id + ' — ' + client + (FACTURE_BUILDER_DEVIS_ORIGINE ? ' (depuis devis ' + FACTURE_BUILDER_DEVIS_ORIGINE + ')' : ''), 'green');
+    logAction('Facture generee', id + ' — ' + client + (FACTURE_BUILDER_DEVIS_ORIGINE ? ' (depuis devis ' + FACTURE_BUILDER_DEVIS_ORIGINE + ')' : '') + (gesteStatut==='en_attente' ? ' — ⚠️ geste commercial en attente de validation' : ''), 'green');
     ensureClientExists(client, lignesLabel(FACTURE_BUILDER_LIGNES), 'Client actif', el('fb-client-type') ? el('fb-client-type').value : 'B2C');
 
     // Fix: mark the source devis as "Facture" so it stops appearing as
@@ -3403,6 +3450,7 @@ function saveFactureBuilder(){
 function acceptDevis(devisId){
   const d = DEVIS.find(function(x){return x.id===devisId;});
   if(!d) return;
+  if(d.gesteStatut === 'en_attente') return alert("Ce devis contient un geste commercial qui n'a pas encore ete valide par un superieur (Responsable, Admin ou Super Admin). Il ne peut pas etre accepte tant qu'il n'est pas valide.");
   d.statut = "Accepte";
   let allOk = true;
   d.lignes.forEach(function(ligne){
@@ -3418,6 +3466,18 @@ function acceptDevis(devisId){
   go('facturation');
 }
 
+// Validation d'un geste commercial propose par un collaborateur — reservee
+// aux Responsable/Admin/Super Admin (le "superieur" qui doit approuver).
+function validateGesteDevis(devisId){
+  if(!isResponsableOrAbove()) return alert("Seul un Responsable, Admin ou Super Admin peut valider un geste commercial.");
+  const d = DEVIS.find(function(x){return x.id===devisId;});
+  if(!d || d.gesteStatut !== 'en_attente') return;
+  d.gesteStatut = 'valide';
+  stampModification(d);
+  logAction('Geste commercial valide', d.id + ' — ' + d.client, 'green');
+  go('facturation');
+}
+
 // Convertit un devis en facture en conservant toutes les lignes (plusieurs produits)
 function convertDevisToFacture(devisId){
   const d = DEVIS.find(function(x){return x.id===devisId;});
@@ -3429,6 +3489,7 @@ function convertDevisToFacture(devisId){
 function markFacturePaid(factureId){
   const f = FACTURES.find(function(x){return x.id===factureId;});
   if(!f) return;
+  if(f.gesteStatut === 'en_attente') return alert("Cette facture contient un geste commercial qui n'a pas encore ete valide par un superieur (Responsable, Admin ou Super Admin). Elle ne peut pas etre marquee payee tant qu'il n'est pas valide.");
   f.statut = "Payee";
   f.lignes.forEach(function(ligne){
     if(!ligne.sku) return; // ligne de remise (pack promo) — pas un produit, rien a sortir du stock
@@ -3436,6 +3497,16 @@ function markFacturePaid(factureId){
   });
   f.sortieAppliquee = true;
   logAction('Facture payee et expediee', f.id + ' — ' + f.client, 'green');
+  go('facturation');
+}
+
+function validateGesteFacture(factureId){
+  if(!isResponsableOrAbove()) return alert("Seul un Responsable, Admin ou Super Admin peut valider un geste commercial.");
+  const f = FACTURES.find(function(x){return x.id===factureId;});
+  if(!f || f.gesteStatut !== 'en_attente') return;
+  f.gesteStatut = 'valide';
+  stampModification(f);
+  logAction('Geste commercial valide', f.id + ' — ' + f.client, 'green');
   go('facturation');
 }
 
@@ -4928,13 +4999,13 @@ function mapInventaireFromDb(r){
 }
 function mapDevisFromDb(r){
   return { id:r.id, client:r.client, date:r.date_devis, statut:r.statut, validite:r.validite,
-    lignes:r.lignes||[], reservationFaite:r.reservation_faite,
+    lignes:r.lignes||[], reservationFaite:r.reservation_faite, gesteStatut:r.geste_statut||null,
     lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapFactureFromDb(r){
   return { id:r.id, client:r.client, date:r.date_fact, statut:r.statut, mode_paiement:r.mode_paiement,
     lignes:r.lignes||[], sortieAppliquee:r.sortie_appliquee, devisOrigine:r.devis_origine,
-    dateRenouvellement:r.date_renouvellement||'',
+    dateRenouvellement:r.date_renouvellement||'', gesteStatut:r.geste_statut||null,
     lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapDepenseFromDb(r){
@@ -5739,7 +5810,7 @@ wrapAfter('addInventaire', function(){
 wrapAfter('saveDevisBuilder', function(){
   const d = DEVIS_BUILDER_EDIT_ID ? DEVIS.find(function(x){return x.id===DEVIS_BUILDER_EDIT_ID;}) : DEVIS[0];
   if(!d) return;
-  const payload = { client:d.client, date_devis:d.date, statut:d.statut, validite:d.validite, lignes:d.lignes, reservation_faite:d.reservationFaite };
+  const payload = { client:d.client, date_devis:d.date, statut:d.statut, validite:d.validite, lignes:d.lignes, reservation_faite:d.reservationFaite, geste_statut:d.gesteStatut||null };
   if(DEVIS_BUILDER_EDIT_ID){
     dbUpdate('devis', d.id, Object.assign(payload, { last_modified_by:d.lastModifiedBy, last_modified_at:d.lastModifiedAt }));
   } else {
@@ -5752,11 +5823,15 @@ wrapAfter('acceptDevis', function(devisId){
   // any stock rows touched by the reservation also need syncing
   STOCK.forEach(function(s){ if(s.sku===d.sku) syncStockRow(s); });
 });
+wrapAfter('validateGesteDevis', function(devisId){
+  const d = DEVIS.find(function(x){return x.id===devisId;});
+  if(d && d.gesteStatut === 'valide') dbUpdate('devis', d.id, { geste_statut: 'valide', last_modified_by:d.lastModifiedBy, last_modified_at:d.lastModifiedAt });
+});
 wrapAfter('saveFactureBuilder', function(){
   const f = FACTURE_BUILDER_EDIT_ID ? FACTURES.find(function(x){return x.id===FACTURE_BUILDER_EDIT_ID;}) : FACTURES[0];
   if(!f) return;
   const payload = { client:f.client, date_fact:f.date, statut:f.statut, mode_paiement:f.mode_paiement,
-    lignes:f.lignes, sortie_appliquee:f.sortieAppliquee, devis_origine:f.devisOrigine, date_renouvellement:f.dateRenouvellement||'' };
+    lignes:f.lignes, sortie_appliquee:f.sortieAppliquee, devis_origine:f.devisOrigine, date_renouvellement:f.dateRenouvellement||'', geste_statut:f.gesteStatut||null };
   if(FACTURE_BUILDER_EDIT_ID){
     dbUpdate('factures', f.id, Object.assign(payload, { last_modified_by:f.lastModifiedBy, last_modified_at:f.lastModifiedAt }));
   } else {
@@ -5767,6 +5842,22 @@ wrapAfter('markFacturePaid', function(factureId){
   const f = FACTURES.find(function(x){return x.id===factureId;});
   if(f) dbUpdate('factures', f.id, { statut:f.statut, sortie_appliquee:f.sortieAppliquee });
   STOCK.forEach(function(s){ syncStockRow(s); });
+});
+wrapAfter('validateGesteFacture', function(factureId){
+  const f = FACTURES.find(function(x){return x.id===factureId;});
+  if(f && f.gesteStatut === 'valide') dbUpdate('factures', f.id, { geste_statut: 'valide', last_modified_by:f.lastModifiedBy, last_modified_at:f.lastModifiedAt });
+});
+
+// PROMO PACKS
+wrapAfter('savePromoPack', function(){
+  const pack = PROMO_PACK_EDIT_ID ? PROMO_PACKS.find(function(x){return String(x.id)===String(PROMO_PACK_EDIT_ID);}) : PROMO_PACKS[0];
+  if(!pack) return;
+  const payload = { nom:pack.nom, lignes:pack.lignes, prix_pack:pack.prixPack };
+  if(PROMO_PACK_EDIT_ID){
+    dbUpdate('promo_packs', pack.id, Object.assign(payload, { last_modified_by:pack.lastModifiedBy, last_modified_at:pack.lastModifiedAt }));
+  } else {
+    dbInsert('promo_packs', Object.assign({ id:pack.id, actif:true }, payload));
+  }
 });
 
 // DEPENSES

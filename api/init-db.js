@@ -96,12 +96,16 @@ const COLUMN_TYPES = {
   devis: {
     id: 'TEXT', client: 'TEXT', date_devis: 'TEXT', statut: "TEXT DEFAULT 'Envoye'", validite: 'TEXT',
     lignes: "JSONB DEFAULT '[]'", reservation_faite: 'BOOLEAN DEFAULT false',
+    // geste_statut : null (aucun geste commercial dans ce devis), 'en_attente'
+    // (un collaborateur a propose un geste, attend la validation d'un
+    // superieur) ou 'valide' (approuve — auto si cree par un superieur).
+    geste_statut: 'TEXT',
     last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP', created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   factures: {
     id: 'TEXT', client: 'TEXT', date_fact: 'TEXT', statut: "TEXT DEFAULT 'Impayee'", mode_paiement: 'TEXT',
     lignes: "JSONB DEFAULT '[]'", sortie_appliquee: 'BOOLEAN DEFAULT false', devis_origine: 'TEXT',
-    date_renouvellement: 'TEXT',
+    date_renouvellement: 'TEXT', geste_statut: 'TEXT',
     last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP', created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   depenses: {
