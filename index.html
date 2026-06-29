@@ -2630,7 +2630,11 @@ function renderPromotions(c){
         const economie = prixNormal - pack.prixPack;
         const composition = (pack.lignes||[]).map(function(l){
           const p = PRODUITS.find(function(x){return x.sku===l.sku;});
-          return l.qte + 'x ' + (p ? p.nom : l.sku);
+          // Affiche toujours le SKU entre parentheses (pas seulement le nom) :
+          // deux produits differents peuvent partager le meme nom commercial
+          // (ex: "Evier" et "Murale" sont tous les deux des "Purificateurs"),
+          // ce qui rendait deux packs differents visuellement indistinguables.
+          return l.qte + 'x ' + (p ? p.nom + ' (' + p.sku + ')' : l.sku);
         }).join(' + ');
         let actions = '';
         if(isSuperAdmin()){
