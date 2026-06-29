@@ -126,64 +126,6 @@ module.exports = async function handler(req, res) {
       return res.status(201).json({ success: true, row: result[0] });
     }
 
-    if (req.method === 'PUT' && entityKey === 'produits' && req.body.rename_sku) {
-      // Demande explicite : permettre de corriger l'orthographe d'une
-      // Reference (SKU) produit. A la difference de la tentative precedente
-      // (qui faisait cette mise a jour via de nombreux petits appels depuis
-      // le navigateur, un par fiche liee — risque de saturer les connexions
-      // a la base), TOUT se fait ici en une seule execution serveur,
-      // sequentiellement, avec un rapport precis de ce qui a ete corrige.
-      const from = (req.body.from || '').trim();
-      const to = (req.body.to || '').trim();
-      if (!from || !to) return res.status(400).json({ error: 'Parametres from et to requis' });
-      if (from === to) return res.status(400).json({ error: 'La nouvelle reference doit etre differente de l\'ancienne' });
-
-      const collision = await sql`SELECT sku FROM produits WHERE sku = ${to}`;
-      if (collision.length > 0) return res.status(409).json({ error: 'Cette reference est deja utilisee par un autre produit du catalogue.' });
-
-      const produitMaj = await sql`UPDATE produits SET sku = ${to} WHERE sku = ${from} RETURNING *`;
-      if (produitMaj.length === 0) return res.status(404).json({ error: 'Aucun produit ne porte la reference: ' + from });
-
-      const pipelineMaj = await sql`UPDATE pipeline SET sku = ${to} WHERE sku = ${from} RETURNING id`;
-      const mouvementsMaj = await sql`UPDATE mouvements_stock SET sku = ${to} WHERE sku = ${from} RETURNING id`;
-      const stockMaj = await sql`UPDATE stock SET sku = ${to} WHERE sku = ${from} RETURNING id`;
-
-      // Lignes JSONB (devis, factures, packs promo, commandes fournisseur) :
-      // on ne peut pas faire un simple UPDATE ... SET sku=... puisque le sku
-      // est imbrique dans un tableau JSON, pas une colonne directe. On relit
-      // seulement les lignes potentiellement concernees (filtre texte), on
-      // corrige le tableau en JS, on reecrit — toujours dans cette meme
-      // execution serveur, jamais depuis le navigateur.
-      async function renameInLignesTable(table){
-        const rows = await sql.query('SELECT id, lignes FROM ' + table + ' WHERE lignes::text LIKE $1', ['%' + from + '%']);
-        let count = 0;
-        for (const row of rows) {
-          let changed = false;
-          const lignes = (row.lignes || []).map(function(l){
-            if (l && l.sku === from) { changed = true; return Object.assign({}, l, { sku: to }); }
-            return l;
-          });
-          if (changed) {
-            await sql.query('UPDATE ' + table + ' SET lignes = $1 WHERE id = $2', [JSON.stringify(lignes), row.id]);
-            count++;
-          }
-        }
-        return count;
-      }
-
-      const devisMaj = await renameInLignesTable('devis');
-      const facturesMaj = await renameInLignesTable('factures');
-      const promoMaj = await renameInLignesTable('promo_packs');
-      const commandesMaj = await renameInLignesTable('commandes_fournisseur');
-
-      return res.status(200).json({
-        success: true, de: from, vers: to, produit: produitMaj[0],
-        pipeline_corrige: pipelineMaj.length, mouvements_stock_corrige: mouvementsMaj.length,
-        stock_corrige: stockMaj.length, devis_corriges: devisMaj, factures_corrigees: facturesMaj,
-        promo_packs_corriges: promoMaj, commandes_fournisseur_corrigees: commandesMaj
-      });
-    }
-
     if (req.method === 'PUT') {
       const id = req.body.id;
       const patch = req.body.patch || {};

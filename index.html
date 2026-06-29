@@ -2539,7 +2539,7 @@ function viewProductDetail(sku){
     }).join('') + '</tbody></table>';
 
   const rows = [
-    ['SKU', '<strong>'+p.sku+'</strong>' + (isSuperAdmin() ? ' <button class="btn btn-ghost btn-sm" onclick="renameProduitSku(\''+p.sku+'\')">✏️ Renommer</button>' : '')],
+    ['SKU', '<strong>'+p.sku+'</strong>'],
     ['Nom du produit', p.nom],
     ['Categorie', tag(p.categorie,'tag-blue')],
     ['Marque', p.marque],
@@ -5259,44 +5259,6 @@ function deleteProduit(sku){
   if(typeof dbDelete === 'function') dbDelete('produits', p.sku);
   closeModal('modal-detail');
   go('produits');
-}
-
-// Demande explicite : corriger l'orthographe d'une Reference (SKU) sans
-// risque. Action ISOLEE et SEPAREE de la modification generale (Modifier) —
-// une seule requete envoyee au serveur, qui fait LUI-MEME tout le travail de
-// mise a jour des fiches liees en une seule execution (voir api/data.js,
-// rename_sku). Le navigateur ne fait qu'un aller-retour, jamais de cascade
-// de petits appels paralleles comme la tentative precedente qui a echoue.
-function renameProduitSku(oldSku){
-  if(!isSuperAdmin()) return alert('Seul le Super Admin peut renommer une reference.');
-  const newSku = prompt('Nouvelle reference pour "' + oldSku + '" :\n\nElle sera automatiquement mise a jour partout ou elle est utilisee (Stock, Pipeline, Devis/Factures, Packs promo, Commandes fournisseur).', oldSku);
-  if(newSku === null) return; // annule
-  const trimmed = newSku.trim();
-  if(!trimmed){ alert('La reference ne peut pas etre vide.'); return; }
-  if(trimmed === oldSku) return;
-  if(!confirm('Confirmer le renommage de "' + oldSku + '" en "' + trimmed + '" ? Cette action met a jour toutes les fiches liees.')) return;
-
-  fetch('/api/data', {
-    method: 'PUT',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ entity: 'produits', rename_sku: true, from: oldSku, to: trimmed })
-  }).then(function(r){ return r.json().then(function(d){ return { ok: r.ok, data: d }; }); })
-  .then(function(result){
-    if(!result.ok){
-      alert('Erreur : ' + (result.data && result.data.error ? result.data.error : 'Echec du renommage.'));
-      return;
-    }
-    const d = result.data;
-    logAction('Reference produit renommee', oldSku + ' → ' + trimmed, 'gold');
-    alert('Reference renommee : "' + oldSku + '" → "' + trimmed + '"\n\nMis a jour automatiquement :\n- Pipeline : ' + d.pipeline_corrige + '\n- Mouvements de stock : ' + d.mouvements_stock_corrige + '\n- Lignes de stock : ' + d.stock_corrige + '\n- Devis : ' + d.devis_corriges + '\n- Factures : ' + d.factures_corrigees + '\n- Packs promo : ' + d.promo_packs_corriges + '\n- Commandes fournisseur : ' + d.commandes_fournisseur_corrigees);
-    closeModal('modal-detail');
-    loadAllDataFromDb().then(function(){
-      updateAllBadges();
-      go('produits');
-    });
-  }).catch(function(err){
-    alert('Erreur reseau : ' + err.message);
-  });
 }
 
 function addMouvement(){

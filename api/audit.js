@@ -18,37 +18,6 @@ module.exports = async function handler(req, res) {
   try {
     const sql = getSql();
 
-    if (req.method === 'GET' && req.query.fix_fk) {
-      // Diagnostic + correction ponctuelle (demande explicite) : une
-      // contrainte de cle etrangere ANCIENNE (ex: stock_sku_fkey, posee par
-      // une version anterieure du schema, absente du init-db.js actuel)
-      // bloque le renommage et potentiellement la suppression de produits —
-      // alors que tout le reste de l'application traite le SKU comme une
-      // reference souple, geree au niveau applicatif (un produit peut etre
-      // supprime ou renomme en laissant des fiches liees orphelines, c'est
-      // assume — voir deleteProduit() et le renommage securise rename_sku
-      // dans api/data.js). On retire donc ces contraintes pour rester
-      // coherent avec ce fonctionnement.
-      const action = req.query.fix_fk; // '1' = lister, 'drop' = supprimer
-
-      const constraints = await sql`
-        SELECT conname, conrelid::regclass::text AS table_name
-        FROM pg_constraint
-        WHERE confrelid = 'produits'::regclass AND contype = 'f'
-      `;
-
-      if (action === 'drop') {
-        const dropped = [];
-        for (const c of constraints) {
-          await sql.query('ALTER TABLE ' + c.table_name + ' DROP CONSTRAINT ' + c.conname);
-          dropped.push(c.table_name + '.' + c.conname);
-        }
-        return res.status(200).json({ dropped: dropped });
-      }
-
-      return res.status(200).json({ constraints: constraints });
-    }
-
     if (req.method === 'GET' && req.query.clients_stats) {
       // Diagnostic lecture-seule : repartition reelle des clients/prospects
       // par statut, pour comparer avec le KPI "Clients & Prospects actifs"
