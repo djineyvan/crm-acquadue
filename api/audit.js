@@ -152,38 +152,6 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    if (req.method === 'GET' && req.query.delete_record_entity) {
-      // Suppression manuelle ponctuelle d'une fiche Client OU Pipeline par id,
-      // pour nettoyer une fiche de test/orpheline reperee manuellement.
-      // Usage : ?delete_record_entity=pipeline&delete_record_id=...
-      //         puis &confirm=1 pour executer reellement.
-      const entity = req.query.delete_record_entity;
-      const id = req.query.delete_record_id;
-      if (['clients', 'pipeline'].indexOf(entity) === -1) {
-        return res.status(400).json({ error: 'delete_record_entity doit etre "clients" ou "pipeline"' });
-      }
-      if (!id) return res.status(400).json({ error: 'delete_record_id requis' });
-
-      const before = await sql.query('SELECT * FROM ' + entity + ' WHERE id = $1', [id]);
-      if (before.length === 0) return res.status(404).json({ error: 'Enregistrement introuvable (id=' + id + ' dans ' + entity + ')' });
-
-      if (req.query.confirm !== '1') {
-        return res.status(200).json({
-          mode: 'dry-run',
-          entity: entity,
-          fiche_a_supprimer: before[0],
-          info: 'Aucune suppression effectuee. Ajoutez &confirm=1 pour executer.'
-        });
-      }
-
-      await sql.query('DELETE FROM ' + entity + ' WHERE id = $1', [id]);
-      await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)
-                 VALUES ('Systeme', 'Direction', 'Suppression manuelle de fiche',
-                 ${entity + ' #' + id + ' (' + before[0].nom + ') supprime via outil de maintenance'},
-                 'dot-red', 'SY', '#888', 'audit-tool')`;
-      return res.status(200).json({ success: true, entity: entity, id: id, nom_supprime: before[0].nom });
-    }
-
     if (req.method === 'GET') {
       const dept = req.query.dept;
       const rows = dept
