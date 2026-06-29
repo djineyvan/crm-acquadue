@@ -1976,6 +1976,7 @@ function renderRapports(c){
   h += '<div style="display:flex;gap:6px"><button class="btn btn-ghost btn-sm" onclick="exportReport(\'pdf\')">📄 Export PDF</button><button class="btn btn-ghost btn-sm" onclick="exportReport(\'excel\')">📊 Export Excel</button><button class="btn btn-ghost btn-sm" onclick="exportReport(\'csv\')">📋 Export CSV</button></div>';
   h += '</div>';
   h += '<div class="grid2" style="margin-bottom:12px"><div class="card"><div class="card-title">Rapport Commercial</div><div id="rpt-comm"></div></div><div class="card"><div class="card-title">Rapport Marketing</div><div id="rpt-mkt"></div></div></div>';
+  h += '<div class="card" style="margin-bottom:12px"><div class="card-title">🔍 Doublons potentiels — Clients &amp; Prospects + Pipeline</div><div class="td-muted" style="font-size:12px;margin-bottom:6px">Memes noms ou memes numeros de telephone enregistres plus d\'une fois.</div><div id="rpt-doublons"></div></div>';
   h += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><div class="card-title">ROI — Acqua Due vs Bouteilles Niger</div><div style="display:flex;gap:6px">';
   h += '<button class="btn btn-red btn-sm" onclick="openRoiCalc()">🧮 Calculateur ROI</button>';
   if(isSuperAdmin()) h += '<button class="btn btn-ghost btn-sm" onclick="openRoiPricesEditor()">✏️ Modifier les prix</button>';
@@ -1993,6 +1994,8 @@ function renderRapports(c){
   const tb = CAMPAGNES.reduce(function(s,x){return s+x.budget;},0);
   el('rpt-mkt').innerHTML = '<div class="grid2" style="margin-bottom:11px"><div style="background:var(--blue-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--blue)">LEADS</div><div style="font-size:18px;font-weight:800;color:var(--blue)">'+tl+'</div></div><div style="background:var(--gold-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--gold)">BUDGET</div><div style="font-size:18px;font-weight:800;color:var(--gold)">'+fcfa(tb)+'</div></div></div>' +
     CAMPAGNES.map(function(cp){ return '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><div><div style="font-size:12px;font-weight:600">'+cp.nom+'</div><div class="td-muted">'+cp.canal+'</div></div><div style="font-weight:700;color:var(--blue)">'+cp.leads+' leads</div></div>'; }).join('');
+
+  el('rpt-doublons').innerHTML = duplicateContactsReportHtml();
 
   // Le tableau de prix concurrents et le chiffre d'economie etaient fixes en
   // dur dans le code (et l'economie n'etait meme calculee a partir de rien).
@@ -3347,6 +3350,96 @@ function syncPipelineToClient(p){
   }
 }
 
+// ── DETECTION DE DOUBLONS — Clients & Prospects + Pipeline ──────────────────
+// Demande explicite : avertir avant de creer une NOUVELLE fiche si le NOM ou
+// le TELEPHONE saisi correspond deja a un contact existant. Les deux modules
+// partagent le meme carnet de contacts, donc la recherche couvre les deux.
+// N'empeche jamais de continuer (homonymes ou numero partage possibles) —
+// previent seulement, avec le detail de ce qui existe deja.
+function findExistingContactMatches(nom, tel){
+  const nomNorm = (nom||'').trim().toLowerCase();
+  const telNorm = (tel||'').trim();
+  const nameMatches = [], telMatches = [];
+  function scan(list, source){
+    list.forEach(function(x){
+      if(nomNorm && x.nom && x.nom.trim().toLowerCase() === nomNorm){
+        nameMatches.push(source + ': ' + x.nom + (x.tel ? ' (' + x.tel + ')' : ''));
+      }
+      if(telNorm && x.tel && x.tel.trim() === telNorm){
+        telMatches.push(source + ': ' + x.nom + ' — ' + x.tel);
+      }
+    });
+  }
+  scan(CLIENTS, 'Client/Prospect');
+  scan(PIPELINE, 'Pipeline');
+  return { nameMatches: nameMatches, telMatches: telMatches };
+}
+
+// Renvoie true si la creation doit etre ARRETEE (l'utilisateur a annule apres
+// l'avertissement), false si on peut continuer normalement.
+function warnIfDuplicateContact(nom, tel){
+  const m = findExistingContactMatches(nom, tel);
+  if(m.nameMatches.length === 0 && m.telMatches.length === 0) return false;
+  let msg = '';
+  if(m.nameMatches.length > 0) msg += 'Un contact du MEME NOM existe deja :\n- ' + m.nameMatches.join('\n- ') + '\n\n';
+  if(m.telMatches.length > 0) msg += 'Ce NUMERO DE TELEPHONE est deja utilise par :\n- ' + m.telMatches.join('\n- ') + '\n\n';
+  msg += 'Voulez-vous tout de meme creer cette nouvelle fiche ?';
+  return !confirm(msg);
+}
+
+// Rapport complet (module Rapports & Analyses) : regroupe TOUS les contacts
+// existants (Clients & Prospects + Pipeline) par nom et par telephone, et
+// affiche les groupes qui contiennent plus d'une fiche. Calcul 100% local,
+// aucun appel reseau supplementaire.
+function duplicateContactsReportHtml(){
+  const all = CLIENTS.map(function(c){ return { nom:c.nom, tel:c.tel, source:'Client/Prospect', ville:c.ville }; })
+    .concat(PIPELINE.map(function(p){ return { nom:p.nom, tel:p.tel, source:'Pipeline', ville:p.ville }; }));
+
+  // Doublons de NOM : le meme nom saisi PLUS D'UNE FOIS DANS LE MEME MODULE.
+  // Important : une fiche Client + sa fiche Pipeline jumelle (meme nom, mais
+  // modules differents) est le fonctionnement NORMAL du lien Pipeline <->
+  // Clients & Prospects — ce n'est pas un doublon, donc on regroupe par
+  // (nom, module) et non par nom seul, sinon quasiment toutes les fiches
+  // remonteraient comme "doublon" alors qu'elles sont parfaitement normales.
+  const byNameSource = {};
+  all.forEach(function(x){
+    const nomKey = (x.nom||'').trim().toLowerCase();
+    if(nomKey) (byNameSource[nomKey + '|' + x.source] = byNameSource[nomKey + '|' + x.source] || []).push(x);
+  });
+  const nameDupes = Object.keys(byNameSource).map(function(k){ return byNameSource[k]; }).filter(function(g){ return g.length > 1; });
+
+  // Doublons de TELEPHONE : le meme numero utilise par des NOMS DIFFERENTS
+  // (souvent une faute de frappe dans le nom, ou la meme personne enregistree
+  // deux fois sous deux noms legerement differents). La paire normale
+  // Client+Pipeline d'un seul contact a le meme nom ET le meme telephone,
+  // donc elle n'est jamais signalee ici.
+  const byTel = {};
+  all.forEach(function(x){
+    const telKey = (x.tel||'').trim();
+    if(telKey) (byTel[telKey] = byTel[telKey] || []).push(x);
+  });
+  const telDupes = Object.keys(byTel).map(function(k){ return byTel[k]; }).filter(function(g){
+    const names = {};
+    g.forEach(function(x){ names[(x.nom||'').trim().toLowerCase()] = true; });
+    return Object.keys(names).length > 1;
+  });
+
+  function groupsHtml(groups, icon, keyFn){
+    if(groups.length === 0) return '<div class="td-muted" style="padding:6px 0">Aucun detecte.</div>';
+    return groups.map(function(g){
+      return '<div style="padding:7px 0;border-bottom:1px solid var(--border)">' +
+        '<div style="font-weight:700;font-size:12px;margin-bottom:3px">' + icon + ' ' + keyFn(g) + '</div>' +
+        g.map(function(x){ return '<div class="td-muted" style="font-size:12px">— ' + x.source + ' : ' + x.nom + (x.tel ? ' — ' + x.tel : '') + (x.ville ? ' — ' + x.ville : '') + '</div>'; }).join('') +
+        '</div>';
+    }).join('');
+  }
+
+  return '<div style="font-size:11px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Meme nom saisi plusieurs fois dans le meme module (' + nameDupes.length + ')</div>' +
+    groupsHtml(nameDupes, '👤', function(g){ return g[0].nom; }) +
+    '<div style="font-size:11px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 6px">Meme telephone utilise par des noms differents (' + telDupes.length + ')</div>' +
+    groupsHtml(telDupes, '📞', function(g){ return g[0].tel; });
+}
+
 // Convertit un statut Client en etape Pipeline. Comme les deux modules
 // partagent desormais le meme vocabulaire pour les stades "prospect"
 // (Nouveau prospect, Contacte, Offre envoyee, En negociation), seuls les
@@ -4332,7 +4425,8 @@ function buildModals(){
     fieldRow(fieldText('pr-tel','Telephone','+227 XX XX XX XX'), fieldText('pr-valeur','Valeur estimee (FCFA)','70000')) +
     fieldRow(fieldSelect('pr-etape','Etape',PIPELINE_STAGES), fieldSelect('m-ville-3','Ville — Niger',[])) +
     fieldRow(fieldDate('pr-dateest','Date estimee de signature'), fieldSelect('pr-sku','Produit lie', PRODUITS.map(function(p){return p.sku+' — '+p.nom;}))) +
-    fieldRow(fieldText('pr-qte','Quantite','1'), fieldSelect('pr-entrepot','Entrepot prevu', ENTREPOTS.map(function(e){return e.nom;})));
+    fieldRow(fieldText('pr-qte','Quantite','1'), fieldSelect('pr-entrepot','Entrepot prevu', ENTREPOTS.map(function(e){return e.nom;}))) +
+    fieldTextarea('pr-notes','Notes');
   modals += modalShell('modal-prospect', 'Nouveau Prospect — Pipeline', prospectBody,
     btnGhost('Annuler', "closeModal('modal-prospect')") + btnRed('Ajouter', 'addProspect()'));
 
@@ -4913,6 +5007,8 @@ function removeClientBuilderLigne(idx){
 function addClient(){
   const nom = el('cl-nom').value.trim();
   if(!nom){ alert('Entrez un nom'); return; }
+  const telSaisi = el('cl-tel').value.trim();
+  if(warnIfDuplicateContact(nom, telSaisi)) return;
   const ville = el('m-ville-1').value;
   const zone = el('cl-zone').value;
   const produitLabel = CLIENT_BUILDER_LIGNES.length > 0
@@ -4920,7 +5016,7 @@ function addClient(){
     : '-';
   const client = {
     id: Date.now(), nom: nom, type: el('cl-type').value.split(' ')[0],
-    ville: ville, zone: zone || ville, tel: el('cl-tel').value, email:'',
+    ville: ville, zone: zone || ville, tel: telSaisi, email:'',
     societe:'', source: el('cl-source').value,
     statut: el('cl-statut').value, produit: produitLabel,
     asg: el('m-asg-1').value, notes: el('cl-notes').value.trim(), date: new Date().toLocaleDateString('fr-FR'),
@@ -5067,14 +5163,17 @@ function pipelineEtapeToClientStatut(etape){
 function addProspect(){
   const nom = el('pr-nom').value.trim();
   if(!nom){ alert('Entrez un nom'); return; }
+  const telSaisi = el('pr-tel').value.trim();
+  if(warnIfDuplicateContact(nom, telSaisi)) return;
   const skuRaw = el('pr-sku').value;
   const sku = skuRaw.split(' — ')[0];
   const etape = el('pr-etape').value;
   const p = {
     id: Date.now(), nom: nom, type: el('pr-type').value.split(' ')[0],
     val: parseInt(el('pr-valeur').value) || 30000, etape: etape,
-    asg: CU.nom, ville: el('m-ville-3').value, tel: el('pr-tel').value.trim(), dateEstimee: el('pr-dateest').value || '—', locked: false,
-    sku: sku, qte: parseInt(el('pr-qte').value) || 1, entrepot: el('pr-entrepot').value, reservationFaite: false
+    asg: CU.nom, ville: el('m-ville-3').value, tel: telSaisi, dateEstimee: el('pr-dateest').value || '—', locked: false,
+    sku: sku, qte: parseInt(el('pr-qte').value) || 1, entrepot: el('pr-entrepot').value, reservationFaite: false,
+    notes: el('pr-notes').value.trim()
   };
   PIPELINE.push(p);
   if(etape === 'Gagne'){
