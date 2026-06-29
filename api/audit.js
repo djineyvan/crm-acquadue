@@ -30,52 +30,6 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    if (req.method === 'GET' && req.query.fix_sku) {
-      // Diagnostic + correction ponctuelle (demande explicite) : repere et
-      // corrige les references (sku) utilisees dans Pipeline / Mouvements de
-      // stock / Stock qui ne correspondent a AUCUN produit existant — signe
-      // d'une fiche orpheline (produit renomme/recree sans que les liens
-      // aient suivi). Execution server-side, en une seule fois par table —
-      // contrairement a une cascade cote navigateur, donc sans risque de
-      // saturer les connexions a la base avec de nombreux appels paralleles.
-      const action = req.query.fix_sku; // '1' = diagnostic lecture-seule, 'apply' = corrige
-
-      if (action === 'apply') {
-        const from = (req.query.from || '').trim();
-        const to = (req.query.to || '').trim();
-        if (!from || !to) return res.status(400).json({ error: 'Parametres from et to requis' });
-
-        const pipelineMaj = await sql`UPDATE pipeline SET sku = ${to} WHERE sku = ${from} RETURNING id`;
-        const mouvementsMaj = await sql`UPDATE mouvements_stock SET sku = ${to} WHERE sku = ${from} RETURNING id`;
-        const stockMaj = await sql`UPDATE stock SET sku = ${to} WHERE sku = ${from} RETURNING id`;
-
-        return res.status(200).json({
-          de: from, vers: to,
-          pipeline_corrige: pipelineMaj.length,
-          mouvements_stock_corrige: mouvementsMaj.length,
-          stock_corrige: stockMaj.length
-        });
-      }
-
-      const produitsRows = await sql`SELECT sku FROM produits`;
-      const validSkus = produitsRows.map(function(r){ return r.sku; });
-      const pipelineGroups = await sql`SELECT sku, COUNT(*) AS n FROM pipeline WHERE sku IS NOT NULL AND sku <> '' GROUP BY sku`;
-      const mouvementsGroups = await sql`SELECT sku, COUNT(*) AS n FROM mouvements_stock WHERE sku IS NOT NULL AND sku <> '' GROUP BY sku`;
-      const stockGroups = await sql`SELECT sku, COUNT(*) AS n FROM stock WHERE sku IS NOT NULL AND sku <> '' GROUP BY sku`;
-
-      function filterOrphans(rows){
-        return rows.filter(function(r){ return validSkus.indexOf(r.sku) === -1; })
-                   .map(function(r){ return { sku: r.sku, count: Number(r.n) }; });
-      }
-
-      return res.status(200).json({
-        produits_existants: validSkus,
-        pipeline_orphelins: filterOrphans(pipelineGroups),
-        mouvements_stock_orphelins: filterOrphans(mouvementsGroups),
-        stock_orphelins: filterOrphans(stockGroups)
-      });
-    }
-
     if (req.method === 'GET' && req.query.createurs) {
       const detail = req.query.createurs; // '1' (resume), 'devis'/'factures'/'depenses' (liste), ou 'assign' (attribution)
 
