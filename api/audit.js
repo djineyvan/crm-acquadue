@@ -100,6 +100,79 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    if (req.method === 'GET' && req.query.wipe_produits_stocks) {
+      // Vidage controle du module "Produits & Stocks" (produits, stock, mouvements_stock).
+      // Les entrepots et les packs promo NE sont PAS touches par cette action.
+      // Mode 'dry-run' (valeur != 'confirm') : ne fait QUE compter, ne supprime rien.
+      // Mode 'confirm' : prend d'abord une sauvegarde complete (toutes tables) dans
+      // backups_history, PUIS supprime. Demande explicite du Super Admin (Yvan).
+      const mode = req.query.wipe_produits_stocks;
+
+      const counts = await Promise.all([
+        sql`SELECT COUNT(*) AS n FROM produits`,
+        sql`SELECT COUNT(*) AS n FROM stock`,
+        sql`SELECT COUNT(*) AS n FROM mouvements_stock`
+      ]);
+      const resume = {
+        produits: Number(counts[0][0].n),
+        stock: Number(counts[1][0].n),
+        mouvements_stock: Number(counts[2][0].n)
+      };
+
+      if (mode !== 'confirm') {
+        return res.status(200).json({
+          mode: 'dry-run',
+          a_supprimer: resume,
+          info: 'Aucune suppression effectuee. Ajoutez &wipe_produits_stocks=confirm pour executer (une sauvegarde complete sera prise automatiquement avant).'
+        });
+      }
+
+      const BACKUP_TABLES = [
+        'users', 'clients', 'pipeline', 'tasks', 'comm_perf', 'campagnes', 'publications',
+        'produits', 'entrepots', 'stock', 'mouvements_stock', 'fournisseurs',
+        'commandes_fournisseur', 'demandes_achat', 'inventaires', 'devis', 'factures',
+        'depenses', 'notifications', 'rh_presence', 'rh_conges', 'documents'
+      ];
+      await sql`CREATE TABLE IF NOT EXISTS backups_history (
+        id SERIAL PRIMARY KEY,
+        type TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        taille TEXT,
+        payload JSONB
+      )`;
+      const dump = {};
+      for (const t of BACKUP_TABLES) {
+        try {
+          const rows = await sql.query('SELECT * FROM ' + t);
+          dump[t] = t === 'users' ? rows.map(function(r) { const c = Object.assign({}, r); delete c.pass; return c; }) : rows;
+        } catch (e) { dump[t] = []; }
+      }
+      const payloadStr = JSON.stringify(dump);
+      const sizeLabel = payloadStr.length < 1024 * 1024
+        ? Math.round(payloadStr.length / 1024) + ' Ko'
+        : (payloadStr.length / 1024 / 1024).toFixed(1) + ' Mo';
+      const backupRow = await sql`INSERT INTO backups_history (type, taille, payload)
+                 VALUES ('Auto-avant-vidage-Produits-Stocks', ${sizeLabel}, ${dump})
+                 RETURNING id, created_at, taille`;
+
+      await sql`DELETE FROM mouvements_stock`;
+      await sql`DELETE FROM stock`;
+      await sql`DELETE FROM produits`;
+
+      await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)
+                 VALUES ('Systeme', 'Direction', 'Vidage module Produits & Stocks',
+                 ${'Supprime: ' + resume.produits + ' produits, ' + resume.stock + ' lignes de stock, ' + resume.mouvements_stock + ' mouvements. Sauvegarde #' + backupRow[0].id + ' prise avant.'},
+                 'dot-red', 'SY', '#888', 'audit-tool')`;
+
+      return res.status(200).json({
+        success: true,
+        supprime: resume,
+        backup_id: backupRow[0].id,
+        backup_taille: backupRow[0].taille,
+        message: 'Module Produits & Stocks vide. Sauvegarde #' + backupRow[0].id + ' disponible pour restauration si besoin (menu Centre de Controle).'
+      });
+    }
+
     if (req.method === 'GET') {
       const dept = req.query.dept;
       const rows = dept
