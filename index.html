@@ -1277,8 +1277,18 @@ function viewPipeCard(id){
   // opportunite du Pipeline EST un prospect, donc cette permission s'applique
   // ici aussi (demande explicite : "valider les etapes d'avancement du
   // prospect dans le pipeline").
+  let pipeActions = '';
   if((isSuperAdmin() || canModifyProspectInfo()) && p.etape !== 'Gagne' && p.etape !== 'Perdu'){
-    rows.push(['Action', '<button class="btn btn-red btn-sm" onclick="advancePipelineStage(' + p.id + ')">Faire avancer a l\'etape suivante →</button> <button class="btn btn-ghost btn-sm" onclick="markPipelineLost(' + p.id + ')">✗ Marquer perdu</button>']);
+    pipeActions += '<button class="btn btn-red btn-sm" onclick="advancePipelineStage(' + p.id + ')">Faire avancer a l\'etape suivante →</button> <button class="btn btn-ghost btn-sm" onclick="markPipelineLost(' + p.id + ')">✗ Marquer perdu</button> ';
+  }
+  // Suppression definitive — reservee au Super Admin, disponible quelle que
+  // soit l'etape (y compris Gagne/Perdu, pour pouvoir nettoyer les fiches
+  // fantomes qui restent apres une suppression cote Clients & Prospects).
+  if(isSuperAdmin()){
+    pipeActions += '<button class="btn btn-ghost btn-sm" onclick="deletePipeline(' + p.id + ')">🗑 Supprimer</button>';
+  }
+  if(pipeActions){
+    rows.push(['Action', pipeActions]);
   }
   if(p.lastModifiedBy){
     rows.push(['Derniere modification', modStampHtml(p)]);
@@ -1349,6 +1359,30 @@ function markPipelineLost(id){
     ensureClientExists(p.nom, p.qte + 'x ' + p.sku, pipelineEtapeToClientStatut('Perdu'), p.type, p.ville, 'Pipeline');
   }
   closeModal('modal-detail');
+  go('pipe');
+}
+
+// Demande explicite : jusqu'ici, aucune action de suppression n'existait pour
+// le Pipeline. Une fiche supprimee cote Clients & Prospects restait donc
+// affichee indefiniment comme opportunite "fantome" (bug signale). Reserve au
+// Super Admin, disponible sur toutes les etapes.
+function deletePipeline(id){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer une opportunite du pipeline.');
+  const p = PIPELINE.find(function(x){return String(x.id)===String(id);});
+  if(!p) return;
+  if(p.reservationFaite){
+    if(!confirm('Cette opportunite a du stock reserve. La supprimer va liberer cette reservation. Continuer ?')) return;
+    const row = STOCK.find(function(s){return s.sku===p.sku && s.entrepot===p.entrepot;});
+    if(row){ row.reserve = Math.max(0, (row.reserve||0) - p.qte); if(typeof syncStockRow==='function') syncStockRow(row); }
+  } else {
+    if(!confirm('Confirmer la suppression definitive de l\'opportunite "'+p.nom+'" du pipeline ? Cette action est irreversible. La fiche Clients & Prospects liee (si elle existe) n\'est pas affectee.')) return;
+  }
+  const idx = PIPELINE.indexOf(p);
+  PIPELINE.splice(idx,1);
+  logAction('Opportunite supprimee du pipeline', p.nom, 'red');
+  if(typeof dbDelete === 'function') dbDelete('pipeline', p.id);
+  closeModal('modal-detail');
+  updateAllBadges();
   go('pipe');
 }
 
@@ -3373,11 +3407,91 @@ function visibleDevisFactureFilter(doc){
   return cl ? cl.asg === CU.nom : false;
 }
 
+// ── FILTRES AVANCES — Devis & Facturation ───────────────────────────────────
+// Meme pattern que les filtres avances de Clients & Prospects. Un seul jeu de
+// filtres s'applique aux deux sous-onglets (Devis et Factures) ; le champ
+// "Mode de paiement" ne concerne que les Factures et n'exclut jamais une
+// ligne de Devis (qui n'a pas ce champ).
+let DEVIS_FACTURE_FILTERS = { client:'', asg:'', statut:'', modePaiement:'', dateFrom:'', dateTo:'' };
+let DEVIS_FACTURE_FILTERS_VISIBLE = false;
+
+function countActiveDevisFactureFilters(){
+  return Object.keys(DEVIS_FACTURE_FILTERS).filter(function(k){ return !!DEVIS_FACTURE_FILTERS[k]; }).length;
+}
+
+function toggleDevisFactureFiltersPanel(){
+  DEVIS_FACTURE_FILTERS_VISIBLE = !DEVIS_FACTURE_FILTERS_VISIBLE;
+  renderView('facturation');
+}
+
+function applyDevisFactureFilters(){
+  DEVIS_FACTURE_FILTERS.client = el('dff-client').value.trim().toLowerCase();
+  DEVIS_FACTURE_FILTERS.asg = el('dff-asg').value;
+  DEVIS_FACTURE_FILTERS.statut = el('dff-statut').value;
+  DEVIS_FACTURE_FILTERS.modePaiement = el('dff-mode').value;
+  DEVIS_FACTURE_FILTERS.dateFrom = el('dff-date-from').value;
+  DEVIS_FACTURE_FILTERS.dateTo = el('dff-date-to').value;
+  renderView('facturation');
+}
+
+function resetDevisFactureFilters(){
+  DEVIS_FACTURE_FILTERS = { client:'', asg:'', statut:'', modePaiement:'', dateFrom:'', dateTo:'' };
+  renderView('facturation');
+}
+
+function matchesDevisFactureFilters(doc){
+  if(DEVIS_FACTURE_FILTERS.client && (doc.client||'').toLowerCase().indexOf(DEVIS_FACTURE_FILTERS.client) < 0) return false;
+  if(DEVIS_FACTURE_FILTERS.asg && (doc.creePar||'') !== DEVIS_FACTURE_FILTERS.asg) return false;
+  if(DEVIS_FACTURE_FILTERS.statut && doc.statut !== DEVIS_FACTURE_FILTERS.statut) return false;
+  if(DEVIS_FACTURE_FILTERS.modePaiement && doc.mode_paiement && doc.mode_paiement !== DEVIS_FACTURE_FILTERS.modePaiement) return false;
+  if(DEVIS_FACTURE_FILTERS.dateFrom || DEVIS_FACTURE_FILTERS.dateTo){
+    const iso = frDateToIso(doc.date);
+    if(iso){
+      if(DEVIS_FACTURE_FILTERS.dateFrom && iso < DEVIS_FACTURE_FILTERS.dateFrom) return false;
+      if(DEVIS_FACTURE_FILTERS.dateTo && iso > DEVIS_FACTURE_FILTERS.dateTo) return false;
+    }
+  }
+  return true;
+}
+
+function devisFactureFiltersPanelHtml(){
+  function opt(value, currentValue, label){
+    return '<option value="' + value + '"' + (value === currentValue ? ' selected' : '') + '>' + label + '</option>';
+  }
+  function selectField(id, label, currentValue, choices){
+    return '<div class="form-group"><label class="form-label">' + label + '</label><select class="form-select" id="' + id + '" onchange="applyDevisFactureFilters()">' +
+      opt('', currentValue, 'Tous / Toutes') + choices.map(function(v){ return opt(v, currentValue, v); }).join('') +
+      '</select></div>';
+  }
+  const commerciaux = distinctSortedValues(DEVIS.concat(FACTURES), 'creePar');
+  const statuts = distinctSortedValues(DEVIS.concat(FACTURES), 'statut');
+  const modes = distinctSortedValues(FACTURES, 'mode_paiement');
+
+  let h = '<div style="font-size:11px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Filtrer la liste</div>';
+  h += '<div class="form-row">' +
+    '<div class="form-group"><label class="form-label">Client (contient)</label><input class="form-input" id="dff-client" value="' + DEVIS_FACTURE_FILTERS.client.replace(/"/g,'&quot;') + '" oninput="applyDevisFactureFilters()" placeholder="Ex: Hotel Gawaye"/></div>' +
+    selectField('dff-asg','Assigne a', DEVIS_FACTURE_FILTERS.asg, commerciaux) +
+    '</div>';
+  h += '<div class="form-row">' + selectField('dff-statut','Statut', DEVIS_FACTURE_FILTERS.statut, statuts) + selectField('dff-mode','Mode de paiement (factures)', DEVIS_FACTURE_FILTERS.modePaiement, modes) + '</div>';
+  h += '<div class="form-row">' +
+    '<div class="form-group"><label class="form-label">Date de creation — du</label><input class="form-input" type="date" id="dff-date-from" value="' + DEVIS_FACTURE_FILTERS.dateFrom + '" onchange="applyDevisFactureFilters()"/></div>' +
+    '<div class="form-group"><label class="form-label">au</label><input class="form-input" type="date" id="dff-date-to" value="' + DEVIS_FACTURE_FILTERS.dateTo + '" onchange="applyDevisFactureFilters()"/></div>' +
+    '</div>';
+  h += '<div style="text-align:right;margin-top:6px">' + btnGhost('Reinitialiser les filtres', 'resetDevisFactureFilters()') + '</div>';
+  return h;
+}
+
 function renderFacturation(c){
-  let h = '<div style="margin-bottom:11px"><div class="tabs">';
+  let h = '<div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">';
+  h += '<div class="tabs">';
   h += '<button class="tab active" onclick="switchTab(this,\'fa\',\'d\')">Devis</button>';
   h += '<button class="tab" onclick="switchTab(this,\'fa\',\'f\')">Factures</button>';
-  h += '</div></div>';
+  h += '</div>';
+  h += '<button class="btn btn-ghost btn-sm" onclick="toggleDevisFactureFiltersPanel()">🔎 Filtres' + (countActiveDevisFactureFilters() > 0 ? ' (' + countActiveDevisFactureFilters() + ')' : '') + '</button>';
+  h += '</div>';
+  if(DEVIS_FACTURE_FILTERS_VISIBLE){
+    h += '<div class="card" style="margin-bottom:11px">' + devisFactureFiltersPanelHtml() + '</div>';
+  }
   h += '<div id="fa-d">';
   h += '  <div style="margin-bottom:9px;text-align:right"><button class="btn btn-red btn-sm" onclick="openDevisBuilder()">+ Devis</button></div>';
   h += '  <div class="card"><div class="table-wrap"><table id="tbl-devis"></table></div></div>';
@@ -3388,8 +3502,9 @@ function renderFacturation(c){
   h += '</div>';
   c.innerHTML = h;
 
+  const devisData = DEVIS.filter(visibleDevisFactureFilter).filter(matchesDevisFactureFilters).filter(function(d){ return searchMatch(d, ['id','client','creePar']); });
   el('tbl-devis').innerHTML = '<thead><tr><th>N° Devis</th><th>Client</th><th>Assigne a</th><th>Produits</th><th>Montant</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>' +
-    DEVIS.filter(visibleDevisFactureFilter).filter(function(d){ return searchMatch(d, ['id','client','creePar']); }).map(function(d){
+    devisData.map(function(d){
       const montant = lignesTotalMontant(d.lignes);
       const gesteEnAttente = d.gesteStatut === 'en_attente';
       let actions = '<button class="btn btn-ghost btn-sm" onclick="viewDevisDetail(\''+d.id+'\')">👁 Details</button>';
@@ -3410,10 +3525,11 @@ function renderFacturation(c){
       }
       const gesteBadge = d.gesteStatut === 'en_attente' ? ' <span class="tag tag-gold">🎁 Geste en attente</span>' : d.gesteStatut === 'valide' ? ' <span class="tag tag-green">🎁 Geste valide</span>' : '';
       return '<tr><td class="td-bold">'+d.id+'</td><td>'+d.client+'</td><td class="td-muted">'+(d.creePar||'-')+'</td><td class="td-muted">'+lignesLabel(d.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+d.date+'</td><td>'+statusTag(d.statut)+(d.reservationFaite?' <span class="locked-badge">📦 Reserve</span>':'')+gesteBadge+'</td><td>'+actions+'</td></tr>';
-    }).join('') + '</tbody>';
+    }).join('') + (devisData.length === 0 ? '<tr><td colspan="8" class="td-muted" style="text-align:center;padding:14px">'+(GLOBAL_SEARCH || countActiveDevisFactureFilters()>0 ?'Aucun resultat avec ces criteres':'Aucun devis')+'</td></tr>' : '') + '</tbody>';
 
+  const facturesData = FACTURES.filter(visibleDevisFactureFilter).filter(matchesDevisFactureFilters).filter(function(f){ return searchMatch(f, ['id','client','creePar']); });
   el('tbl-fact').innerHTML = '<thead><tr><th>N° Facture</th><th>Client</th><th>Assigne a</th><th>Produits</th><th>Montant</th><th>Date</th><th>Mode paiement</th><th>Statut</th><th>Renouvellement</th><th></th></tr></thead><tbody>' +
-    FACTURES.filter(visibleDevisFactureFilter).filter(function(f){ return searchMatch(f, ['id','client','creePar']); }).map(function(f){
+    facturesData.map(function(f){
       const montant = lignesTotalMontant(f.lignes);
       const gesteEnAttente = f.gesteStatut === 'en_attente';
       let actions = '<button class="btn btn-ghost btn-sm" onclick="viewFactureDetail(\''+f.id+'\')">👁 Details</button>';
@@ -3431,7 +3547,7 @@ function renderFacturation(c){
       }
       const gesteBadge = f.gesteStatut === 'en_attente' ? ' <span class="tag tag-gold">🎁 Geste en attente</span>' : f.gesteStatut === 'valide' ? ' <span class="tag tag-green">🎁 Geste valide</span>' : '';
       return '<tr><td class="td-bold">'+f.id+'</td><td>'+f.client+'</td><td class="td-muted">'+(f.creePar||'-')+'</td><td class="td-muted">'+lignesLabel(f.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+f.date+'</td><td class="td-muted">'+f.mode_paiement+'</td><td>'+statusTag(f.statut)+(f.sortieAppliquee?' <span class="locked-badge">📤 Stock sorti</span>':'')+gesteBadge+'</td><td class="td-muted">'+(f.dateRenouvellement?f.dateRenouvellement:'-')+'</td><td>'+actions+'</td></tr>';
-    }).join('') + '</tbody>';
+    }).join('') + (facturesData.length === 0 ? '<tr><td colspan="10" class="td-muted" style="text-align:center;padding:14px">'+(GLOBAL_SEARCH || countActiveDevisFactureFilters()>0 ?'Aucun resultat avec ces criteres':'Aucune facture')+'</td></tr>' : '') + '</tbody>';
 }
 
 function viewDevisDetail(devisId){
@@ -4811,11 +4927,21 @@ function deleteClient(id){
   if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer un contact.');
   const cl = CLIENTS.find(function(x){return String(x.id)===String(id);});
   if(!cl) return;
-  if(!confirm('Confirmer la suppression definitive de "'+cl.nom+'" ? Cette action est irreversible. Les devis/factures deja crees pour ce contact ne sont pas affectes.')) return;
+  if(!confirm('Confirmer la suppression definitive de "'+cl.nom+'" ? Cette action est irreversible. Les devis/factures deja crees pour ce contact ne sont pas affectes. La fiche liee dans le Pipeline Commercial (si elle existe) sera egalement supprimee.')) return;
   const idx = CLIENTS.indexOf(cl);
   CLIENTS.splice(idx,1);
   logAction('Client/Prospect supprime', cl.nom, 'red');
   if(typeof dbDelete === 'function') dbDelete('clients', cl.id);
+  // Cascade : supprime aussi l'opportunite Pipeline liee au meme nom — sinon
+  // elle reste affichee comme fiche "fantome" alors que le contact n'existe
+  // plus (bug signale ; la synchro Pipeline <-> Clients ne couvrait jusqu'ici
+  // que la creation et la mise a jour, jamais la suppression).
+  const linkedPipe = PIPELINE.find(function(p){ return p.nom.trim().toLowerCase() === cl.nom.trim().toLowerCase(); });
+  if(linkedPipe){
+    const pIdx = PIPELINE.indexOf(linkedPipe);
+    PIPELINE.splice(pIdx,1);
+    if(typeof dbDelete === 'function') dbDelete('pipeline', linkedPipe.id);
+  }
   updateAllBadges();
   go('clients');
 }
