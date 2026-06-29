@@ -152,6 +152,43 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    if (req.method === 'GET' && req.query.rename_nom_entity) {
+      // Correction manuelle ponctuelle du champ "nom" d'une fiche Client OU
+      // Pipeline, identifiee par son id. Reserve aux cas ou aucune
+      // correspondance automatique (nom/telephone) n'a pu etre trouvee par
+      // le code (cf. chantier desync Pipeline<->Clients, juin 2026).
+      // Usage : ?rename_nom_entity=pipeline&rename_nom_id=...&rename_nom_value=...
+      //         puis &confirm=1 pour executer reellement.
+      const entity = req.query.rename_nom_entity;
+      const id = req.query.rename_nom_id;
+      const nouveauNom = req.query.rename_nom_value;
+      if (['clients', 'pipeline'].indexOf(entity) === -1) {
+        return res.status(400).json({ error: 'rename_nom_entity doit etre "clients" ou "pipeline"' });
+      }
+      if (!id || !nouveauNom) {
+        return res.status(400).json({ error: 'rename_nom_id et rename_nom_value sont requis' });
+      }
+      const before = await sql.query('SELECT id, nom FROM ' + entity + ' WHERE id = $1', [id]);
+      if (before.length === 0) return res.status(404).json({ error: 'Enregistrement introuvable (id=' + id + ' dans ' + entity + ')' });
+
+      if (req.query.confirm !== '1') {
+        return res.status(200).json({
+          mode: 'dry-run',
+          entity: entity,
+          avant: before[0].nom,
+          apres_propose: nouveauNom,
+          info: 'Aucune modification effectuee. Ajoutez &confirm=1 pour appliquer.'
+        });
+      }
+
+      await sql.query('UPDATE ' + entity + ' SET nom = $1 WHERE id = $2', [nouveauNom, id]);
+      await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)
+                 VALUES ('Systeme', 'Direction', 'Correction manuelle de nom',
+                 ${entity + ' #' + id + ': "' + before[0].nom + '" renomme en "' + nouveauNom + '"'},
+                 'dot-gold', 'SY', '#888', 'audit-tool')`;
+      return res.status(200).json({ success: true, entity: entity, id: id, avant: before[0].nom, apres: nouveauNom });
+    }
+
     if (req.method === 'GET') {
       const dept = req.query.dept;
       const rows = dept
