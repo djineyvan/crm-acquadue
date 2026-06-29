@@ -1257,6 +1257,13 @@ function viewPipeCard(id){
   const p = PIPELINE.find(function(x){return String(x.id)===String(id);});
   if(!p) return;
   const produit = PRODUITS.find(function(x){return x.sku===p.sku;});
+  // Lien avec Clients & Prospects (demande explicite) : le Pipeline n'a pas
+  // sa propre colonne "notes" — il reutilise celle de la fiche Client liee
+  // (retrouvee par nom, comme le fait deja syncPipelineToClient/syncClientToPipeline).
+  // p.notes est donc un miroir transitoire, recalcule a chaque ouverture de
+  // la fiche, et renvoye vers Clients & Prospects a l'enregistrement.
+  const clLinked = CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === p.nom.trim().toLowerCase(); });
+  p.notes = clLinked ? (clLinked.notes || '') : '';
   const rows = [
     ['Nom du prospect', p.nom],
     ['Type', typeTag(p.type)],
@@ -1269,6 +1276,7 @@ function viewPipeCard(id){
     ['Produit lie', (produit ? produit.nom : p.sku || '-') + (p.qte ? ' x' + p.qte : '')],
     ['Entrepot concerne', p.entrepot || '-'],
     ['Stock reserve pour cette vente', p.reservationFaite ? '<span style="color:var(--gold);font-weight:700">✓ Reserve (' + p.qte + ' unite(s))</span>' : '<span class="td-muted">Pas encore reserve</span>'],
+    ['Notes', p.notes ? p.notes.replace(/\n/g,'<br/>') : '<span class="td-muted">-</span>'],
     ['Statut de verrouillage', p.locked ? lockBadge() : '<span class="td-muted">Modifiable</span>']
   ];
 
@@ -1304,7 +1312,8 @@ function viewPipeCard(id){
       ['Telephone', 'tel', p.tel || ''],
       ['Valeur (FCFA)', 'val', p.val],
       ['Ville', 'ville', p.ville],
-      ['Date estimee', 'dateEstimee', p.dateEstimee || '']
+      ['Date estimee', 'dateEstimee', p.dateEstimee || ''],
+      ['Notes', 'notes', p.notes || '', 'textarea']
     ],
     onSave: function(){ go('pipe'); }
   });
@@ -2511,7 +2520,7 @@ function renderProduits(c){
       const dispo = stockDisponibleForSku(p.sku);
       const low = isLowStock(p.sku);
       const prixAchatDisplay = canModifyPrixAchat() ? fcfa(p.prix_achat) : '<span class="td-muted">Confidentiel</span>';
-      return '<tr><td class="td-bold">'+p.sku+'</td><td>'+p.nom+'</td><td>'+tag(p.categorie,'tag-blue')+'</td><td>'+prixAchatDisplay+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(p.prix_vente)+'</td><td>'+(low?'<span style="color:var(--red);font-weight:700">'+dispo+' ⚠️</span>':dispo)+'</td><td><button class="btn btn-ghost btn-sm" onclick="viewProductDetail(\''+p.sku+'\')">👁 Details</button></td></tr>';
+      return '<tr><td class="td-bold">'+p.sku+'</td><td>'+p.nom+'</td><td>'+tag(p.categorie,'tag-blue')+'</td><td>'+prixAchatDisplay+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(p.prix_vente)+'</td><td>'+(low?'<span style="color:var(--red);font-weight:700">'+dispo+' ⚠️</span>':dispo)+'</td><td><button class="btn btn-ghost btn-sm" onclick="viewProductDetail(\''+p.sku+'\')">👁 Details</button>'+(isSuperAdmin()?' <button class="btn btn-ghost btn-sm" onclick="deleteProduit(\''+p.sku+'\')">🗑 Supprimer</button>':'')+'</td></tr>';
     }).join('') + '</tbody>';
 }
 
@@ -2553,6 +2562,7 @@ function viewProductDetail(sku){
     record: p,
     entity: 'produits',
     fields: [
+      ['Reference (SKU)', 'sku_ref', p.sku, 'readonly'],
       ['Nom', 'nom', p.nom],
       ['Categorie', 'categorie', [{label:'Dispositif',selected:p.categorie==='Dispositif'},{label:'Consommable',selected:p.categorie==='Consommable'},{label:'Accessoire',selected:p.categorie==='Accessoire'}], 'select'],
       ['Marque', 'marque', p.marque],
@@ -3326,9 +3336,14 @@ function syncPipelineToClient(p){
   let changed = false;
   if(p.tel && cl.tel !== p.tel){ cl.tel = p.tel; changed = true; }
   if(p.ville && cl.ville !== p.ville){ cl.ville = p.ville; changed = true; }
+  // Notes (demande explicite) : le Pipeline n'a pas sa propre colonne notes,
+  // il reutilise celle de Clients & Prospects. A la difference de tel/ville,
+  // une note vide est un edit volontaire valide (effacer la note), donc pas
+  // de garde-fou "jamais ecraser par du vide" ici.
+  if(p.notes !== undefined && cl.notes !== p.notes){ cl.notes = p.notes; changed = true; }
   if(changed){
     stampModification(cl);
-    if(typeof dbUpdate === 'function') dbUpdate('clients', cl.id, { tel:cl.tel, ville:cl.ville, last_modified_by:cl.lastModifiedBy, last_modified_at:cl.lastModifiedAt });
+    if(typeof dbUpdate === 'function') dbUpdate('clients', cl.id, { tel:cl.tel, ville:cl.ville, notes:cl.notes, last_modified_by:cl.lastModifiedBy, last_modified_at:cl.lastModifiedAt });
   }
 }
 
@@ -5106,6 +5121,15 @@ function addProduit(){
   const sku = el('pd-sku').value.trim();
   const nom = el('pd-nom').value.trim();
   if(!sku || !nom){ alert('Entrez une reference et un nom'); return; }
+  // Bug signale (corrige) : sans ce garde-fou, une reference deja existante
+  // est silencieusement ignoree cote base de donnees (la reference est la
+  // cle unique du catalogue) — le produit s'affichait quand meme localement
+  // pendant quelques secondes, puis disparaissait au prochain rafraichissement
+  // automatique des donnees, puisqu'il n'avait en realite jamais ete enregistre.
+  if(PRODUITS.find(function(x){ return x.sku.trim().toLowerCase() === sku.toLowerCase(); })){
+    alert('Cette reference (SKU) "' + sku + '" existe deja dans le catalogue. Choisissez une reference unique.');
+    return;
+  }
   PRODUITS.push({
     sku: sku, nom: nom, categorie: el('pd-cat').value, marque: el('pd-marque').value || 'Lorenzetti',
     desc: el('pd-desc').value, prix_achat: parseInt(el('pd-prix-achat').value) || 0,
@@ -5119,6 +5143,22 @@ function addProduit(){
   });
   logAction('Produit ajoute au catalogue', sku + ' — ' + nom, 'blue');
   closeModal('modal-produit');
+  go('produits');
+}
+
+// Demande explicite : aucune suppression n'existait pour le Catalogue
+// Produits (meme lacune deja corrigee pour le Pipeline) — necessaire entre
+// autres pour nettoyer une reference creee par erreur ou en double.
+function deleteProduit(sku){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer un produit du catalogue.');
+  const p = PRODUITS.find(function(x){return x.sku===sku;});
+  if(!p) return;
+  if(!confirm('Confirmer la suppression definitive de "'+p.nom+'" ('+p.sku+') du catalogue ? Cette action est irreversible. Les mouvements de stock et devis/factures existants ne sont pas affectes, mais ne seront plus lies a une fiche produit.')) return;
+  const idx = PRODUITS.indexOf(p);
+  PRODUITS.splice(idx,1);
+  logAction('Produit supprime du catalogue', p.sku + ' — ' + p.nom, 'red');
+  if(typeof dbDelete === 'function') dbDelete('produits', p.sku);
+  closeModal('modal-detail');
   go('produits');
 }
 

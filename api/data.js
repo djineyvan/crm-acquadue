@@ -115,7 +115,15 @@ module.exports = async function handler(req, res) {
           throw conflictErr;
         }
       }
-      return res.status(201).json({ success: true, row: result[0] || row });
+      // Bug corrige : ON CONFLICT ... DO NOTHING renvoie 0 ligne quand la cle
+      // (id/sku/...) existe deja, mais l'API repondait quand meme success:true
+      // en renvoyant les donnees recues en echo. Le front-end croyait donc la
+      // creation reussie alors qu'aucune ligne n'avait ete ecrite, et
+      // l'enregistrement disparaissait au prochain rechargement des donnees.
+      if (result.length === 0) {
+        return res.status(409).json({ error: 'Cette valeur de ' + meta.idCol + ' existe deja (' + (row[meta.idCol] !== undefined ? row[meta.idCol] : '?') + ').' });
+      }
+      return res.status(201).json({ success: true, row: result[0] });
     }
 
     if (req.method === 'PUT') {
