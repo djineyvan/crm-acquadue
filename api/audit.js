@@ -100,76 +100,55 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    if (req.method === 'GET' && req.query.wipe_produits_stocks) {
-      // Vidage controle du module "Produits & Stocks" (produits, stock, mouvements_stock).
-      // Les entrepots et les packs promo NE sont PAS touches par cette action.
-      // Mode 'dry-run' (valeur != 'confirm') : ne fait QUE compter, ne supprime rien.
-      // Mode 'confirm' : prend d'abord une sauvegarde complete (toutes tables) dans
-      // backups_history, PUIS supprime. Demande explicite du Super Admin (Yvan).
-      const mode = req.query.wipe_produits_stocks;
-
-      const counts = await Promise.all([
-        sql`SELECT COUNT(*) AS n FROM produits`,
-        sql`SELECT COUNT(*) AS n FROM stock`,
-        sql`SELECT COUNT(*) AS n FROM mouvements_stock`
+    if (req.method === 'GET' && req.query.search_contact) {
+      // Diagnostic lecture-seule : recherche un nom ou un numero de telephone
+      // dans clients, pipeline, devis et factures, pour comprendre pourquoi
+      // un contact donne apparait (ou pas) dans tel ou tel module.
+      const q = '%' + req.query.search_contact.trim() + '%';
+      const [inClients, inPipeline, inDevis, inFactures] = await Promise.all([
+        sql`SELECT id, nom, tel, statut, source, ville, asg, last_modified_at FROM clients WHERE nom ILIKE ${q} OR tel ILIKE ${q}`,
+        sql`SELECT id, nom, tel, etape, asg, ville, last_modified_at FROM pipeline WHERE nom ILIKE ${q} OR tel ILIKE ${q}`,
+        sql`SELECT id, client, date_devis, statut FROM devis WHERE client ILIKE ${q}`,
+        sql`SELECT id, client, date_fact, statut FROM factures WHERE client ILIKE ${q}`
       ]);
-      const resume = {
-        produits: Number(counts[0][0].n),
-        stock: Number(counts[1][0].n),
-        mouvements_stock: Number(counts[2][0].n)
-      };
+      return res.status(200).json({
+        recherche: req.query.search_contact,
+        clients: inClients,
+        pipeline: inPipeline,
+        devis: inDevis,
+        factures: inFactures
+      });
+    }
 
-      if (mode !== 'confirm') {
-        return res.status(200).json({
-          mode: 'dry-run',
-          a_supprimer: resume,
-          info: 'Aucune suppression effectuee. Ajoutez &wipe_produits_stocks=confirm pour executer (une sauvegarde complete sera prise automatiquement avant).'
-        });
-      }
+    if (req.method === 'GET' && req.query.sync_audit) {
+      // Diagnostic lecture-seule : compare clients et pipeline nom-a-nom
+      // (meme logique que syncPipelineToClient/syncClientToPipeline cote
+      // client : nom trim + lowercase) pour reveler les desynchronisations :
+      // - presents dans clients mais pas dans pipeline (et inversement)
+      // - doublons de nom dans un meme module (qui cassent le matching 1-pour-1)
+      const [clients, pipeline] = await Promise.all([
+        sql`SELECT id, nom, tel, statut, source FROM clients`,
+        sql`SELECT id, nom, tel, etape FROM pipeline`
+      ]);
+      function norm(n){ return (n||'').trim().toLowerCase(); }
+      const clientNames = {}, pipelineNames = {};
+      clients.forEach(function(c){ const k = norm(c.nom); (clientNames[k]=clientNames[k]||[]).push(c); });
+      pipeline.forEach(function(p){ const k = norm(p.nom); (pipelineNames[k]=pipelineNames[k]||[]).push(p); });
 
-      const BACKUP_TABLES = [
-        'users', 'clients', 'pipeline', 'tasks', 'comm_perf', 'campagnes', 'publications',
-        'produits', 'entrepots', 'stock', 'mouvements_stock', 'fournisseurs',
-        'commandes_fournisseur', 'demandes_achat', 'inventaires', 'devis', 'factures',
-        'depenses', 'notifications', 'rh_presence', 'rh_conges', 'documents'
-      ];
-      await sql`CREATE TABLE IF NOT EXISTS backups_history (
-        id SERIAL PRIMARY KEY,
-        type TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW(),
-        taille TEXT,
-        payload JSONB
-      )`;
-      const dump = {};
-      for (const t of BACKUP_TABLES) {
-        try {
-          const rows = await sql.query('SELECT * FROM ' + t);
-          dump[t] = t === 'users' ? rows.map(function(r) { const c = Object.assign({}, r); delete c.pass; return c; }) : rows;
-        } catch (e) { dump[t] = []; }
-      }
-      const payloadStr = JSON.stringify(dump);
-      const sizeLabel = payloadStr.length < 1024 * 1024
-        ? Math.round(payloadStr.length / 1024) + ' Ko'
-        : (payloadStr.length / 1024 / 1024).toFixed(1) + ' Mo';
-      const backupRow = await sql`INSERT INTO backups_history (type, taille, payload)
-                 VALUES ('Auto-avant-vidage-Produits-Stocks', ${sizeLabel}, ${dump})
-                 RETURNING id, created_at, taille`;
-
-      await sql`DELETE FROM mouvements_stock`;
-      await sql`DELETE FROM stock`;
-      await sql`DELETE FROM produits`;
-
-      await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)
-                 VALUES ('Systeme', 'Direction', 'Vidage module Produits & Stocks',
-                 ${'Supprime: ' + resume.produits + ' produits, ' + resume.stock + ' lignes de stock, ' + resume.mouvements_stock + ' mouvements. Sauvegarde #' + backupRow[0].id + ' prise avant.'},
-                 'dot-red', 'SY', '#888', 'audit-tool')`;
+      const clientsSansPipeline = clients.filter(function(c){ return !pipelineNames[norm(c.nom)]; });
+      const pipelineSansClient = pipeline.filter(function(p){ return !clientNames[norm(p.nom)]; });
+      const nomsDupClients = Object.keys(clientNames).filter(function(k){ return clientNames[k].length > 1; }).map(function(k){ return clientNames[k]; });
+      const nomsDupPipeline = Object.keys(pipelineNames).filter(function(k){ return pipelineNames[k].length > 1; }).map(function(k){ return pipelineNames[k]; });
 
       return res.status(200).json({
-        success: true,
-        supprime: resume,
-        backup_id: backupRow[0].id,
-        backup_taille: backupRow[0].taille,
-        message: 'Module Produits & Stocks vide. Sauvegarde #' + backupRow[0].id + ' disponible pour restauration si besoin (menu Centre de Controle).'
+        total_clients: clients.length,
+        total_pipeline: pipeline.length,
+        clients_sans_fiche_pipeline: clientsSansPipeline.length,
+        pipeline_sans_fiche_client: pipelineSansClient.length,
+        exemples_clients_sans_pipeline: clientsSansPipeline.slice(0, 15),
+        exemples_pipeline_sans_client: pipelineSansClient.slice(0, 15),
+        noms_dupliques_dans_clients: nomsDupClients,
+        noms_dupliques_dans_pipeline: nomsDupPipeline
       });
     }
 
