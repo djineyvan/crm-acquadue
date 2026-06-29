@@ -976,7 +976,7 @@ function visibleClientsPourFacturation(){
   return CLIENTS.filter(function(c){ return c.asg === CU.nom; });
 }
 function fieldClientPicker(selectId, textId){
-  const opts = visibleClientsPourFacturation().map(function(c){ return c.nom; });
+  const opts = visibleClientsPourFacturation().slice().sort(function(a,b){ return a.nom.localeCompare(b.nom, 'fr', {sensitivity:'base'}); }).map(function(c){ return c.nom; });
   return '<div class="form-group"><label class="form-label">Client</label>' +
     '<select class="form-select" id="'+selectId+'" onchange="toggleNewClientField(\''+selectId+'\',\''+textId+'\')" style="margin-bottom:6px">' +
     '<option value="">— Nouveau client —</option>' +
@@ -995,7 +995,7 @@ function fillClientSelect(id){
   // Builder lui-meme) ecrasait la liste deja filtree par la liste complete,
   // non filtree, de tous les clients. C'est ce qui causait "la liste
   // deroulante affiche toujours tous les contacts".
-  const clientsVisibles = visibleClientsPourFacturation();
+  const clientsVisibles = visibleClientsPourFacturation().slice().sort(function(a,b){ return a.nom.localeCompare(b.nom, 'fr', {sensitivity:'base'}); });
   sel.innerHTML = '<option value="">— Nouveau client —</option>' + clientsVisibles.map(function(c){ return "<option>" + c.nom + "</option>"; }).join("");
   if(current) sel.value = current;
 }
@@ -1230,15 +1230,30 @@ function renderDash(c){
 }
 
 // ── PIPELINE (6 etapes selon cahier des charges) ────────────────────────────
+let PIPE_TYPE_FILTER = 'Tous';
+function setPipeTypeFilter(btn, type){
+  PIPE_TYPE_FILTER = type;
+  btn.closest('.tabs').querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+  btn.classList.add('active');
+  renderPipeBoard();
+}
 function renderPipe(c){
   let h = '<div style="margin-bottom:11px;display:flex;gap:8px;align-items:center">';
-  h += '<div class="tabs"><button class="tab active">Tous</button><button class="tab">B2C</button><button class="tab">B2B</button></div>';
+  h += '<div class="tabs">' +
+    '<button class="tab' + (PIPE_TYPE_FILTER==='Tous'?' active':'') + '" onclick="setPipeTypeFilter(this,\'Tous\')">Tous</button>' +
+    '<button class="tab' + (PIPE_TYPE_FILTER==='B2C'?' active':'') + '" onclick="setPipeTypeFilter(this,\'B2C\')">B2C</button>' +
+    '<button class="tab' + (PIPE_TYPE_FILTER==='B2B'?' active':'') + '" onclick="setPipeTypeFilter(this,\'B2B\')">B2B</button>' +
+    '</div>';
   h += '<button class="btn btn-ghost btn-sm" onclick="openRoiCalc()">🧮 Calculateur ROI</button>';
   h += '<button class="btn btn-red btn-sm" onclick="openModal(\'modal-prospect\')">+ Nouveau prospect</button>';
   h += '</div><div class="pipeline" id="pipe-board"></div>';
   c.innerHTML = h;
+  renderPipeBoard();
+}
 
-  const data = PIPELINE.filter(visiblePipeFilter).filter(function(x){ return searchMatch(x, ['nom','ville','tel','asg','sku','type']); });
+function renderPipeBoard(){
+  const data = PIPELINE.filter(visiblePipeFilter).filter(function(x){ return searchMatch(x, ['nom','ville','tel','asg','sku','type']); })
+    .filter(function(x){ return PIPE_TYPE_FILTER === 'Tous' || x.type === PIPE_TYPE_FILTER; });
   const cols = ["muted2","blue","gold","purple","green","red"];
   let board = '';
   PIPELINE_STAGES.forEach(function(stage, i){
@@ -1384,12 +1399,21 @@ function deletePipeline(id){
     const row = STOCK.find(function(s){return s.sku===p.sku && s.entrepot===p.entrepot;});
     if(row){ row.reserve = Math.max(0, (row.reserve||0) - p.qte); if(typeof syncStockRow==='function') syncStockRow(row); }
   } else {
-    if(!confirm('Confirmer la suppression definitive de l\'opportunite "'+p.nom+'" du pipeline ? Cette action est irreversible. La fiche Clients & Prospects liee (si elle existe) n\'est pas affectee.')) return;
+    if(!confirm('Confirmer la suppression definitive de l\'opportunite "'+p.nom+'" du pipeline ? Cette action est irreversible. La fiche Clients & Prospects liee (si elle existe) sera egalement supprimee.')) return;
   }
   const idx = PIPELINE.indexOf(p);
   PIPELINE.splice(idx,1);
   logAction('Opportunite supprimee du pipeline', p.nom, 'red');
   if(typeof dbDelete === 'function') dbDelete('pipeline', p.id);
+  // Cascade (demande explicite, symetrique a deleteClient) : supprime aussi
+  // la fiche Clients & Prospects liee, sinon elle reste affichee comme fiche
+  // "fantome" alors que l'opportunite n'existe plus.
+  const linkedClient = findLinkedClient(p);
+  if(linkedClient){
+    const cIdx = CLIENTS.indexOf(linkedClient);
+    CLIENTS.splice(cIdx,1);
+    if(typeof dbDelete === 'function') dbDelete('clients', linkedClient.id);
+  }
   closeModal('modal-detail');
   updateAllBadges();
   go('pipe');
@@ -2790,12 +2814,12 @@ function renderStock(c){
   }
   c.innerHTML = h;
 
-  el('tbl-stock').innerHTML = '<thead><tr><th>Produit</th><th>Entrepot</th><th>Stock Reel</th><th>Reserve</th><th>Disponible</th><th>Seuil</th><th>Statut</th><th></th></tr></thead><tbody>' +
+  el('tbl-stock').innerHTML = '<thead><tr><th>Produit</th><th>SKU/Reference</th><th>Entrepot</th><th>Stock Reel</th><th>Reserve</th><th>Disponible</th><th>Seuil</th><th>Statut</th><th></th></tr></thead><tbody>' +
     STOCK.map(function(s){
       const p = PRODUITS.find(function(x){return x.sku===s.sku;});
       const dispo = s.qte - (s.reserve||0);
       const low = dispo <= s.seuil;
-      return '<tr><td class="td-bold">'+(p?p.nom:s.sku)+'</td><td class="td-muted">'+s.entrepot+'</td><td style="font-weight:600">'+s.qte+'</td><td style="color:var(--gold);font-weight:600">'+(s.reserve||0)+'</td><td style="font-weight:700;color:'+(low?'var(--red)':'var(--green)')+'">'+dispo+'</td><td class="td-muted">'+s.seuil+'</td><td>'+(low?tag('Critique','tag-red'):tag('OK','tag-green'))+'</td><td><button class="btn btn-ghost btn-sm" onclick="viewStockDetail(\''+s.sku+'\',\''+s.entrepot+'\')">👁 Details</button></td></tr>';
+      return '<tr><td class="td-bold">'+(p?p.nom:s.sku)+'</td><td class="td-muted">'+s.sku+'</td><td class="td-muted">'+s.entrepot+'</td><td style="font-weight:600">'+s.qte+'</td><td style="color:var(--gold);font-weight:600">'+(s.reserve||0)+'</td><td style="font-weight:700;color:'+(low?'var(--red)':'var(--green)')+'">'+dispo+'</td><td class="td-muted">'+s.seuil+'</td><td>'+(low?tag('Critique','tag-red'):tag('OK','tag-green'))+'</td><td><button class="btn btn-ghost btn-sm" onclick="viewStockDetail(\''+s.sku+'\',\''+s.entrepot+'\')">👁 Details</button></td></tr>';
     }).join('') + '</tbody>';
 
   // Reservations: all stock rows with reserve > 0, cross-referenced with what created them
@@ -3298,6 +3322,7 @@ function prixApresRemise(produit, qte, prixBase){
 function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType, ville, source, tel){
   if(!nomClient) return;
   let cl = CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === nomClient.trim().toLowerCase(); });
+  if(!cl && tel) cl = CLIENTS.find(function(c){ return c.tel && c.tel.trim() === tel.trim(); });
   const todayStr = new Date().toLocaleDateString('fr-FR');
 
   if(cl){
@@ -3330,14 +3355,29 @@ function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType,
 
 // ── LIEN PIPELINE <-> CLIENTS & PROSPECTS (demande explicite) ───────────────
 // Les deux modules sont retrouves l'un par rapport a l'autre via le NOM
-// (insensible a la casse), comme le fait deja ensureClientExists(). Quand on
-// modifie le telephone, la ville ou le type d'une fiche d'un cote, l'autre
-// cote (s'il existe) est mis a jour automatiquement et immediatement —
-// jusqu'ici, ce n'etait jamais le cas pour les modifications directes.
-function syncPipelineToClient(p){
-  const cl = CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === p.nom.trim().toLowerCase(); });
+// (insensible a la casse) en priorite, comme le fait deja ensureClientExists().
+// PROBLEME RACINE corrige ici (juin 2026) : quand on renommait une fiche
+// (ex: un prospect "A19" renomme en son vrai nom), la recherche par nom
+// echouait puisque le nom avait DEJA change au moment de la synchro -> les
+// deux fiches restaient pour toujours desynchronisees, avec deux noms
+// differents pour le meme contact. Solution : on essaie maintenant, dans
+// l'ordre, (1) le nom actuel, (2) l'ANCIEN nom (avant la modification, passe
+// en parametre), (3) le numero de telephone (identifiant plus stable qu'un
+// nom qu'on peut corriger/completer). Et on propage desormais le NOM lui-meme
+// entre les deux fiches, pas seulement tel/ville/notes.
+function findLinkedClient(p, oldNom){
+  const byNom = function(n){ return CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === (n||'').trim().toLowerCase(); }); };
+  return byNom(p.nom) || (oldNom && byNom(oldNom)) || (p.tel && CLIENTS.find(function(c){ return c.tel && c.tel.trim() === p.tel.trim(); }));
+}
+function findLinkedPipeline(cl, oldNom){
+  const byNom = function(n){ return PIPELINE.find(function(x){ return x.nom.trim().toLowerCase() === (n||'').trim().toLowerCase(); }); };
+  return byNom(cl.nom) || (oldNom && byNom(oldNom)) || (cl.tel && PIPELINE.find(function(x){ return x.tel && x.tel.trim() === cl.tel.trim(); }));
+}
+function syncPipelineToClient(p, oldNom){
+  const cl = findLinkedClient(p, oldNom);
   if(!cl) return;
   let changed = false;
+  if(p.nom && cl.nom !== p.nom){ cl.nom = p.nom; changed = true; }
   if(p.tel && cl.tel !== p.tel){ cl.tel = p.tel; changed = true; }
   if(p.ville && cl.ville !== p.ville){ cl.ville = p.ville; changed = true; }
   // Notes (demande explicite) : le Pipeline n'a pas sa propre colonne notes,
@@ -3347,7 +3387,7 @@ function syncPipelineToClient(p){
   if(p.notes !== undefined && cl.notes !== p.notes){ cl.notes = p.notes; changed = true; }
   if(changed){
     stampModification(cl);
-    if(typeof dbUpdate === 'function') dbUpdate('clients', cl.id, { tel:cl.tel, ville:cl.ville, notes:cl.notes, last_modified_by:cl.lastModifiedBy, last_modified_at:cl.lastModifiedAt });
+    if(typeof dbUpdate === 'function') dbUpdate('clients', cl.id, { nom:cl.nom, tel:cl.tel, ville:cl.ville, notes:cl.notes, last_modified_by:cl.lastModifiedBy, last_modified_at:cl.lastModifiedAt });
   }
 }
 
@@ -3452,8 +3492,8 @@ function clientStatutToPipelineEtape(statut){
   return 'Nouveau prospect';
 }
 
-function syncClientToPipeline(cl){
-  let p = PIPELINE.find(function(x){ return x.nom.trim().toLowerCase() === cl.nom.trim().toLowerCase(); });
+function syncClientToPipeline(cl, oldNom){
+  let p = findLinkedPipeline(cl, oldNom);
   if(!p){
     // Demande explicite : si la Source choisie est "Pipeline" et qu'aucune
     // fiche Pipeline ne correspond encore a ce nom, on la cree automatiquement.
@@ -3471,6 +3511,7 @@ function syncClientToPipeline(cl){
     return;
   }
   let changed = false;
+  if(cl.nom && p.nom !== cl.nom){ p.nom = cl.nom; changed = true; }
   if(cl.tel && p.tel !== cl.tel){ p.tel = cl.tel; changed = true; }
   if(cl.ville && p.ville !== cl.ville){ p.ville = cl.ville; changed = true; }
   if(cl.type && p.type !== cl.type){ p.type = cl.type; changed = true; }
@@ -3480,7 +3521,7 @@ function syncClientToPipeline(cl){
   }
   if(changed){
     stampModification(p);
-    if(typeof dbUpdate === 'function') dbUpdate('pipeline', p.id, { ville:p.ville, tel:p.tel, type:p.type, etape:p.etape, last_modified_by:p.lastModifiedBy, last_modified_at:p.lastModifiedAt });
+    if(typeof dbUpdate === 'function') dbUpdate('pipeline', p.id, { nom:p.nom, ville:p.ville, tel:p.tel, type:p.type, etape:p.etape, last_modified_by:p.lastModifiedBy, last_modified_at:p.lastModifiedAt });
   }
 }
 
@@ -4784,6 +4825,7 @@ function saveDetailEdit(){
   const record = DETAIL_CTX.record;
   const fields = DETAIL_CTX.fields;
   const skip = DETAIL_CTX.skipFields || [];
+  const oldNom = record.nom; // capture AVANT mutation : indispensable pour retrouver la fiche liee (Pipeline<->Clients) si le nom est justement ce qui change
 
   fields.forEach(function(f){
     const key = f[1];
@@ -4807,7 +4849,7 @@ function saveDetailEdit(){
   stampModification(record);
   if(typeof DETAIL_CTX.onSave === 'function') DETAIL_CTX.onSave(record);
 
-  syncDetailEditToDb(DETAIL_CTX.entity, record);
+  syncDetailEditToDb(DETAIL_CTX.entity, record, oldNom);
 
   logAction('Modification', DETAIL_CTX.title + ' modifie par ' + CU.nom, 'gold');
   closeModal('modal-detail');
@@ -4817,18 +4859,18 @@ function saveDetailEdit(){
 // Maps the in-memory (camelCase) record back to DB (snake_case) columns per entity,
 // then sends the update. Centralizing this here means every openXDetail() call only
 // needs to set `entity` in its editConfig — no per-entity wiring elsewhere.
-function syncDetailEditToDb(entity, record){
+function syncDetailEditToDb(entity, record, oldNom){
   if(!entity || typeof dbUpdate !== 'function') return;
 
   if(entity === 'clients'){
     dbUpdate('clients', record.id, { nom:record.nom, type:record.type, tel:record.tel, email:record.email,
       ville:record.ville, zone:record.zone, source:record.source, produit:record.produit, asg:record.asg, notes:record.notes,
       statut:record.statut, last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
-    syncClientToPipeline(record);
+    syncClientToPipeline(record, oldNom);
   } else if(entity === 'pipeline'){
     dbUpdate('pipeline', record.id, { nom:record.nom, val:record.val, ville:record.ville, tel:record.tel, date_estimee:record.dateEstimee,
       last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
-    syncPipelineToClient(record);
+    syncPipelineToClient(record, oldNom);
   } else if(entity === 'tasks'){
     dbUpdate('tasks', record.id, { titre:record.titre, pri:record.pri, date_limite:record.date, desc_tache:record.desc, statut:record.statut,
       last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
@@ -5048,7 +5090,7 @@ function deleteClient(id){
   // elle reste affichee comme fiche "fantome" alors que le contact n'existe
   // plus (bug signale ; la synchro Pipeline <-> Clients ne couvrait jusqu'ici
   // que la creation et la mise a jour, jamais la suppression).
-  const linkedPipe = PIPELINE.find(function(p){ return p.nom.trim().toLowerCase() === cl.nom.trim().toLowerCase(); });
+  const linkedPipe = findLinkedPipeline(cl);
   if(linkedPipe){
     const pIdx = PIPELINE.indexOf(linkedPipe);
     PIPELINE.splice(pIdx,1);
