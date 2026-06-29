@@ -2980,6 +2980,7 @@ function deleteMovement(id){
     const m = MOUVEMENTS_STOCK[idx];
     logAction("Mouvement de stock supprime", m.produit+' — '+m.qte+' unites — '+m.date, "red");
     MOUVEMENTS_STOCK.splice(idx,1);
+    dbDelete('mouvements_stock', m.id);
     go('stock');
   }
 }
