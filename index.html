@@ -547,8 +547,19 @@ function fcfa(n){ return Number(n).toLocaleString("fr-FR") + " FCFA"; }
 // looked "frozen" / unresponsive. onGlobalSearch() is called on every
 // keystroke (see buildApp()'s topbar HTML) and simply re-renders whichever
 // page is currently open, this time filtered by GLOBAL_SEARCH. ──
+// Strips whitespace and invisible Unicode direction/formatting marks (these
+// sneak into phone numbers copy-pasted from WhatsApp/contacts apps — e.g.
+// "\u202a+227 96 88 55 04\u202c" — and silently broke substring search,
+// since "+22796885504" typed by the user never matched the stored value
+// once spaces/invisible chars were in the way).
+function normalizeForSearch(str){
+  return String(str)
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, '')
+    .replace(/\s+/g, '')
+    .toLowerCase();
+}
 function onGlobalSearch(value){
-  GLOBAL_SEARCH = (value || '').trim().toLowerCase();
+  GLOBAL_SEARCH = normalizeForSearch(value || '');
   if(CURRENT_VIEW) renderView(CURRENT_VIEW);
 }
 // Returns true if `record` should be shown given the current GLOBAL_SEARCH
@@ -559,7 +570,7 @@ function searchMatch(record, fields){
   return fields.some(function(f){
     const v = record[f];
     if(v === null || v === undefined) return false;
-    return String(v).toLowerCase().indexOf(GLOBAL_SEARCH) >= 0;
+    return normalizeForSearch(v).indexOf(GLOBAL_SEARCH) >= 0;
   });
 }
 
