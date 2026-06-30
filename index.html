@@ -1497,7 +1497,7 @@ function renderComm(c){
       const pc = p>=100 ? "pf-green" : p>=60 ? "pf-blue" : "pf-gold";
       const linkedUser = USERS.find(function(u){return u.nom===cm.nom;});
       const inactiveTag = (linkedUser && !linkedUser.actif) ? ' <span class="tag tag-red" style="font-size:10px">Compte desactive</span>' : '';
-      return '<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar '+avColor(i)+'">'+ini(cm.nom)+'</div><div class="td-bold">'+cm.nom+inactiveTag+'</div></div></td><td class="td-muted">'+cm.ville+'</td><td class="td-muted">'+cm.zone+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(ventes)+'</td><td class="td-muted">'+fcfa(cm.obj)+'</td><td><div style="font-size:11px;font-weight:700;margin-bottom:2px">'+p+'%</div><div class="progress-bar" style="min-width:50px"><div class="progress-fill '+pc+'" style="width:'+Math.min(p,100)+'%"></div></div></td><td style="color:var(--green);font-weight:700">'+fcfa(Math.round(ventes*cm.tx/100))+'</td><td class="td-muted">'+(cm.dateEnregistrement||'-')+'</td><td>'+editBtn(i)+'</td></tr>';
+      return '<tr><td><div style="display:flex;align-items:center;gap:7px"><div class="avatar '+avColor(i)+'">'+ini(cm.nom)+'</div><div class="td-bold">'+cm.nom+inactiveTag+'</div></div></td><td class="td-muted">'+cm.ville+'</td><td class="td-muted">'+cm.zone+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(ventes)+'</td><td class="td-muted">'+fcfa(cm.obj)+'</td><td><div style="font-size:11px;font-weight:700;margin-bottom:2px">'+p+'%</div><div class="progress-bar" style="min-width:50px"><div class="progress-fill '+pc+'" style="width:'+Math.min(p,100)+'%"></div></div></td><td style="color:var(--green);font-weight:700">'+fcfa(Math.round(ventes*cm.tx/100))+'</td><td class="td-muted">'+(cm.dateEnregistrement||'-')+'</td><td><button class="btn btn-ghost btn-sm" onclick="viewCommercialSales('+i+')">👁 Ses ventes</button> '+editBtn(i)+'</td></tr>';
     }).join('') + '</tbody>';
 
   el('obj-view').innerHTML = '<table><thead><tr><th>Commercial</th><th>Ville</th><th>Objectif</th><th>Realise (ce mois)</th><th>Ecart</th><th>%</th><th></th></tr></thead><tbody>' +
@@ -1505,7 +1505,7 @@ function renderComm(c){
       const cm = pair.cm, i = pair.idx;
       const ventes = ventesDe(cm);
       const ecart = ventes - cm.obj; const p = cm.obj > 0 ? Math.round(ventes/cm.obj*100) : 0;
-      return '<tr><td class="td-bold">'+cm.nom+'</td><td class="td-muted">'+cm.ville+'</td><td>'+fcfa(cm.obj)+'</td><td style="color:var(--red);font-weight:600">'+fcfa(ventes)+'</td><td style="color:'+(ecart>=0?'var(--green)':'var(--red)')+';font-weight:600">'+(ecart>=0?'+':'')+fcfa(ecart)+'</td><td style="font-weight:700;color:'+(p>=100?'var(--green)':p>=60?'var(--blue)':'var(--red)')+'">'+p+'%</td><td>'+editBtn(i)+'</td></tr>';
+      return '<tr><td class="td-bold">'+cm.nom+'</td><td class="td-muted">'+cm.ville+'</td><td>'+fcfa(cm.obj)+'</td><td style="color:var(--red);font-weight:600">'+fcfa(ventes)+'</td><td style="color:'+(ecart>=0?'var(--green)':'var(--red)')+';font-weight:600">'+(ecart>=0?'+':'')+fcfa(ecart)+'</td><td style="font-weight:700;color:'+(p>=100?'var(--green)':p>=60?'var(--blue)':'var(--red)')+'">'+p+'%</td><td><button class="btn btn-ghost btn-sm" onclick="viewCommercialSales('+i+')">👁 Ses ventes</button> '+editBtn(i)+'</td></tr>';
     }).join('') + '</tbody></table>';
 
   const totalComm = COMM_PERF.reduce(function(s,cm){return s+Math.round(ventesDe(cm)*cm.tx/100);},0);
@@ -1528,6 +1528,48 @@ function renderComm(c){
 
 // ── EDITION D'UN MEMBRE D'EQUIPE — Super Admin uniquement, raison obligatoire ──
 let TEAM_EDIT_IDX = null;
+// Detail des ventes d'un commercial : tous les produits vendus (factures
+// payees), agreges par produit, plus la liste des factures correspondantes.
+// Meme logique d'attribution que computeVentesParCommercial (le client
+// porte un champ "asg" = a qui il est assigne) — pas de structure de
+// donnees nouvelle, on lit juste FACTURES + CLIENTS autrement.
+function viewCommercialSales(idx){
+  const cm = COMM_PERF[idx];
+  if(!cm) return;
+  const mesFactures = FACTURES.filter(function(f){
+    if(f.statut !== 'Payee') return false;
+    const cl = CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === (f.client||'').trim().toLowerCase(); });
+    return cl && cl.asg === cm.nom;
+  });
+
+  const parProduit = {};
+  mesFactures.forEach(function(f){
+    (f.lignes||[]).forEach(function(ligne){
+      if(!ligne.sku) return; // ligne de remise (pack promo) — pas un produit vendu en soi
+      if(!parProduit[ligne.sku]) parProduit[ligne.sku] = { nom: ligne.nom, qte: 0, montant: 0 };
+      parProduit[ligne.sku].qte += ligne.qte;
+      parProduit[ligne.sku].montant += (ligne.prixUnitaire||0) * ligne.qte;
+    });
+  });
+  const produitsRows = Object.keys(parProduit).map(function(sku){ return parProduit[sku]; }).sort(function(a,b){ return b.montant - a.montant; });
+  const totalMontant = produitsRows.reduce(function(s,p){ return s + p.montant; }, 0);
+
+  const tableHtml = produitsRows.length === 0
+    ? '<div class="empty-state" style="padding:10px"><div class="td-muted">Aucune vente payee enregistree pour ce commercial</div></div>'
+    : '<table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:4px">Produit</th><th style="text-align:right;padding:4px">Quantite</th><th style="text-align:right;padding:4px">Montant</th></tr></thead><tbody>' +
+      produitsRows.map(function(p){ return '<tr><td style="padding:4px">'+p.nom+'</td><td style="text-align:right;padding:4px">'+p.qte+'</td><td style="text-align:right;padding:4px;font-weight:700">'+fcfa(p.montant)+'</td></tr>'; }).join('') +
+      '</tbody><tfoot><tr><td style="padding:4px;font-weight:700">Total (toutes ventes payees)</td><td></td><td style="text-align:right;padding:4px;font-weight:700;color:var(--red)">'+fcfa(totalMontant)+'</td></tr></tfoot></table>';
+
+  const facturesListHtml = mesFactures.length === 0 ? '<span class="td-muted">-</span>' :
+    mesFactures.map(function(f){ return f.id + ' — ' + f.client + ' (' + f.date + ')'; }).join('<br>');
+
+  openDetailModal('Ventes — ' + cm.nom, [
+    ['Nombre de factures payees', String(mesFactures.length)],
+    ['Produits vendus', tableHtml],
+    ['Liste des factures', facturesListHtml]
+  ], null);
+}
+
 function openTeamEditModal(idx){
   if(!isSuperAdmin()) return;
   TEAM_EDIT_IDX = idx;
