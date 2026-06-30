@@ -3704,14 +3704,19 @@ function renderFacturation(c){
       if(gesteEnAttente && isResponsableOrAbove()){
         actions += ' <button class="btn btn-red btn-sm" onclick="validateGesteFacture(\''+f.id+'\')">✓ Valider le geste commercial</button>';
       }
-      if(f.statut === "Impayee" && !gesteEnAttente && (isSuperAdmin() || f.creePar === CU.nom)){
+      if(f.statut === "Impayee" && !f.sortieAppliquee && !gesteEnAttente && (isSuperAdmin() || f.creePar === CU.nom)){
         actions += ' <button class="btn btn-red btn-sm" onclick="markFacturePaid(\''+f.id+'\')">✓ Marquer payee / Expedier</button>';
+        actions += ' <button class="btn btn-ghost btn-sm" onclick="markFactureExpediee(\''+f.id+'\')">📤 Expedier (paiement differe)</button>';
+      }
+      if(f.statut === "Impayee" && f.sortieAppliquee && !gesteEnAttente && (isSuperAdmin() || f.creePar === CU.nom)){
+        actions += ' <button class="btn btn-red btn-sm" onclick="markFacturePaid(\''+f.id+'\')">💰 Marquer payee</button>';
       }
       if(isSuperAdmin()){
         actions += ' <button class="btn btn-ghost btn-sm" onclick="deleteFacture(\''+f.id+'\')">🗑 Supprimer</button>';
       }
       const gesteBadge = f.gesteStatut === 'en_attente' ? ' <span class="tag tag-gold">🎁 Geste en attente</span>' : f.gesteStatut === 'valide' ? ' <span class="tag tag-green">🎁 Geste valide</span>' : '';
-      return '<tr><td class="td-bold">'+f.id+'</td><td>'+f.client+'</td><td class="td-muted">'+(f.creePar||'-')+'</td><td class="td-muted">'+lignesLabel(f.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+f.date+'</td><td class="td-muted">'+f.mode_paiement+'</td><td>'+statusTag(f.statut)+(f.sortieAppliquee?' <span class="locked-badge">📤 Stock sorti</span>':'')+gesteBadge+'</td><td class="td-muted">'+(f.dateRenouvellement?f.dateRenouvellement:'-')+'</td><td>'+actions+'</td></tr>';
+      const sortieBadge = f.sortieAppliquee ? (f.statut === 'Impayee' ? ' <span class="tag tag-gold">📤 Expediee — paiement en attente</span>' : ' <span class="locked-badge">📤 Stock sorti</span>') : '';
+      return '<tr><td class="td-bold">'+f.id+'</td><td>'+f.client+'</td><td class="td-muted">'+(f.creePar||'-')+'</td><td class="td-muted">'+lignesLabel(f.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+f.date+'</td><td class="td-muted">'+f.mode_paiement+'</td><td>'+statusTag(f.statut)+sortieBadge+gesteBadge+'</td><td class="td-muted">'+(f.dateRenouvellement?f.dateRenouvellement:'-')+'</td><td>'+actions+'</td></tr>';
     }).join('') + (facturesData.length === 0 ? '<tr><td colspan="10" class="td-muted" style="text-align:center;padding:14px">'+(GLOBAL_SEARCH || countActiveDevisFactureFilters()>0 ?'Aucun resultat avec ces criteres':'Aucune facture')+'</td></tr>' : '') + '</tbody>';
 }
 
@@ -3747,7 +3752,7 @@ function viewFactureDetail(factureId){
     ['Statut', statusTag(f.statut)],
     ['Date de renouvellement', f.dateRenouvellement ? '<strong>'+f.dateRenouvellement+'</strong>' : '<span class="td-muted">Non applicable (vente non recurrente)</span>'],
     ['Devis d\'origine', f.devisOrigine || '<span class="td-muted">Vente directe (sans devis)</span>'],
-    ['Sortie de stock', f.sortieAppliquee ? '<span style="color:var(--red);font-weight:700">✓ Stock reel sorti pour ces lignes</span>' : '<span class="td-muted">Pas encore expedie</span>']
+    ['Sortie de stock', f.sortieAppliquee ? (f.statut === 'Impayee' ? '<span style="color:var(--gold);font-weight:700">📤 Expediee — paiement encore en attente</span>' : '<span style="color:var(--red);font-weight:700">✓ Stock reel sorti pour ces lignes</span>') : '<span class="td-muted">Pas encore expedie</span>']
   ];
   if(f.gesteStatut === 'en_attente') rows.push(['Geste commercial', '<span style="color:var(--gold);font-weight:700">🎁 En attente de validation par un superieur</span>']);
   if(f.gesteStatut === 'valide') rows.push(['Geste commercial', '<span style="color:var(--green);font-weight:700">🎁 Valide</span>']);
@@ -4130,6 +4135,10 @@ function convertDevisToFacture(devisId){
 }
 
 // Facture marquee payee / expediee => sortie reelle du stock pour CHAQUE ligne
+// Facture marquee payee / expediee => sortie reelle du stock pour CHAQUE ligne.
+// Si la facture a deja ete expediee separement (paiement differe, voir
+// markFactureExpediee), le stock ne ressort pas une deuxieme fois — cette
+// fonction se contente alors de changer le statut financier.
 function markFacturePaid(factureId){
   const f = FACTURES.find(function(x){return x.id===factureId;});
   if(!f) return;
@@ -4139,13 +4148,36 @@ function markFacturePaid(factureId){
   // alors les valider, pour ne pas attribuer cette action a la mauvaise personne.
   if(!isSuperAdmin() && f.creePar !== CU.nom) return alert("Seul le Super Admin ou " + (f.creePar || 'le createur de cette facture') + " peut valider cette facture.");
   if(f.gesteStatut === 'en_attente') return alert("Cette facture contient un geste commercial qui n'a pas encore ete valide par un superieur (Responsable, Admin ou Super Admin). Elle ne peut pas etre marquee payee tant qu'il n'est pas valide.");
+  const dejaExpediee = f.sortieAppliquee;
   f.statut = "Payee";
+  if(!dejaExpediee){
+    f.lignes.forEach(function(ligne){
+      if(!ligne.sku) return; // ligne de remise (pack promo) — pas un produit, rien a sortir du stock
+      consumeReservedStock(ligne.sku, ligne.qte, ligne.entrepot, 'Facture ' + f.id, CU?CU.nom:'Systeme');
+    });
+    f.sortieAppliquee = true;
+  }
+  logAction(dejaExpediee ? 'Facture marquee payee (deja expediee anterieurement)' : 'Facture payee et expediee', f.id + ' — ' + f.client, 'green');
+  go('facturation');
+}
+
+// Expedie une facture impayee SANS la marquer payee — paiement differe.
+// Sort le stock reel des aujourd'hui (la marchandise part bien chez le
+// client) mais garde le statut "Impayee" pour pouvoir suivre les paiements
+// en attente. markFacturePaid() se chargera plus tard de juste passer le
+// statut a "Payee", sans retoucher au stock (deja sorti ici).
+function markFactureExpediee(factureId){
+  const f = FACTURES.find(function(x){return x.id===factureId;});
+  if(!f) return;
+  if(!isSuperAdmin() && f.creePar !== CU.nom) return alert("Seul le Super Admin ou " + (f.creePar || 'le createur de cette facture') + " peut expedier cette facture.");
+  if(f.gesteStatut === 'en_attente') return alert("Cette facture contient un geste commercial qui n'a pas encore ete valide par un superieur (Responsable, Admin ou Super Admin). Elle ne peut pas etre expediee tant qu'il n'est pas valide.");
+  if(f.sortieAppliquee) return;
   f.lignes.forEach(function(ligne){
     if(!ligne.sku) return; // ligne de remise (pack promo) — pas un produit, rien a sortir du stock
     consumeReservedStock(ligne.sku, ligne.qte, ligne.entrepot, 'Facture ' + f.id, CU?CU.nom:'Systeme');
   });
   f.sortieAppliquee = true;
-  logAction('Facture payee et expediee', f.id + ' — ' + f.client, 'green');
+  logAction('Facture expediee — paiement differe', f.id + ' — ' + f.client, 'gold');
   go('facturation');
 }
 
@@ -6600,6 +6632,11 @@ wrapAfter('saveFactureBuilder', function(){
 wrapAfter('markFacturePaid', function(factureId){
   const f = FACTURES.find(function(x){return x.id===factureId;});
   if(f) dbUpdate('factures', f.id, { statut:f.statut, sortie_appliquee:f.sortieAppliquee, reservation_faite:false });
+  STOCK.forEach(function(s){ syncStockRow(s); });
+});
+wrapAfter('markFactureExpediee', function(factureId){
+  const f = FACTURES.find(function(x){return x.id===factureId;});
+  if(f) dbUpdate('factures', f.id, { sortie_appliquee:f.sortieAppliquee, reservation_faite:false });
   STOCK.forEach(function(s){ syncStockRow(s); });
 });
 wrapAfter('validateGesteFacture', function(factureId){
