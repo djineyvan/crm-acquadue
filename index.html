@@ -542,6 +542,18 @@ function ini(nom){ return nom.split(" ").map(function(n){return n[0];}).join("")
 function avColor(i){ return AVC[i % 5]; }
 function fcfa(n){ return Number(n).toLocaleString("fr-FR") + " FCFA"; }
 
+// Petits utilitaires de date pour les champs <input type="date"> (format
+// ISO YYYY-MM-DD) — utilises pour les echeances de paiement.
+function todayISO(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function formatDateFr(isoDate){
+  if(!isoDate) return '-';
+  const parts = isoDate.split('-');
+  return parts.length === 3 ? (parts[2] + '/' + parts[1] + '/' + parts[0]) : isoDate;
+}
+
 // ── GLOBAL SEARCH BAR — the #global-search input was sitting in the topbar
 // with no code wired to it at all (no oninput, no listener), which is why it
 // looked "frozen" / unresponsive. onGlobalSearch() is called on every
@@ -3706,7 +3718,7 @@ function renderFacturation(c){
       }
       if(f.statut === "Impayee" && !f.sortieAppliquee && !gesteEnAttente && (isSuperAdmin() || f.creePar === CU.nom)){
         actions += ' <button class="btn btn-red btn-sm" onclick="markFacturePaid(\''+f.id+'\')">✓ Marquer payee / Expedier</button>';
-        actions += ' <button class="btn btn-ghost btn-sm" onclick="markFactureExpediee(\''+f.id+'\')">📤 Expedier (paiement differe)</button>';
+        actions += ' <button class="btn btn-ghost btn-sm" onclick="openEcheanceModal(\''+f.id+'\')">📤 Expedier (paiement differe)</button>';
       }
       if(f.statut === "Impayee" && f.sortieAppliquee && !gesteEnAttente && (isSuperAdmin() || f.creePar === CU.nom)){
         actions += ' <button class="btn btn-red btn-sm" onclick="markFacturePaid(\''+f.id+'\')">💰 Marquer payee</button>';
@@ -3715,7 +3727,12 @@ function renderFacturation(c){
         actions += ' <button class="btn btn-ghost btn-sm" onclick="deleteFacture(\''+f.id+'\')">🗑 Supprimer</button>';
       }
       const gesteBadge = f.gesteStatut === 'en_attente' ? ' <span class="tag tag-gold">🎁 Geste en attente</span>' : f.gesteStatut === 'valide' ? ' <span class="tag tag-green">🎁 Geste valide</span>' : '';
-      const sortieBadge = f.sortieAppliquee ? (f.statut === 'Impayee' ? ' <span class="tag tag-gold">📤 Expediee — paiement en attente</span>' : ' <span class="locked-badge">📤 Stock sorti</span>') : '';
+      const enRetard = f.sortieAppliquee && f.statut === 'Impayee' && f.echeancePaiement && f.echeancePaiement < todayISO();
+      const sortieBadge = f.sortieAppliquee ? (f.statut === 'Impayee'
+        ? (enRetard
+            ? ' <span class="tag tag-red">⚠️ Paiement en retard depuis le ' + formatDateFr(f.echeancePaiement) + '</span>'
+            : ' <span class="tag tag-gold">📤 Expediee — paiement '+(f.echeancePaiement ? 'attendu avant le '+formatDateFr(f.echeancePaiement) : 'en attente')+'</span>')
+        : ' <span class="locked-badge">📤 Stock sorti</span>') : '';
       return '<tr><td class="td-bold">'+f.id+'</td><td>'+f.client+'</td><td class="td-muted">'+(f.creePar||'-')+'</td><td class="td-muted">'+lignesLabel(f.lignes)+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(montant)+'</td><td class="td-muted">'+f.date+'</td><td class="td-muted">'+f.mode_paiement+'</td><td>'+statusTag(f.statut)+sortieBadge+gesteBadge+'</td><td class="td-muted">'+(f.dateRenouvellement?f.dateRenouvellement:'-')+'</td><td>'+actions+'</td></tr>';
     }).join('') + (facturesData.length === 0 ? '<tr><td colspan="10" class="td-muted" style="text-align:center;padding:14px">'+(GLOBAL_SEARCH || countActiveDevisFactureFilters()>0 ?'Aucun resultat avec ces criteres':'Aucune facture')+'</td></tr>' : '') + '</tbody>';
 }
@@ -3754,6 +3771,12 @@ function viewFactureDetail(factureId){
     ['Devis d\'origine', f.devisOrigine || '<span class="td-muted">Vente directe (sans devis)</span>'],
     ['Sortie de stock', f.sortieAppliquee ? (f.statut === 'Impayee' ? '<span style="color:var(--gold);font-weight:700">📤 Expediee — paiement encore en attente</span>' : '<span style="color:var(--red);font-weight:700">✓ Stock reel sorti pour ces lignes</span>') : '<span class="td-muted">Pas encore expedie</span>']
   ];
+  if(f.sortieAppliquee && f.statut === 'Impayee' && f.echeancePaiement){
+    const enRetard = f.echeancePaiement < todayISO();
+    rows.push(['Echeance de paiement', enRetard
+      ? '<span style="color:var(--red);font-weight:700">⚠️ En retard depuis le ' + formatDateFr(f.echeancePaiement) + '</span>'
+      : '<strong>' + formatDateFr(f.echeancePaiement) + '</strong>']);
+  }
   if(f.gesteStatut === 'en_attente') rows.push(['Geste commercial', '<span style="color:var(--gold);font-weight:700">🎁 En attente de validation par un superieur</span>']);
   if(f.gesteStatut === 'valide') rows.push(['Geste commercial', '<span style="color:var(--green);font-weight:700">🎁 Valide</span>']);
   if(f.lastModifiedBy) rows.push(['Derniere modification', modStampHtml(f)]);
@@ -4161,12 +4184,24 @@ function markFacturePaid(factureId){
   go('facturation');
 }
 
+// Ouvre une petite fenetre pour demander la date d'echeance avant d'expedier
+// une facture en paiement differe (voir confirmExpedierPaiementDiffere).
+let ECHEANCE_TARGET_FACTURE = null;
+function openEcheanceModal(factureId){
+  ECHEANCE_TARGET_FACTURE = factureId;
+  el('ech-date').value = '';
+  openModal('modal-echeance');
+}
+
 // Expedie une facture impayee SANS la marquer payee — paiement differe.
 // Sort le stock reel des aujourd'hui (la marchandise part bien chez le
 // client) mais garde le statut "Impayee" pour pouvoir suivre les paiements
 // en attente. markFacturePaid() se chargera plus tard de juste passer le
 // statut a "Payee", sans retoucher au stock (deja sorti ici).
-function markFactureExpediee(factureId){
+function confirmExpedierPaiementDiffere(){
+  const factureId = ECHEANCE_TARGET_FACTURE;
+  const echeance = el('ech-date').value || '';
+  closeModal('modal-echeance');
   const f = FACTURES.find(function(x){return x.id===factureId;});
   if(!f) return;
   if(!isSuperAdmin() && f.creePar !== CU.nom) return alert("Seul le Super Admin ou " + (f.creePar || 'le createur de cette facture') + " peut expedier cette facture.");
@@ -4177,9 +4212,11 @@ function markFactureExpediee(factureId){
     consumeReservedStock(ligne.sku, ligne.qte, ligne.entrepot, 'Facture ' + f.id, CU?CU.nom:'Systeme');
   });
   f.sortieAppliquee = true;
-  logAction('Facture expediee — paiement differe', f.id + ' — ' + f.client, 'gold');
+  f.echeancePaiement = echeance;
+  logAction('Facture expediee — paiement differe' + (echeance ? ' (echeance: ' + echeance + ')' : ''), f.id + ' — ' + f.client, 'gold');
   go('facturation');
 }
+
 
 function validateGesteFacture(factureId){
   if(!isResponsableOrAbove()) return alert("Seul un Responsable, Admin ou Super Admin peut valider un geste commercial.");
@@ -4697,6 +4734,13 @@ function buildModals2(){
     '<div id="facture-builder-lignes"></div>';
   modals += modalShell('modal-facture-builder', 'Facture', factureBuilderBody,
     btnGhost('Annuler', "closeModal('modal-facture-builder')") + btnRed('Enregistrer', 'saveFactureBuilder()'));
+
+  // ── Modal: Echeance de paiement (avant d'expedier en paiement differe) ──
+  const echeanceBody =
+    '<div style="margin-bottom:10px;font-size:12px">A quelle date le client doit-il regler cette facture ? Le stock sera sorti des maintenant.</div>' +
+    fieldDate('ech-date','Date d\'echeance (optionnel)');
+  modals += modalShell('modal-echeance', 'Expedier — paiement differe', echeanceBody,
+    btnGhost('Annuler', "closeModal('modal-echeance')") + btnRed('Confirmer l\'expedition', 'confirmExpedierPaiementDiffere()'));
 
   // ── Modal: Reset password par departement (Super Admin) ──
   const resetDeptBody =
@@ -5758,7 +5802,7 @@ function mapDevisFromDb(r){
 function mapFactureFromDb(r){
   return { id:r.id, client:r.client, date:r.date_fact, statut:r.statut, mode_paiement:r.mode_paiement,
     lignes:r.lignes||[], sortieAppliquee:r.sortie_appliquee, reservationFaite:r.reservation_faite, devisOrigine:r.devis_origine,
-    dateRenouvellement:r.date_renouvellement||'', gesteStatut:r.geste_statut||null, creePar:r.cree_par||null,
+    dateRenouvellement:r.date_renouvellement||'', echeancePaiement:r.echeance_paiement||'', gesteStatut:r.geste_statut||null, creePar:r.cree_par||null,
     lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapDepenseFromDb(r){
@@ -6634,9 +6678,9 @@ wrapAfter('markFacturePaid', function(factureId){
   if(f) dbUpdate('factures', f.id, { statut:f.statut, sortie_appliquee:f.sortieAppliquee, reservation_faite:false });
   STOCK.forEach(function(s){ syncStockRow(s); });
 });
-wrapAfter('markFactureExpediee', function(factureId){
-  const f = FACTURES.find(function(x){return x.id===factureId;});
-  if(f) dbUpdate('factures', f.id, { sortie_appliquee:f.sortieAppliquee, reservation_faite:false });
+wrapAfter('confirmExpedierPaiementDiffere', function(){
+  const f = FACTURES.find(function(x){return x.id===ECHEANCE_TARGET_FACTURE;});
+  if(f) dbUpdate('factures', f.id, { sortie_appliquee:f.sortieAppliquee, reservation_faite:false, echeance_paiement:f.echeancePaiement||null });
   STOCK.forEach(function(s){ syncStockRow(s); });
 });
 wrapAfter('validateGesteFacture', function(factureId){
