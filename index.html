@@ -4032,9 +4032,30 @@ function saveFactureBuilder(){
     const newFact = {
       id: id, client: client, date: new Date().toLocaleDateString('fr-FR'), statut: 'Impayee',
       mode_paiement: el('fb-mode').value, lignes: JSON.parse(JSON.stringify(FACTURE_BUILDER_LIGNES)),
-      sortieAppliquee: false, devisOrigine: FACTURE_BUILDER_DEVIS_ORIGINE,
+      sortieAppliquee: false, reservationFaite: false, devisOrigine: FACTURE_BUILDER_DEVIS_ORIGINE,
       dateRenouvellement: el('fb-renouvellement').value || '', gesteStatut: gesteStatut, creePar: CU.nom
     };
+    // Reserve le stock pour cette facture impayee, sauf si elle vient d'un
+    // devis deja accepte (le stock a alors deja ete reserve a l'acceptation
+    // du devis — pas de double reservation).
+    const sourceDevisDejaReserve = FACTURE_BUILDER_DEVIS_ORIGINE && (function(){
+      const sd = DEVIS.find(function(x){return x.id===FACTURE_BUILDER_DEVIS_ORIGINE;});
+      return sd && sd.reservationFaite;
+    })();
+    if(sourceDevisDejaReserve){
+      newFact.reservationFaite = true;
+    } else {
+      let allOk = true;
+      newFact.lignes.forEach(function(ligne){
+        if(!ligne.sku) return; // ligne de remise (pack promo) — pas un produit, rien a reserver
+        const ok = reserveStock(ligne.sku, ligne.qte, ligne.entrepot, 'Facture creee: ' + id);
+        if(!ok) allOk = false;
+      });
+      newFact.reservationFaite = allOk;
+      if(!allOk){
+        alert('⚠️ Facture creee mais stock disponible insuffisant pour reserver au moins une ligne. Verifiez le module Stock.');
+      }
+    }
     FACTURES.unshift(newFact);
     logAction('Facture generee', id + ' — ' + client + (FACTURE_BUILDER_DEVIS_ORIGINE ? ' (depuis devis ' + FACTURE_BUILDER_DEVIS_ORIGINE + ')' : '') + (gesteStatut==='en_attente' ? ' — ⚠️ geste commercial en attente de validation' : ''), 'green');
     ensureClientExists(client, lignesLabel(FACTURE_BUILDER_LIGNES), 'Client actif', el('fb-client-type') ? el('fb-client-type').value : 'B2C');
@@ -4158,6 +4179,13 @@ function deleteFacture(factureId){
       const p = PRODUITS.find(function(x){return x.sku===ligne.sku;});
       MOUVEMENTS_STOCK.unshift({ id:Date.now()+Math.floor(Math.random()*1000), date:new Date().toLocaleDateString('fr-FR'), type:'Entree', motif:'Retour client', sku:ligne.sku, produit:p?p.nom:ligne.sku, qte:ligne.qte, entrepot:ligne.entrepot, user:CU.nom });
       if(typeof syncStockRow==='function') syncStockRow(row);
+    });
+  } else if(f.reservationFaite){
+    if(!confirm('Cette facture a du stock reserve. La supprimer va liberer cette reservation. Continuer ?')) return;
+    (f.lignes||[]).forEach(function(ligne){
+      if(!ligne.sku) return; // ligne de remise (pack promo) — pas un produit, rien a liberer
+      const row = STOCK.find(function(s){return s.sku===ligne.sku && s.entrepot===ligne.entrepot;});
+      if(row){ row.reserve = Math.max(0, (row.reserve||0) - ligne.qte); if(typeof syncStockRow==='function') syncStockRow(row); }
     });
   } else {
     if(!confirm('Confirmer la suppression de la facture "'+f.id+'" ?')) return;
@@ -5683,7 +5711,7 @@ function mapDevisFromDb(r){
 }
 function mapFactureFromDb(r){
   return { id:r.id, client:r.client, date:r.date_fact, statut:r.statut, mode_paiement:r.mode_paiement,
-    lignes:r.lignes||[], sortieAppliquee:r.sortie_appliquee, devisOrigine:r.devis_origine,
+    lignes:r.lignes||[], sortieAppliquee:r.sortie_appliquee, reservationFaite:r.reservation_faite, devisOrigine:r.devis_origine,
     dateRenouvellement:r.date_renouvellement||'', gesteStatut:r.geste_statut||null, creePar:r.cree_par||null,
     lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
@@ -6528,7 +6556,11 @@ wrapAfter('acceptDevis', function(devisId){
   const d = DEVIS.find(function(x){return x.id===devisId;});
   if(d) dbUpdate('devis', d.id, { statut:d.statut, reservation_faite:d.reservationFaite });
   // any stock rows touched by the reservation also need syncing
-  STOCK.forEach(function(s){ if(s.sku===d.sku) syncStockRow(s); });
+  if(d) (d.lignes||[]).forEach(function(ligne){
+    if(!ligne.sku) return;
+    const row = STOCK.find(function(s){return s.sku===ligne.sku && s.entrepot===ligne.entrepot;});
+    if(row && typeof syncStockRow==='function') syncStockRow(row);
+  });
 });
 wrapAfter('validateGesteDevis', function(devisId){
   const d = DEVIS.find(function(x){return x.id===devisId;});
@@ -6538,16 +6570,22 @@ wrapAfter('saveFactureBuilder', function(){
   const f = FACTURE_BUILDER_EDIT_ID ? FACTURES.find(function(x){return x.id===FACTURE_BUILDER_EDIT_ID;}) : FACTURES[0];
   if(!f) return;
   const payload = { client:f.client, date_fact:f.date, statut:f.statut, mode_paiement:f.mode_paiement,
-    lignes:f.lignes, sortie_appliquee:f.sortieAppliquee, devis_origine:f.devisOrigine, date_renouvellement:f.dateRenouvellement||'', geste_statut:f.gesteStatut||null, cree_par:f.creePar||null };
+    lignes:f.lignes, sortie_appliquee:f.sortieAppliquee, reservation_faite:f.reservationFaite, devis_origine:f.devisOrigine, date_renouvellement:f.dateRenouvellement||'', geste_statut:f.gesteStatut||null, cree_par:f.creePar||null };
   if(FACTURE_BUILDER_EDIT_ID){
     dbUpdate('factures', f.id, Object.assign(payload, { last_modified_by:f.lastModifiedBy, last_modified_at:f.lastModifiedAt }));
   } else {
     dbInsert('factures', Object.assign({ id:f.id }, payload));
+    // les lignes de stock dont la reserve vient de changer doivent etre synchronisees
+    (f.lignes||[]).forEach(function(ligne){
+      if(!ligne.sku) return;
+      const row = STOCK.find(function(s){return s.sku===ligne.sku && s.entrepot===ligne.entrepot;});
+      if(row && typeof syncStockRow==='function') syncStockRow(row);
+    });
   }
 });
 wrapAfter('markFacturePaid', function(factureId){
   const f = FACTURES.find(function(x){return x.id===factureId;});
-  if(f) dbUpdate('factures', f.id, { statut:f.statut, sortie_appliquee:f.sortieAppliquee });
+  if(f) dbUpdate('factures', f.id, { statut:f.statut, sortie_appliquee:f.sortieAppliquee, reservation_faite:false });
   STOCK.forEach(function(s){ syncStockRow(s); });
 });
 wrapAfter('validateGesteFacture', function(factureId){
