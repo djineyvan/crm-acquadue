@@ -4044,14 +4044,16 @@ function saveFactureBuilder(){
     })();
     if(sourceDevisDejaReserve){
       newFact.reservationFaite = true;
+      newFact.lignes.forEach(function(ligne){ if(ligne.sku) ligne._reserve = true; });
     } else {
-      let allOk = true;
+      let anyReserved = false, allOk = true;
       newFact.lignes.forEach(function(ligne){
         if(!ligne.sku) return; // ligne de remise (pack promo) — pas un produit, rien a reserver
         const ok = reserveStock(ligne.sku, ligne.qte, ligne.entrepot, 'Facture creee: ' + id);
-        if(!ok) allOk = false;
+        ligne._reserve = ok; // suivi ligne par ligne — un pack peut avoir 1 article reserve et l'autre non
+        if(ok) anyReserved = true; else allOk = false;
       });
-      newFact.reservationFaite = allOk;
+      newFact.reservationFaite = anyReserved; // true des qu'au moins une ligne a reserve, pour que la suppression libere bien tout ce qui a ete pose
       if(!allOk){
         alert('⚠️ Facture creee mais stock disponible insuffisant pour reserver au moins une ligne. Verifiez le module Stock.');
       }
@@ -4082,13 +4084,14 @@ function acceptDevis(devisId){
   if(!d) return;
   if(d.gesteStatut === 'en_attente') return alert("Ce devis contient un geste commercial qui n'a pas encore ete valide par un superieur (Responsable, Admin ou Super Admin). Il ne peut pas etre accepte tant qu'il n'est pas valide.");
   d.statut = "Accepte";
-  let allOk = true;
+  let anyReserved = false, allOk = true;
   d.lignes.forEach(function(ligne){
     if(!ligne.sku) return; // ligne de remise (pack promo) — pas un produit, rien a reserver
     const ok = reserveStock(ligne.sku, ligne.qte, ligne.entrepot, 'Devis accepte: ' + d.id);
-    if(!ok) allOk = false;
+    ligne._reserve = ok; // suivi ligne par ligne — un pack peut avoir 1 article reserve et l'autre non
+    if(ok) anyReserved = true; else allOk = false;
   });
-  d.reservationFaite = allOk;
+  d.reservationFaite = anyReserved; // true des qu'au moins une ligne a reserve, pour que la suppression libere bien tout ce qui a ete pose
   if(!allOk){
     alert('⚠️ Devis accepte mais stock disponible insuffisant pour reserver au moins une ligne. Verifiez le module Stock.');
   }
@@ -4152,7 +4155,7 @@ function deleteDevis(devisId){
   if(d.reservationFaite){
     if(!confirm('Ce devis a du stock reserve. Le supprimer va liberer cette reservation. Continuer ?')) return;
     (d.lignes||[]).forEach(function(ligne){
-      if(!ligne.sku) return; // ligne de remise (pack promo) — pas un produit, rien a liberer
+      if(!ligne.sku || !ligne._reserve) return; // ligne de remise, ou ligne dont la reservation avait echoue (rien a liberer)
       const row = STOCK.find(function(s){return s.sku===ligne.sku && s.entrepot===ligne.entrepot;});
       if(row){ row.reserve = Math.max(0, (row.reserve||0) - ligne.qte); if(typeof syncStockRow==='function') syncStockRow(row); }
     });
@@ -4183,7 +4186,7 @@ function deleteFacture(factureId){
   } else if(f.reservationFaite){
     if(!confirm('Cette facture a du stock reserve. La supprimer va liberer cette reservation. Continuer ?')) return;
     (f.lignes||[]).forEach(function(ligne){
-      if(!ligne.sku) return; // ligne de remise (pack promo) — pas un produit, rien a liberer
+      if(!ligne.sku || !ligne._reserve) return; // ligne de remise, ou ligne dont la reservation avait echoue (rien a liberer)
       const row = STOCK.find(function(s){return s.sku===ligne.sku && s.entrepot===ligne.entrepot;});
       if(row){ row.reserve = Math.max(0, (row.reserve||0) - ligne.qte); if(typeof syncStockRow==='function') syncStockRow(row); }
     });
