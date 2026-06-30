@@ -18,6 +18,17 @@ module.exports = async function handler(req, res) {
   try {
     const sql = getSql();
 
+    if (req.method === 'GET' && req.query.fix_orphan_reserve) {
+      // Outil temporaire ponctuel (reutilise) : remet a 0 la reserve d'une
+      // ligne de stock (sku+entrepot) quand aucun devis/facture actif ne la
+      // justifie. Usage ponctuel, retire juste apres.
+      const sku = (req.query.sku || '').trim();
+      const entrepot = (req.query.entrepot || '').trim();
+      if (!sku || !entrepot) return res.status(400).json({ error: 'Parametres sku et entrepot requis' });
+      const result = await sql`UPDATE stock SET reserve = 0 WHERE sku = ${sku} AND entrepot = ${entrepot} RETURNING *`;
+      return res.status(200).json({ updated: result });
+    }
+
     if (req.method === 'GET' && req.query.clients_stats) {
       // Diagnostic lecture-seule : repartition reelle des clients/prospects
       // par statut, pour comparer avec le KPI "Clients & Prospects actifs"
