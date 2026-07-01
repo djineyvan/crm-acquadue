@@ -916,10 +916,12 @@ function go(view){
   GLOBAL_SEARCH = '';
   const searchInput = el('global-search');
   if(searchInput) searchInput.value = '';
-  // Pour le journal : toujours recharger les donnees audit depuis la base
-  // avant d'afficher, pour garantir des donnees fraiches et stables
+  // Pour le journal : afficher immédiatement puis recharger en arrière-plan
   if(view === 'journal'){
-    loadAuditFromDb().then(function(){ renderView('journal'); });
+    renderView('journal'); // affichage immédiat avec les données en mémoire
+    loadAuditFromDb().then(function(){
+      if(CURRENT_VIEW === 'journal') renderView('journal'); // mise à jour si toujours sur journal
+    });
   } else {
     renderView(view);
   }
@@ -2418,10 +2420,14 @@ function openResetPwd(id){
 
 // ── JOURNAL D'AUDIT ────────────────────────────────────────────────────────────
 function renderJournal(c){
+  if(!c){ return; } // sécurité si le conteneur n'existe pas
   if(!isResponsableOrAbove()){
     c.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔒</div>Acces reserve aux responsables et administrateurs.</div>';
     return;
   }
+  // Badge diagnostic : affiche le nombre d'entrées AUDIT au moment du rendu
+  var debugInfo = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;padding:4px 8px;background:var(--bg-secondary);border-radius:6px;display:inline-block">' +
+    '📊 ' + AUDIT.length + ' entrée(s) en mémoire — rendu à ' + new Date().toLocaleTimeString('fr-FR') + '</div>';
   let h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:11px">';
   h += '<div class="tabs" style="margin-bottom:0">';
   h += '<button class="tab active" onclick="switchTab(this,\'jl\',\'a\')">Toutes</button>';
@@ -2432,7 +2438,7 @@ function renderJournal(c){
   h += '</div>';
   h += '<button class="btn btn-ghost btn-sm" onclick="reloadJournal()" title="Recharger le journal">🔄 Rafraichir</button>';
   h += '</div>';
-  h += '<div id="jl-a"><div class="card"><div id="jl-list-a"></div></div></div>';
+  h += '<div id="jl-a"><div class="card">'+debugInfo+'<div id="jl-list-a"></div></div></div>';
   h += '<div id="jl-d" style="display:none"><div class="card"><div id="jl-list-d"></div></div></div>';
   h += '<div id="jl-c" style="display:none"><div class="card"><div id="jl-list-c"></div></div></div>';
   h += '<div id="jl-m" style="display:none"><div class="card"><div id="jl-list-m"></div></div></div>';
