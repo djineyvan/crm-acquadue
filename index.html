@@ -5296,20 +5296,15 @@ function openDetailModal(title, rows, editConfig){
     const owner = editConfig.owner || null;
     let allowed;
     if(editConfig.entity === 'clients'){
-      // Module Clients & Prospects : la permission sensible (modifier_client /
-      // modifier_prospect) est L'AUTORITE UNIQUE pour ce module, et REMPLACE
-      // la regle generale "proprietaire + cree aujourd'hui" (demande explicite
-      // du Super Admin : si la permission est active pour un role, ce role
-      // peut modifier N'IMPORTE QUELLE fiche de ce type, peu importe qui l'a
-      // creee ou quand ; si elle est desactivee, personne de ce role ne peut
-      // la modifier, meme une fiche qu'il a lui-meme creee aujourd'hui).
-      allowed = isSuperAdmin() || (isClientStatut(editConfig.record.statut) ? canModifyClientInfo() : canModifyProspectInfo());
+      // Seul le proprietaire de la fiche (ou le Super Admin) peut la modifier,
+      // quelle que soit la permission sensible modifier_client/modifier_prospect.
+      var isOwnerCl = editConfig.owner === CU.nom;
+      allowed = isSuperAdmin() || isOwnerCl;
     } else if(editConfig.entity === 'pipeline'){
-      // Module Pipeline : une opportunite EST un prospect (etapes Nouveau ->
-      // Contacte -> ... -> Gagne/Perdu), donc la meme permission
-      // modifier_prospect s'applique ici aussi, et remplace de la meme facon
-      // la regle proprietaire + cree aujourd'hui.
-      allowed = isSuperAdmin() || canModifyProspectInfo();
+      // Meme regle pour le Pipeline : seul le commercial qui a enregistre
+      // la fiche peut la modifier.
+      var isOwnerPipe = editConfig.owner === CU.nom;
+      allowed = isSuperAdmin() || isOwnerPipe;
     } else {
       allowed = isSuperAdmin() || (dept !== null && owner !== null && canEditRecord(editConfig.record, dept, owner));
     }
