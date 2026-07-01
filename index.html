@@ -505,7 +505,9 @@ function autoRefreshTick(){
   // Ne pas interrompre une saisie dans un formulaire inline (RH, etc.)
   if(document.querySelector('#presence-form-wrap > *')) return;
   if(document.querySelector('#conge-form-wrap > *')) return;
-  Promise.all([loadAllDataFromDb(), loadAuditFromDb()]).then(function(){
+  // L'audit est charge au demarrage et alimente en temps reel par logAction
+  // — pas besoin de le recharger depuis la base a chaque tick (evite l'effacement)
+  loadAllDataFromDb().then(function(){
     updateAllBadges();
     if(CURRENT_VIEW) renderView(CURRENT_VIEW);
     restoreSubTabs();
@@ -2415,11 +2417,13 @@ function renderJournal(c){
   }
   let h = '<div style="margin-bottom:11px"><div class="tabs">';
   h += '<button class="tab active" onclick="switchTab(this,\'jl\',\'a\')">Toutes</button>';
+  h += '<button class="tab" onclick="switchTab(this,\'jl\',\'d\')">Direction</button>';
   h += '<button class="tab" onclick="switchTab(this,\'jl\',\'c\')">Commercial</button>';
   h += '<button class="tab" onclick="switchTab(this,\'jl\',\'m\')">Marketing</button>';
   h += '<button class="tab" onclick="switchTab(this,\'jl\',\'k\')">Communication</button>';
   h += '</div></div>';
   h += '<div id="jl-a"><div class="card"><div id="jl-list-a"></div></div></div>';
+  h += '<div id="jl-d" style="display:none"><div class="card"><div id="jl-list-d"></div></div></div>';
   h += '<div id="jl-c" style="display:none"><div class="card"><div id="jl-list-c"></div></div></div>';
   h += '<div id="jl-m" style="display:none"><div class="card"><div id="jl-list-m"></div></div></div>';
   h += '<div id="jl-k" style="display:none"><div class="card"><div id="jl-list-k"></div></div></div>';
@@ -2438,6 +2442,7 @@ function renderJournal(c){
     }).join('');
   }
   renderList(scoped, 'jl-list-a');
+  renderList(scoped.filter(function(a){return a.dept==="Direction";}), 'jl-list-d');
   renderList(scoped.filter(function(a){return a.dept==="Commercial";}), 'jl-list-c');
   renderList(scoped.filter(function(a){return a.dept==="Marketing";}), 'jl-list-m');
   renderList(scoped.filter(function(a){return a.dept==="Communication";}), 'jl-list-k');
