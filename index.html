@@ -2439,11 +2439,11 @@ function renderJournal(c){
   h += '</div>';
   h += '<button class="btn btn-ghost btn-sm" onclick="reloadJournal()" title="Recharger le journal">🔄 Rafraichir</button>';
   h += '</div>';
-  h += '<div id="jl-a"><div class="card">'+debugInfo+'<div id="jl-list-a"></div></div></div>';
-  h += '<div id="jl-d" style="display:none"><div class="card"><div id="jl-list-d"></div></div></div>';
-  h += '<div id="jl-c" style="display:none"><div class="card"><div id="jl-list-c"></div></div></div>';
-  h += '<div id="jl-m" style="display:none"><div class="card"><div id="jl-list-m"></div></div></div>';
-  h += '<div id="jl-k" style="display:none"><div class="card"><div id="jl-list-k"></div></div></div>';
+  h += '<div id="jl-a"><div class="card">'+debugInfo+'<div id="audit-la"></div></div></div>';
+  h += '<div id="jl-d" style="display:none"><div class="card"><div id="audit-ld"></div></div></div>';
+  h += '<div id="jl-c" style="display:none"><div class="card"><div id="audit-lc"></div></div></div>';
+  h += '<div id="jl-m" style="display:none"><div class="card"><div id="audit-lm"></div></div></div>';
+  h += '<div id="jl-k" style="display:none"><div class="card"><div id="audit-lk"></div></div></div>';
   c.innerHTML = h;
 
   let scoped = AUDIT;
@@ -2458,11 +2458,11 @@ function renderJournal(c){
       return '<div class="audit-item"><div class="audit-av '+a.col+'">'+a.ini+'</div><div style="flex:1"><div style="font-size:12px"><strong>'+a.user+'</strong> ('+a.dept+') — '+a.action+'</div><div class="td-muted">'+a.detail+'</div><div class="td-muted">🕒 '+fmtDate(a.ts)+' • IP: '+a.ip+'</div></div></div>';
     }).join('');
   }
-  renderList(scoped, 'jl-list-a');
-  renderList(scoped.filter(function(a){return a.dept==="Direction";}), 'jl-list-d');
-  renderList(scoped.filter(function(a){return a.dept==="Commercial";}), 'jl-list-c');
-  renderList(scoped.filter(function(a){return a.dept==="Marketing";}), 'jl-list-m');
-  renderList(scoped.filter(function(a){return a.dept==="Communication";}), 'jl-list-k');
+  renderList(scoped, 'audit-la');
+  renderList(scoped.filter(function(a){return a.dept==="Direction";}), 'audit-ld');
+  renderList(scoped.filter(function(a){return a.dept==="Commercial";}), 'audit-lc');
+  renderList(scoped.filter(function(a){return a.dept==="Marketing";}), 'audit-lm');
+  renderList(scoped.filter(function(a){return a.dept==="Communication";}), 'audit-lk');
 }
 
 function reloadJournal(){
@@ -2472,7 +2472,7 @@ function reloadJournal(){
 // Met a jour uniquement le contenu des listes du journal sans reconstruire le HTML.
 // Appelee apres un rechargement depuis la base pour eviter le flash blanc.
 function refreshJournalLists(){
-  if(!el('jl-list-a')) return; // journal pas dans le DOM
+  if(!el('audit-la')) return; // journal pas dans le DOM
   var scoped = AUDIT;
   if(!canSeeAllAudit()){
     scoped = AUDIT.filter(function(a){ return a.dept === CU.departement; });
@@ -2485,11 +2485,11 @@ function refreshJournalLists(){
       return '<div class="audit-item"><div class="audit-av '+a.col+'">'+a.ini+'</div><div style="flex:1"><div style="font-size:12px"><strong>'+a.user+'</strong> ('+a.dept+') — '+a.action+'</div><div class="td-muted">'+a.detail+'</div><div class="td-muted">🕒 '+fmtDate(a.ts)+' • IP: '+a.ip+'</div></div></div>';
     }).join('');
   }
-  fill(scoped, 'jl-list-a');
-  fill(scoped.filter(function(a){return a.dept==='Direction';}), 'jl-list-d');
-  fill(scoped.filter(function(a){return a.dept==='Commercial';}), 'jl-list-c');
-  fill(scoped.filter(function(a){return a.dept==='Marketing';}), 'jl-list-m');
-  fill(scoped.filter(function(a){return a.dept==='Communication';}), 'jl-list-k');
+  fill(scoped, 'audit-la');
+  fill(scoped.filter(function(a){return a.dept==='Direction';}), 'audit-ld');
+  fill(scoped.filter(function(a){return a.dept==='Commercial';}), 'audit-lc');
+  fill(scoped.filter(function(a){return a.dept==='Marketing';}), 'audit-lm');
+  fill(scoped.filter(function(a){return a.dept==='Communication';}), 'audit-lk');
 }
 
 // ── RH SIMPLIFIE ──────────────────────────────────────────────────────────────
