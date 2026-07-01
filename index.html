@@ -502,6 +502,9 @@ setInterval(checkAppVersion, 60000);
 function autoRefreshTick(){
   if(!CU) return;
   if(document.querySelector('.modal-overlay.open')) return;
+  // Ne pas interrompre une saisie dans un formulaire inline (RH, etc.)
+  if(document.querySelector('#presence-form-wrap > *')) return;
+  if(document.querySelector('#conge-form-wrap > *')) return;
   Promise.all([loadAllDataFromDb(), loadAuditFromDb()]).then(function(){
     updateAllBadges();
     if(CURRENT_VIEW) renderView(CURRENT_VIEW);
@@ -6171,9 +6174,12 @@ function logAction(action, detail, color, user){
 function loadAuditFromDb(){
   return apiGet('/api/audit').then(function(result){
     if(result.ok && result.data.logs){
-      AUDIT = result.data.logs.map(function(a){
+      var dbLogs = result.data.logs.map(function(a){
         return { ts:new Date(a.ts), user:a.user_nom, dept:a.dept, action:a.action, detail:a.detail, color:a.color, ini:a.ini, col:a.col, ip:a.ip };
       });
+      // Ne remplacer AUDIT que si la base a des données
+      // (évite d'effacer les entrées locales récentes si la base répond vide)
+      if(dbLogs.length > 0){ AUDIT = dbLogs; }
     }
   }).catch(function(){});
 }
