@@ -2702,13 +2702,77 @@ function refreshJournalLists(){
 
 // ── RH SIMPLIFIE ──────────────────────────────────────────────────────────────
 function renderRH(c){
+  var todayISO = new Date().toISOString().slice(0,10);
+  var moisISO  = todayISO.slice(0,7);
+  var moisLabel = new Date().toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+
+  var presencesAujourd = RH_PRESENCE.filter(function(p){ return p.date === todayISO; });
+  var presents  = presencesAujourd.filter(function(p){ return p.statut==='Present'||p.statut==='Teletravail'||p.statut==='En retard'||p.statut==='Mi-temps'; }).length;
+  var absents   = presencesAujourd.filter(function(p){ return p.statut==='Absent'; }).length;
+  var enAttente = RH_CONGES.filter(function(cg){ return cg.statut==='En attente'; });
+  var approuves = RH_CONGES.filter(function(cg){ return cg.statut==='Approuve'; }).length;
+
+  var presencesMois = RH_PRESENCE.filter(function(p){ return p.date && p.date.slice(0,7)===moisISO; });
+  var parEmp = {};
+  presencesMois.forEach(function(p){
+    if(!parEmp[p.nom]) parEmp[p.nom]={present:0,absent:0,retard:0,total:0};
+    parEmp[p.nom].total++;
+    if(p.statut==='Present'||p.statut==='Teletravail'||p.statut==='Mi-temps') parEmp[p.nom].present++;
+    else if(p.statut==='Absent') parEmp[p.nom].absent++;
+    else if(p.statut==='En retard') parEmp[p.nom].retard++;
+  });
+
   let h = '<div style="margin-bottom:11px"><div class="tabs">';
-  h += '<button class="tab active" onclick="switchTab(this,\'rh\',\'p\')">Presence du jour</button>';
+  h += '<button class="tab active" onclick="switchTab(this,\'rh\',\'d\')">📊 Tableau de bord</button>';
+  h += '<button class="tab" onclick="switchTab(this,\'rh\',\'p\')">Presence du jour</button>';
   h += '<button class="tab" onclick="switchTab(this,\'rh\',\'c\')">Conges</button>';
   h += '</div></div>';
 
-  // Onglet Presence
-  h += '<div id="rh-p">';
+  // Onglet Tableau de bord
+  h += '<div id="rh-d">';
+  h += '<div class="grid4" style="margin-bottom:13px">';
+  h += '<div class="kpi kgreen"><div class="kpi-lbl">Presents aujourd\'hui</div><div class="kpi-val">'+presents+'</div></div>';
+  h += '<div class="kpi kred"><div class="kpi-lbl">Absents aujourd\'hui</div><div class="kpi-val">'+absents+'</div></div>';
+  h += '<div class="kpi kgold"><div class="kpi-lbl">Conges en attente</div><div class="kpi-val">'+enAttente.length+'</div></div>';
+  h += '<div class="kpi kblue"><div class="kpi-lbl">Conges approuves</div><div class="kpi-val">'+approuves+'</div></div>';
+  h += '</div>';
+  h += '<div class="grid2" style="margin-bottom:12px">';
+
+  // Résumé mensuel présences
+  h += '<div class="card"><div class="card-title">Presences — '+moisLabel+'</div>';
+  var empKeys = Object.keys(parEmp);
+  if(empKeys.length===0){
+    h += '<div class="td-muted" style="padding:10px">Aucune presence enregistree ce mois.</div>';
+  } else {
+    h += '<table><thead><tr><th>Employe</th><th style="text-align:center">Jours</th><th style="text-align:center">Presents</th><th style="text-align:center">Absents</th><th style="text-align:center">Retards</th></tr></thead><tbody>';
+    h += empKeys.map(function(nom){
+      var r = parEmp[nom];
+      var pct = r.total>0?Math.round(r.present/r.total*100):0;
+      var bar = '<div class="progress-bar" style="margin-top:3px"><div class="progress-fill '+(pct>=80?'pf-green':pct>=50?'pf-blue':'pf-red')+'" style="width:'+pct+'%"></div></div>';
+      return '<tr><td class="td-bold">'+nom+'<br>'+bar+'</td><td style="text-align:center">'+r.total+'</td><td style="text-align:center;color:var(--green);font-weight:700">'+r.present+'</td><td style="text-align:center;color:var(--red);font-weight:700">'+r.absent+'</td><td style="text-align:center;color:var(--gold);font-weight:700">'+r.retard+'</td></tr>';
+    }).join('');
+    h += '</tbody></table>';
+  }
+  h += '</div>';
+
+  // Congés en attente
+  h += '<div class="card"><div class="card-title">⏳ Conges en attente d\'approbation</div>';
+  if(enAttente.length===0){
+    h += '<div class="td-muted" style="padding:10px">Aucune demande en attente — tout est a jour ✅</div>';
+  } else {
+    h += enAttente.map(function(cg){
+      var nbJ = Math.round((new Date(cg.fin)-new Date(cg.debut))/(86400000))+1;
+      return '<div style="padding:10px 0;border-bottom:1px solid var(--border)">'+
+        '<div style="font-weight:600;margin-bottom:3px">'+cg.nom+'</div>'+
+        '<div class="td-muted">'+cg.motif+' — du '+cg.debut+' au '+cg.fin+' ('+nbJ+' j)</div>'+
+        (canValidate()?'<div style="display:flex;gap:6px;margin-top:6px"><button class="btn btn-ghost btn-sm" onclick="approveConge('+cg.id+')">✓ Approuver</button><button class="btn btn-ghost btn-sm" onclick="rejectConge('+cg.id+')">✗ Refuser</button></div>':'')+
+        '</div>';
+    }).join('');
+  }
+  h += '</div></div></div>';
+
+  // Onglet Presence du jour
+  h += '<div id="rh-p" style="display:none">';
   h += '<div class="card">';
   h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
   h += '<span style="font-weight:600">Presences — ' + new Date().toLocaleDateString('fr-FR') + '</span>';
