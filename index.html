@@ -505,11 +505,11 @@ function autoRefreshTick(){
   // Ne pas interrompre une saisie dans un formulaire inline (RH, etc.)
   if(document.querySelector('#presence-form-wrap > *')) return;
   if(document.querySelector('#conge-form-wrap > *')) return;
-  // L'audit est charge au demarrage et alimente en temps reel par logAction
-  // — pas besoin de le recharger depuis la base a chaque tick (evite l'effacement)
   loadAllDataFromDb().then(function(){
     updateAllBadges();
-    if(CURRENT_VIEW) renderView(CURRENT_VIEW);
+    // Le journal est alimente en temps reel par logAction et ne doit pas etre
+    // reconstruit automatiquement (provoque un clignotement et un ecran vide)
+    if(CURRENT_VIEW && CURRENT_VIEW !== 'journal') renderView(CURRENT_VIEW);
     restoreSubTabs();
   }).catch(function(){ /* prochaine tentative dans 5 secondes */ });
 }
@@ -2415,13 +2415,16 @@ function renderJournal(c){
     c.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔒</div>Acces reserve aux responsables et administrateurs.</div>';
     return;
   }
-  let h = '<div style="margin-bottom:11px"><div class="tabs">';
+  let h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:11px">';
+  h += '<div class="tabs" style="margin-bottom:0">';
   h += '<button class="tab active" onclick="switchTab(this,\'jl\',\'a\')">Toutes</button>';
   h += '<button class="tab" onclick="switchTab(this,\'jl\',\'d\')">Direction</button>';
   h += '<button class="tab" onclick="switchTab(this,\'jl\',\'c\')">Commercial</button>';
   h += '<button class="tab" onclick="switchTab(this,\'jl\',\'m\')">Marketing</button>';
   h += '<button class="tab" onclick="switchTab(this,\'jl\',\'k\')">Communication</button>';
-  h += '</div></div>';
+  h += '</div>';
+  h += '<button class="btn btn-ghost btn-sm" onclick="reloadJournal()" title="Recharger le journal">🔄 Rafraichir</button>';
+  h += '</div>';
   h += '<div id="jl-a"><div class="card"><div id="jl-list-a"></div></div></div>';
   h += '<div id="jl-d" style="display:none"><div class="card"><div id="jl-list-d"></div></div></div>';
   h += '<div id="jl-c" style="display:none"><div class="card"><div id="jl-list-c"></div></div></div>';
@@ -2446,6 +2449,10 @@ function renderJournal(c){
   renderList(scoped.filter(function(a){return a.dept==="Commercial";}), 'jl-list-c');
   renderList(scoped.filter(function(a){return a.dept==="Marketing";}), 'jl-list-m');
   renderList(scoped.filter(function(a){return a.dept==="Communication";}), 'jl-list-k');
+}
+
+function reloadJournal(){
+  loadAuditFromDb().then(function(){ go('journal'); });
 }
 
 // ── RH SIMPLIFIE ──────────────────────────────────────────────────────────────
