@@ -472,6 +472,7 @@ const MAX_TENTATIVES = 5;
 // version est detectee — au lieu de laisser l'utilisateur tester un ancien
 // code sans le savoir.
 let BOOT_VERSION = null;
+let BOOTSTRAP_DONE = false; // garde anti-double-boot (tryAutoLogin + login manuel)
 function checkAppVersion(){
   fetch('/api/version').then(function(r){ return r.json(); }).then(function(d){
     if(!d || !d.version) return;
@@ -915,7 +916,13 @@ function go(view){
   GLOBAL_SEARCH = '';
   const searchInput = el('global-search');
   if(searchInput) searchInput.value = '';
-  renderView(view);
+  // Pour le journal : toujours recharger les donnees audit depuis la base
+  // avant d'afficher, pour garantir des donnees fraiches et stables
+  if(view === 'journal'){
+    loadAuditFromDb().then(function(){ renderView('journal'); });
+  } else {
+    renderView(view);
+  }
   closeMobileSidebar(); // sur mobile, le menu se referme apres avoir choisi une page
 }
 
@@ -6208,6 +6215,8 @@ function clearSessionToken(){
 }
 
 function bootstrapApp(){
+  if(BOOTSTRAP_DONE) return; // protection contre le double-boot
+  BOOTSTRAP_DONE = true;
   Promise.all([loadAllDataFromDb(), loadAuditFromDb()]).then(function(){
     buildApp();
     updateAllBadges(); // safety net: ensure sidebar counts reflect freshly-loaded DB data
