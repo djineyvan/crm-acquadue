@@ -887,19 +887,26 @@ function updateAllBadges(){
   el("nb-notif") && (el("nb-notif").textContent = unread);
 }
 
-function visibleClientFilter(c){ return true; } // tous visibles — confidentialite geree par flou dans l'affichage
+function visibleClientFilter(c){
+  if(!CU) return false;
+  if(isSuperAdmin()) return true;
+  if(CU.role === 'responsable' || CU.role === 'admin') return true; // voit tout, modifie seulement le sien
+  return c.asg === CU.nom; // collaborateur : uniquement ses propres fiches
+}
 function visibleTaskFilter(t){ return t.asg === CU.nom || t.asg === "Toute l'equipe" || isAdmin() || CU.role==="responsable"; }
-function visiblePipeFilter(p){ return true; } // tous visibles — confidentialite geree par flou dans l'affichage
+function visiblePipeFilter(p){
+  if(!CU) return false;
+  if(isSuperAdmin()) return true;
+  if(CU.role === 'responsable' || CU.role === 'admin') return true; // voit tout, modifie seulement le sien
+  return p.asg === CU.nom; // collaborateur : uniquement ses propres prospects
+}
 
 // Retourne true si l'utilisateur courant est proprietaire d'un enregistrement
-// (createur) ou Super Admin. Utilise pour le flou et les droits d'edition.
+// (createur) ou Super Admin. Utilise pour les droits d'edition.
 function isOwnRecord(asg){ return isSuperAdmin() || (CU && asg === CU.nom); }
 
-// Renvoie le contenu flou si l'enregistrement n'appartient pas a l'utilisateur
-function privatize(content, asg){
-  if(isOwnRecord(asg)) return content;
-  return '<span style="filter:blur(4px);user-select:none;pointer-events:none;display:inline-block;opacity:.8">'+content+'</span>';
-}
+// privatize reste defini mais n'est plus utilise dans l'interface (plus de flou)
+function privatize(content, asg){ return content; }
 // Confidentialite des Depenses (demande explicite) : Super Admin voit tout ;
 // Admin et Responsable voient les depenses de leur DEPARTEMENT (leur equipe),
 // pas forcement les leurs personnellement ; Collaborateur ne voit QUE les
@@ -1364,13 +1371,7 @@ function renderPipeBoard(){
     const total = cards.reduce(function(s,x){return s+x.val;},0);
     board += '<div class="pipeline-col"><div class="pipeline-col-header"><span style="color:var(--'+cols[i]+')">'+stage+'</span><span>'+cards.length+'</span></div>';
     board += cards.map(function(card){
-      var own = isOwnRecord(card.asg);
-      var pv = function(txt){ return privatize(txt, card.asg); };
-      if(own){
-        return '<div class="pipeline-card" onclick="viewPipeCard('+card.id+')"><div class="pipeline-card-name">'+card.nom+(card.locked?' 🔒':'')+'</div><div class="pipeline-card-sub">'+card.type+' • '+card.ville+' • '+card.asg.split(' ')[0]+(card.tel?' • 📞 '+card.tel:'')+'</div><div class="pipeline-card-val">'+fcfa(card.val)+'</div></div>';
-      } else {
-        return '<div class="pipeline-card" style="opacity:.85" title="Contact prive — vous pouvez voir le nom uniquement"><div class="pipeline-card-name">'+card.nom+' <span style=\\"font-size:10px\\">🔒</span></div><div class="pipeline-card-sub">'+pv(card.type+' • '+card.ville+' • '+card.asg.split(' ')[0])+'</div><div class="pipeline-card-val">'+pv(fcfa(card.val))+'</div></div>';
-      }
+      return '<div class="pipeline-card" onclick="viewPipeCard('+card.id+')"><div class="pipeline-card-name">'+card.nom+(card.locked?' 🔒':'')+'</div><div class="pipeline-card-sub">'+card.type+' • '+card.ville+' • '+card.asg.split(' ')[0]+(card.tel?' • 📞 '+card.tel:'')+'</div><div class="pipeline-card-val">'+fcfa(card.val)+'</div></div>';
     }).join('');
     board += '<div class="td-muted" style="text-align:right;margin-top:4px;padding-top:4px;border-top:1px solid var(--border)">Total: '+fcfa(total)+'</div></div>';
   });
@@ -1815,23 +1816,8 @@ function renderClients(c){
   function mkTable(d){
     return '<thead><tr><th>#</th><th>Client</th><th>Type</th><th>Ville</th><th>Source</th><th>Produit</th><th>Commercial</th><th>Notes</th><th>Statut</th><th>Date</th><th></th></tr></thead><tbody>' +
       d.map(function(cl,i){
-        var own = isOwnRecord(cl.asg);
-        var pv = function(txt){ return privatize(txt, cl.asg); };
         const notesPreview = cl.notes ? ((cl.notes.length > 28 ? cl.notes.slice(0,28)+'…' : cl.notes)) : '<span class=\"td-muted\">-</span>';
-        var detailBtn = own
-          ? '<button class=\"btn btn-ghost btn-sm\" onclick=\"viewClientDetail('+cl.id+')\">👁 Details</button>'
-          : '<span class=\"td-muted\" style=\"font-size:11px\" title=\"Contact prive — seul son createur peut voir les details\">🔒 Prive</span>';
-        return '<tr><td class=\"td-muted\" style=\"text-align:center\">'+(i+1)+'</td>' +
-          '<td><div style=\"display:flex;align-items:center;gap:7px\"><div class=\"avatar '+avColor(i)+'\">'+ini(cl.nom)+'</div><div><div class=\"td-bold\">'+cl.nom+(cl.locked?' 🔒':'')+'</div><div class=\"td-muted\">'+pv(cl.tel)+'</div></div></div></td>' +
-          '<td>'+pv(typeTag(cl.type))+'</td>' +
-          '<td class=\"td-muted\">'+pv(cl.ville)+'</td>' +
-          '<td class=\"td-muted\">'+pv(cl.source||'-')+'</td>' +
-          '<td class=\"td-muted\">'+pv(cl.produit)+'</td>' +
-          '<td class=\"td-muted\">'+cl.asg.split(' ')[0]+'</td>' +
-          '<td class=\"td-muted\" title=\"'+(own&&cl.notes?cl.notes.replace(/\"/g,'&quot;'):'')+'\">'+(own ? notesPreview : pv('notes confidentielles'))+'</td>' +
-          '<td>'+pv(statusTag(cl.statut))+'</td>' +
-          '<td class=\"td-muted\">'+pv(cl.date)+'</td>' +
-          '<td>'+detailBtn+(isSuperAdmin()?' <button class=\"btn btn-ghost btn-sm\" onclick=\"deleteClient('+cl.id+')\">🗑 Supprimer</button>':'')+'</td></tr>';
+        return '<tr><td class=\"td-muted\" style=\"text-align:center\">'+(i+1)+'</td><td><div style=\"display:flex;align-items:center;gap:7px\"><div class=\"avatar '+avColor(i)+'\">'+ini(cl.nom)+'</div><div><div class=\"td-bold\">'+cl.nom+(cl.locked?' 🔒':'')+'</div><div class=\"td-muted\">'+cl.tel+'</div></div></div></td><td>'+typeTag(cl.type)+'</td><td class=\"td-muted\">'+cl.ville+'</td><td class=\"td-muted\">'+(cl.source||'-')+'</td><td class=\"td-muted\">'+cl.produit+'</td><td class=\"td-muted\">'+cl.asg.split(' ')[0]+'</td><td class=\"td-muted\" title=\"'+(cl.notes?cl.notes.replace(/\"/g,'&quot;'):'')+'\">'+(notesPreview)+'</td><td>'+statusTag(cl.statut)+'</td><td class=\"td-muted\">'+cl.date+'</td><td><button class=\"btn btn-ghost btn-sm\" onclick=\"viewClientDetail('+cl.id+')\">👁 Details</button>'+(isSuperAdmin()?' <button class=\"btn btn-ghost btn-sm\" onclick=\"deleteClient('+cl.id+')\">🗑 Supprimer</button>':'')+'</td></tr>';
       }).join('') + (d.length === 0 ? '<tr><td colspan=\"11\" class=\"td-muted\" style=\"text-align:center;padding:14px\">'+(GLOBAL_SEARCH || countActiveClientFilters()>0 ?'Aucun resultat avec ces criteres':'Aucun client')+'</td></tr>' : '') + '</tbody>';
   }
   el('tbl-cli').innerHTML = mkTable(data);
