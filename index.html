@@ -473,6 +473,8 @@ const MAX_TENTATIVES = 5;
 // code sans le savoir.
 let BOOT_VERSION = null;
 let BOOTSTRAP_DONE = false; // garde anti-double-boot (tryAutoLogin + login manuel)
+let DASH_PERIOD    = 'this_month'; // filtre periode du tableau de bord
+let RAPPORT_PERIOD = 'this_month'; // filtre periode des rapports
 function checkAppVersion(){
   fetch('/api/version').then(function(r){ return r.json(); }).then(function(d){
     if(!d || !d.version) return;
@@ -1105,14 +1107,51 @@ function renderView(view){
 // a time) falls in the current calendar month. Used to scope "real sales"
 // figures to the current month, consistently across Dashboard, Equipe
 // Commerciale and Direction.
-function isThisMonth(dateStr){
-  if(!dateStr) return false;
-  const parts = dateStr.split(' ')[0].split('/');
+function isThisMonth(dateStr){ return isInPeriod(dateStr, 'this_month'); } // compat legacy
+
+function isInPeriod(dateStr, period){
+  if(!dateStr || !period) return true;
+  var parts = dateStr.split(' ')[0].split('/');
   if(parts.length !== 3) return false;
-  const d = new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]));
-  const today = new Date();
-  return d.getFullYear()===today.getFullYear() && d.getMonth()===today.getMonth();
+  var d = new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]));
+  var now = new Date();
+  if(period === 'this_month'){
+    return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+  }
+  if(period === 'last_month'){
+    var lm = new Date(now.getFullYear(), now.getMonth()-1, 1);
+    return d.getFullYear()===lm.getFullYear() && d.getMonth()===lm.getMonth();
+  }
+  if(period === 'last_3m'){
+    return d >= new Date(now.getFullYear(), now.getMonth()-3, now.getDate());
+  }
+  if(period === 'last_6m'){
+    return d >= new Date(now.getFullYear(), now.getMonth()-6, now.getDate());
+  }
+  if(period === 'this_year'){
+    return d.getFullYear()===now.getFullYear();
+  }
+  if(period === 'last_year'){
+    return d.getFullYear()===now.getFullYear()-1;
+  }
+  return true; // 'all'
 }
+
+function periodLabel(period){
+  var labels = { this_month:'Ce mois', last_month:'Mois precedent', last_3m:'3 derniers mois',
+    last_6m:'6 derniers mois', this_year:'Cette annee', last_year:'Annee precedente', all:'Tout afficher' };
+  return labels[period] || period;
+}
+
+function periodSelector(current, onchangeFn){
+  var opts = ['this_month','last_month','last_3m','last_6m','this_year','last_year','all'];
+  return '<select class="form-input" style="width:auto;padding:4px 10px;font-size:12px" onchange="'+onchangeFn+'(this.value)">' +
+    opts.map(function(o){ return '<option value="'+o+'"'+(o===current?' selected':'')+'>'+periodLabel(o)+'</option>'; }).join('') +
+    '</select>';
+}
+
+function changeDashPeriod(p){ DASH_PERIOD = p; go('dash'); }
+function changeRapportPeriod(p){ RAPPORT_PERIOD = p; go('rapports'); }
 
 // Real sales per commercial, computed directly from paid invoices — NOT from
 // COMM_PERF.ventes, which is only ever set once (when the member is created)
@@ -1120,10 +1159,12 @@ function isThisMonth(dateStr){
 // is attributed to whichever commercial is assigned (asg) to its client.
 // onlyThisMonth=true scopes to the current month (for tracking against a
 // monthly objectif); false gives the all-time total (for Direction's CA).
-function computeVentesParCommercial(onlyThisMonth){
-  const totals = {};
-  FACTURES.filter(function(f){ return f.statut === 'Payee' && (!onlyThisMonth || isThisMonth(f.date)); }).forEach(function(f){
-    const cl = CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === (f.client||'').trim().toLowerCase(); });
+function computeVentesParCommercial(period){
+  // period peut etre 'this_month', 'last_month', etc., true (=this_month), false/null (=all)
+  var p = period === true ? 'this_month' : (period === false || period === null) ? 'all' : period;
+  var totals = {};
+  FACTURES.filter(function(f){ return f.statut === 'Payee' && isInPeriod(f.date, p); }).forEach(function(f){
+    var cl = CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === (f.client||'').trim().toLowerCase(); });
     if(cl && cl.asg){
       totals[cl.asg] = (totals[cl.asg]||0) + lignesTotalMontant(f.lignes||[]);
     }
@@ -1196,14 +1237,12 @@ function renderDash(c){
   if(CU.role === 'collaborateur'){ renderDashCollaborateur(c); return; }
 
   // Real sales figures from actual invoices, not just manually-entered team numbers.
-  const facturesPayeesMois = FACTURES.filter(function(f){ return f.statut === 'Payee' && isThisMonth(f.date); });
+  const facturesPayeesMois = FACTURES.filter(function(f){ return f.statut === 'Payee' && isInPeriod(f.date, DASH_PERIOD); });
   const caReelMois = facturesPayeesMois.reduce(function(s,f){ return s + lignesTotalMontant(f.lignes||[]); }, 0);
 
-  // Equipe Commerciale: ventes reelles de chaque commercial ce mois, basees
-  // sur les factures payees liees a ses clients — pas sur COMM_PERF.ventes,
-  // qui n'etait jamais mis a jour par aucune vente (toujours la valeur
-  // saisie a la creation du membre).
-  const ventesParCommercialMois = computeVentesParCommercial(true);
+  // Equipe Commerciale: ventes reelles de chaque commercial, basees
+  // sur les factures payees liees a ses clients pour la periode selectionnee.
+  const ventesParCommercialMois = computeVentesParCommercial(DASH_PERIOD);
   const totalVentes = COMM_PERF.reduce(function(s,x){return s+(ventesParCommercialMois[x.nom]||0);},0);
   const totalObj = COMM_PERF.reduce(function(s,x){return s+x.obj;},0);
   const pctObj = totalObj > 0 ? Math.round(totalVentes/totalObj*100) : 0;
@@ -1211,6 +1250,10 @@ function renderDash(c){
   const myTasks = TASKS.filter(visibleTaskFilter).filter(function(t){return t.pri==="Haute" && t.statut!=="Termine";});
 
   let h = '';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+  h += '<div style="font-weight:700;font-size:15px">📊 Tableau de bord — <span style="color:var(--gold)">'+periodLabel(DASH_PERIOD)+'</span></div>';
+  h += '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--text-muted)">Periode :</span>'+periodSelector(DASH_PERIOD,'changeDashPeriod')+'</div>';
+  h += '</div>';
   const pipelineClos = PIPELINE.filter(function(p){return p.etape==='Gagne'||p.etape==='Perdu';});
   const pipelineGagne = PIPELINE.filter(function(p){return p.etape==='Gagne';});
   const tauxConversion = pipelineClos.length > 0 ? Math.round(pipelineGagne.length/pipelineClos.length*100) : 0;
@@ -1219,7 +1262,7 @@ function renderDash(c){
   const montantImpaye = facturesImpayees.reduce(function(s,f){ return s + lignesTotalMontant(f.lignes||[]); }, 0);
 
   h += '<div class="grid4" style="margin-bottom:13px">';
-  h += '  <div class="kpi kred"><div class="kpi-lbl">CA reel ce mois (factures payees)</div><div class="kpi-val">' + (caReelMois/1000000).toFixed(2) + 'M</div></div>';
+  h += '  <div class="kpi kred"><div class="kpi-lbl">CA reel — '+periodLabel(DASH_PERIOD)+'</div><div class="kpi-val">' + (caReelMois/1000000).toFixed(2) + 'M</div></div>';
   h += '  <div class="kpi kblue"><div class="kpi-lbl">Clients & Prospects actifs</div><div class="kpi-val">' + prospectsActifs + '</div></div>';
   h += '  <div class="kpi kgreen"><div class="kpi-lbl">Taux conversion Pipeline</div><div class="kpi-val">' + tauxConversion + '%</div></div>';
   h += '  <div class="kpi kgold"><div class="kpi-lbl">Factures impayees</div><div class="kpi-val">' + (montantImpaye/1000).toFixed(0) + 'K</div></div>';
@@ -2087,42 +2130,106 @@ function deleteDocument(id){
 
 // ── RAPPORTS ───────────────────────────────────────────────────────────────────
 function renderRapports(c){
-  let h = '<div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">';
-  h += '<div class="tabs"><button class="tab active">Mensuel</button></div>';
-  h += '<div style="display:flex;gap:6px"><button class="btn btn-ghost btn-sm" onclick="exportReport(\'pdf\')">📄 Export PDF</button><button class="btn btn-ghost btn-sm" onclick="exportReport(\'excel\')">📊 Export Excel</button><button class="btn btn-ghost btn-sm" onclick="exportReport(\'csv\')">📋 Export CSV</button></div>';
-  h += '</div>';
-  h += '<div class="grid2" style="margin-bottom:12px"><div class="card"><div class="card-title">Rapport Commercial</div><div id="rpt-comm"></div></div><div class="card"><div class="card-title">Rapport Marketing</div><div id="rpt-mkt"></div></div></div>';
-  h += '<div class="card" style="margin-bottom:12px"><div class="card-title">🔍 Doublons potentiels — Clients &amp; Prospects + Pipeline</div><div class="td-muted" style="font-size:12px;margin-bottom:6px">Memes noms ou memes numeros de telephone enregistres plus d\'une fois.</div><div id="rpt-doublons"></div></div>';
-  h += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><div class="card-title">ROI — Acqua Due vs Bouteilles Niger</div><div style="display:flex;gap:6px">';
-  h += '<button class="btn btn-red btn-sm" onclick="openRoiCalc()">🧮 Calculateur ROI</button>';
-  if(isSuperAdmin()) h += '<button class="btn btn-ghost btn-sm" onclick="openRoiPricesEditor()">✏️ Modifier les prix</button>';
-  h += '</div></div><div id="rpt-roi"></div></div>';
+  // Isolation par equipe : chaque equipe ne voit que ses propres donnees
+  // Direction et Super Admin voient tout
+  var dept = CU.departement || '';
+  var voitCommercial   = isSuperAdmin() || dept === 'Direction' || dept === 'Commercial';
+  var voitMarketing    = isSuperAdmin() || dept === 'Direction' || dept === 'Marketing';
+  var voitCommunication= isSuperAdmin() || dept === 'Direction' || dept === 'Communication';
+  var voitTout         = isSuperAdmin() || dept === 'Direction';
+
+  let h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:11px">';
+  h += '<div style="font-weight:700;font-size:15px">📈 Rapports &amp; Analyses — <span style="color:var(--gold)">'+periodLabel(RAPPORT_PERIOD)+'</span></div>';
+  h += '<div style="display:flex;align-items:center;gap:8px">';
+  h += '<span style="font-size:12px;color:var(--text-muted)">Periode :</span>'+periodSelector(RAPPORT_PERIOD,'changeRapportPeriod');
+  h += '<button class="btn btn-ghost btn-sm" onclick="exportReport(\'pdf\')">📄 PDF</button>';
+  h += '<button class="btn btn-ghost btn-sm" onclick="exportReport(\'csv\')">📋 CSV</button>';
+  h += '</div></div>';
+
+  // Rapport Commercial (visible : Commercial + Direction)
+  if(voitCommercial){
+    h += '<div class="grid2" style="margin-bottom:12px"><div class="card"><div class="card-title">Rapport Commercial — '+periodLabel(RAPPORT_PERIOD)+'</div><div id="rpt-comm"></div></div>';
+    if(voitMarketing){
+      h += '<div class="card"><div class="card-title">Rapport Marketing — '+periodLabel(RAPPORT_PERIOD)+'</div><div id="rpt-mkt"></div></div>';
+    }
+    h += '</div>';
+  } else if(voitMarketing){
+    h += '<div class="card" style="margin-bottom:12px"><div class="card-title">Rapport Marketing — '+periodLabel(RAPPORT_PERIOD)+'</div><div id="rpt-mkt"></div></div>';
+  } else if(voitCommunication){
+    h += '<div class="card" style="margin-bottom:12px"><div class="card-title">Rapport Communication — '+periodLabel(RAPPORT_PERIOD)+'</div><div id="rpt-com"></div></div>';
+  }
+
+  // Doublons et ROI uniquement pour Direction et Commercial
+  if(voitTout || dept === 'Commercial'){
+    h += '<div class="card" style="margin-bottom:12px"><div class="card-title">🔍 Doublons potentiels — Clients &amp; Prospects + Pipeline</div><div class="td-muted" style="font-size:12px;margin-bottom:6px">Memes noms ou memes numeros de telephone enregistres plus d\'une fois.</div><div id="rpt-doublons"></div></div>';
+  }
+  if(voitTout || dept === 'Commercial'){
+    h += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><div class="card-title">ROI — Acqua Due vs Bouteilles Niger</div><div style="display:flex;gap:6px">';
+    h += '<button class="btn btn-red btn-sm" onclick="openRoiCalc()">🧮 Calculateur ROI</button>';
+    if(isSuperAdmin()) h += '<button class="btn btn-ghost btn-sm" onclick="openRoiPricesEditor()">✏️ Modifier les prix</button>';
+    h += '</div></div><div id="rpt-roi"></div></div>';
+  }
   c.innerHTML = h;
 
-  // Meme calcul reel que partout ailleurs (factures payees), pas COMM_PERF.ventes
-  const ventesParCommercialRpt = computeVentesParCommercial(true);
-  const tv = COMM_PERF.reduce(function(s,x){return s+(ventesParCommercialRpt[x.nom]||0);},0);
-  const tc = COMM_PERF.reduce(function(s,x){return s+Math.round((ventesParCommercialRpt[x.nom]||0)*x.tx/100);},0);
-  el('rpt-comm').innerHTML = '<div class="grid2" style="margin-bottom:11px"><div style="background:var(--red-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--red)">CA TOTAL</div><div style="font-size:18px;font-weight:800;color:var(--red)">'+fcfa(tv)+'</div></div><div style="background:var(--green-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--green)">COMMISSIONS</div><div style="font-size:18px;font-weight:800;color:var(--green)">'+fcfa(tc)+'</div></div></div>' +
-    COMM_PERF.map(function(cm){ const ventes=ventesParCommercialRpt[cm.nom]||0; const p=cm.obj>0?Math.round(ventes/cm.obj*100):0; return '<div style="padding:7px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between"><span style="font-size:12px;font-weight:600">'+cm.nom+'</span><span style="font-weight:700;color:var(--red)">'+p+'%</span></div><div class="progress-bar"><div class="progress-fill '+(p>=100?'pf-green':p>=60?'pf-blue':'pf-red')+'" style="width:'+Math.min(p,100)+'%"></div></div></div>'; }).join('');
+  // --- Rapport Commercial ---
+  if(voitCommercial && el('rpt-comm')){
+    var ventesParCommercialRpt = computeVentesParCommercial(RAPPORT_PERIOD);
+    var facturesPeriode = FACTURES.filter(function(f){ return f.statut === 'Payee' && isInPeriod(f.date, RAPPORT_PERIOD); });
+    var tv = COMM_PERF.reduce(function(s,x){return s+(ventesParCommercialRpt[x.nom]||0);},0);
+    var tc = COMM_PERF.reduce(function(s,x){return s+Math.round((ventesParCommercialRpt[x.nom]||0)*x.tx/100);},0);
+    var nbFact = facturesPeriode.length;
+    el('rpt-comm').innerHTML =
+      '<div class="grid2" style="margin-bottom:11px">' +
+      '<div style="background:var(--red-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--red)">CA TOTAL</div><div style="font-size:18px;font-weight:800;color:var(--red)">'+fcfa(tv)+'</div><div class="td-muted">'+nbFact+' facture(s) payee(s)</div></div>' +
+      '<div style="background:var(--green-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--green)">COMMISSIONS</div><div style="font-size:18px;font-weight:800;color:var(--green)">'+fcfa(tc)+'</div></div>' +
+      '</div>' +
+      (COMM_PERF.length ? COMM_PERF.map(function(cm){
+        var ventes=ventesParCommercialRpt[cm.nom]||0;
+        var p=cm.obj>0?Math.round(ventes/cm.obj*100):0;
+        return '<div style="padding:7px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between"><span style="font-size:12px;font-weight:600">'+cm.nom+'</span><span style="font-weight:700;color:var(--red)">'+fcfa(ventes)+' ('+p+'%)</span></div><div class="progress-bar"><div class="progress-fill '+(p>=100?'pf-green':p>=60?'pf-blue':'pf-red')+'" style="width:'+Math.min(p,100)+'%"></div></div></div>';
+      }).join('') : '<div class="td-muted" style="padding:10px">Aucun commercial enregistre.</div>');
+  }
 
-  const tl = CAMPAGNES.reduce(function(s,x){return s+x.leads;},0);
-  const tb = CAMPAGNES.reduce(function(s,x){return s+x.budget;},0);
-  el('rpt-mkt').innerHTML = '<div class="grid2" style="margin-bottom:11px"><div style="background:var(--blue-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--blue)">LEADS</div><div style="font-size:18px;font-weight:800;color:var(--blue)">'+tl+'</div></div><div style="background:var(--gold-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--gold)">BUDGET</div><div style="font-size:18px;font-weight:800;color:var(--gold)">'+fcfa(tb)+'</div></div></div>' +
-    CAMPAGNES.map(function(cp){ return '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><div><div style="font-size:12px;font-weight:600">'+cp.nom+'</div><div class="td-muted">'+cp.canal+'</div></div><div style="font-weight:700;color:var(--blue)">'+cp.leads+' leads</div></div>'; }).join('');
+  // --- Rapport Marketing ---
+  if(voitMarketing && el('rpt-mkt')){
+    var campsPeriode = CAMPAGNES.filter(function(cp){ return isInPeriod(cp.date||cp.debut, RAPPORT_PERIOD); });
+    var tl = campsPeriode.reduce(function(s,x){return s+x.leads;},0);
+    var tb = campsPeriode.reduce(function(s,x){return s+x.budget;},0);
+    el('rpt-mkt').innerHTML =
+      '<div class="grid2" style="margin-bottom:11px">' +
+      '<div style="background:var(--blue-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--blue)">LEADS — '+periodLabel(RAPPORT_PERIOD)+'</div><div style="font-size:18px;font-weight:800;color:var(--blue)">'+tl+'</div><div class="td-muted">'+campsPeriode.length+' campagne(s)</div></div>' +
+      '<div style="background:var(--gold-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--gold)">BUDGET</div><div style="font-size:18px;font-weight:800;color:var(--gold)">'+fcfa(tb)+'</div></div>' +
+      '</div>' +
+      (campsPeriode.length ? campsPeriode.map(function(cp){
+        return '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><div><div style="font-size:12px;font-weight:600">'+cp.nom+'</div><div class="td-muted">'+cp.canal+'</div></div><div style="font-weight:700;color:var(--blue)">'+cp.leads+' leads</div></div>';
+      }).join('') : '<div class="td-muted" style="padding:10px">Aucune campagne sur cette periode.</div>');
+  }
 
-  el('rpt-doublons').innerHTML = duplicateContactsReportHtml();
+  // --- Rapport Communication ---
+  if(voitCommunication && el('rpt-com')){
+    var pubsPeriode = PUBLICATIONS.filter(function(p){ return isInPeriod(p.date, RAPPORT_PERIOD); });
+    var publiees = pubsPeriode.filter(function(p){return p.statut==='Publie';}).length;
+    el('rpt-com').innerHTML =
+      '<div class="grid2" style="margin-bottom:11px">' +
+      '<div style="background:var(--green-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--green)">PUBLICATIONS</div><div style="font-size:18px;font-weight:800;color:var(--green)">'+publiees+' / '+pubsPeriode.length+'</div><div class="td-muted">publiees sur la periode</div></div>' +
+      '<div style="background:var(--blue-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--blue)">EN ATTENTE</div><div style="font-size:18px;font-weight:800;color:var(--blue)">'+(pubsPeriode.length-publiees)+'</div></div>' +
+      '</div>' +
+      (pubsPeriode.length ? pubsPeriode.map(function(p){
+        return '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><div><div style="font-size:12px;font-weight:600">'+p.titre+'</div><div class="td-muted">'+p.canal+'</div></div>'+statusTag(p.statut)+'</div>';
+      }).join('') : '<div class="td-muted" style="padding:10px">Aucune publication sur cette periode.</div>');
+  }
 
-  // Le tableau de prix concurrents et le chiffre d'economie etaient fixes en
-  // dur dans le code (et l'economie n'etait meme calculee a partir de rien).
-  // Desormais : prix issus de ROI_CONCURRENTS (editable par le Super Admin),
-  // et l'economie reelle se calcule dans le Calculateur ROI (bouton ci-dessus),
-  // qui utilise exactement les memes prix — une seule source de verite.
-  el('rpt-roi').innerHTML = ROI_CONCURRENTS.length === 0
-    ? '<div class="td-muted" style="padding:10px">Aucun prix concurrent enregistre. Cliquez "Modifier les prix" pour en ajouter.</div>'
-    : '<table><thead><tr><th>Format bouteille</th><th>Volume total</th><th>Prix</th><th>Prix / litre</th></tr></thead><tbody>' +
-      ROI_CONCURRENTS.map(function(r){ return '<tr><td class="td-bold">'+r.format+'</td><td class="td-muted">'+r.volumeLitres+' L</td><td style="color:var(--red);font-weight:600">'+fcfa(r.prix)+'</td><td class="td-muted">'+fcfa(Math.round(r.prix/r.volumeLitres))+'/L</td></tr>'; }).join('') +
-      '</tbody></table>';
+  // --- Doublons ---
+  if(el('rpt-doublons')) el('rpt-doublons').innerHTML = duplicateContactsReportHtml();
+
+  // --- ROI ---
+  if(el('rpt-roi')){
+    el('rpt-roi').innerHTML = ROI_CONCURRENTS.length === 0
+      ? '<div class="td-muted" style="padding:10px">Aucun prix concurrent enregistre. Cliquez "Modifier les prix" pour en ajouter.</div>'
+      : '<table><thead><tr><th>Format bouteille</th><th>Volume total</th><th>Prix</th><th>Prix / litre</th></tr></thead><tbody>' +
+        ROI_CONCURRENTS.map(function(r){ return '<tr><td class="td-bold">'+r.format+'</td><td class="td-muted">'+r.volumeLitres+' L</td><td style="color:var(--red);font-weight:600">'+fcfa(r.prix)+'</td><td class="td-muted">'+fcfa(Math.round(r.prix/r.volumeLitres))+'/L</td></tr>'; }).join('') +
+        '</tbody></table>';
+  }
 }
 
 function exportReport(format){
