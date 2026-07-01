@@ -2446,30 +2446,162 @@ function renderRH(c){
   h += '<button class="tab active" onclick="switchTab(this,\'rh\',\'p\')">Presence du jour</button>';
   h += '<button class="tab" onclick="switchTab(this,\'rh\',\'c\')">Conges</button>';
   h += '</div></div>';
-  h += '<div id="rh-p"><div class="card"><div class="table-wrap"><table id="tbl-presence"></table></div></div></div>';
-  h += '<div id="rh-c" style="display:none"><div class="card"><div id="conges-view"></div></div></div>';
+
+  // Onglet Presence
+  h += '<div id="rh-p">';
+  h += '<div class="card">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+  h += '<span style="font-weight:600">Presences — ' + new Date().toLocaleDateString('fr-FR') + '</span>';
+  if(canValidate()) h += '<button class="btn btn-primary btn-sm" onclick="showPresenceForm()">+ Enregistrer une presence</button>';
+  h += '</div>';
+  h += '<div id="presence-form-wrap"></div>';
+  h += '<div class="table-wrap"><table id="tbl-presence"></table></div>';
+  h += '</div></div>';
+
+  // Onglet Conges
+  h += '<div id="rh-c" style="display:none">';
+  h += '<div class="card">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+  h += '<span style="font-weight:600">Demandes de conge</span>';
+  h += '<button class="btn btn-primary btn-sm" onclick="showCongeForm()">+ Demander un conge</button>';
+  h += '</div>';
+  h += '<div id="conge-form-wrap"></div>';
+  h += '<div id="conges-view"></div>';
+  h += '</div></div>';
+
   c.innerHTML = h;
+  renderPresenceTable();
+  renderCongesTable();
+}
 
-  el('tbl-presence').innerHTML = '<thead><tr><th>Employe</th><th>Date</th><th>Arrivee</th><th>Depart</th><th>Statut</th></tr></thead><tbody>' +
-    RH_PRESENCE.map(function(p){ return '<tr><td class="td-bold">'+p.nom+'</td><td class="td-muted">'+p.date+'</td><td>'+p.arrivee+'</td><td>'+p.depart+'</td><td>'+statusTag(p.statut)+'</td></tr>'; }).join('') + '</tbody>';
+function renderPresenceTable(){
+  var tgt = el('tbl-presence');
+  if(!tgt) return;
+  var todayISO = new Date().toISOString().slice(0,10);
+  var rows = RH_PRESENCE.filter(function(p){ return p.date === todayISO; });
+  var delCol = isSuperAdmin() ? '<th></th>' : '';
+  tgt.innerHTML = '<thead><tr><th>Employe</th><th>Date</th><th>Arrivee</th><th>Depart</th><th>Statut</th>' + delCol + '</tr></thead><tbody>' +
+    (rows.length ? rows.map(function(p){
+      var delBtn = isSuperAdmin() ? '<td><button class="btn btn-ghost btn-sm" onclick="deletePresence('+p.id+')" title="Supprimer">🗑</button></td>' : '';
+      return '<tr><td class="td-bold">'+p.nom+'</td><td class="td-muted">'+p.date+'</td><td>'+p.arrivee+'</td><td>'+(p.depart||'—')+'</td><td>'+statusTag(p.statut)+'</td>'+delBtn+'</tr>';
+    }).join('') : '<tr><td colspan="'+(isSuperAdmin()?6:5)+'" class="td-muted" style="text-align:center;padding:20px">Aucune presence enregistree aujourd\'hui</td></tr>') +
+    '</tbody>';
+}
 
-  el('conges-view').innerHTML = '<table><thead><tr><th>Employe</th><th>Debut</th><th>Fin</th><th>Motif</th><th>Statut</th><th></th></tr></thead><tbody>' +
-    RH_CONGES.map(function(cg){
-      let actions = '';
-      if(cg.statut === "En attente" && canValidate()){
-        actions = '<button class="btn btn-ghost btn-sm" onclick="approveConge('+cg.id+')">✓ Approuver</button> <button class="btn btn-ghost btn-sm" onclick="rejectConge('+cg.id+')">✗ Refuser</button>';
+function renderCongesTable(){
+  var tgt = el('conges-view');
+  if(!tgt) return;
+  tgt.innerHTML = '<table><thead><tr><th>Employe</th><th>Debut</th><th>Fin</th><th>Motif</th><th>Statut</th><th></th></tr></thead><tbody>' +
+    (RH_CONGES.length ? RH_CONGES.map(function(cg){
+      var actions = '';
+      if(cg.statut === 'En attente' && canValidate()){
+        actions += '<button class="btn btn-ghost btn-sm" onclick="approveConge('+cg.id+')">✓ Approuver</button> ';
+        actions += '<button class="btn btn-ghost btn-sm" onclick="rejectConge('+cg.id+')">✗ Refuser</button> ';
       }
+      if(isSuperAdmin()) actions += '<button class="btn btn-ghost btn-sm" onclick="deleteConge('+cg.id+')" title="Supprimer">🗑</button>';
       return '<tr><td class="td-bold">'+cg.nom+'</td><td class="td-muted">'+cg.debut+'</td><td class="td-muted">'+cg.fin+'</td><td class="td-muted">'+cg.motif+'</td><td>'+statusTag(cg.statut)+'</td><td>'+actions+'</td></tr>';
-    }).join('') + '</tbody></table>';
+    }).join('') : '<tr><td colspan="6" class="td-muted" style="text-align:center;padding:20px">Aucune demande de conge</td></tr>') +
+    '</tbody></table>';
+}
+
+function showPresenceForm(){
+  var wrap = el('presence-form-wrap');
+  if(!wrap) return;
+  var userOptions = USERS.filter(function(u){ return u.actif; }).map(function(u){
+    return '<option value="'+u.nom+'">'+u.nom+' ('+u.departement+')</option>';
+  }).join('');
+  var today = new Date().toISOString().slice(0,10);
+  wrap.innerHTML = '<div class="card" style="background:var(--bg-secondary);margin-bottom:12px;border:1px solid var(--gold)">' +
+    '<div style="font-weight:600;margin-bottom:12px">📋 Enregistrer une presence</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">' +
+    '<div><label class="form-label">Employe *</label><select id="p-nom" class="form-input"><option value="">-- Choisir --</option>'+userOptions+'</select></div>' +
+    '<div><label class="form-label">Statut *</label><select id="p-statut" class="form-input"><option>Present</option><option>Absent</option><option>En retard</option><option>Mi-temps</option><option>Teletravail</option></select></div>' +
+    '<div><label class="form-label">Date *</label><input type="date" id="p-date" class="form-input" value="'+today+'"></div>' +
+    '<div><label class="form-label">Heure d\'arrivee *</label><input type="time" id="p-arrivee" class="form-input"></div>' +
+    '<div><label class="form-label">Heure de depart (optionnel)</label><input type="time" id="p-depart" class="form-input"></div>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px">' +
+    '<button class="btn btn-primary btn-sm" onclick="savePresence()">✓ Enregistrer</button>' +
+    '<button class="btn btn-ghost btn-sm" onclick="el(\'presence-form-wrap\').innerHTML=\'\'">Annuler</button>' +
+    '</div></div>';
+}
+
+function savePresence(){
+  var nom = el('p-nom').value.trim();
+  var date = el('p-date').value;
+  var arrivee = el('p-arrivee').value;
+  var depart = el('p-depart').value;
+  var statut = el('p-statut').value;
+  if(!nom){ alert('Veuillez choisir un employe.'); return; }
+  if(!date){ alert('Veuillez choisir une date.'); return; }
+  if(!arrivee){ alert('Veuillez indiquer l\'heure d\'arrivee.'); return; }
+  var row = { nom:nom, date_p:date, arrivee:arrivee, depart:depart||'', statut:statut };
+  dbInsert('rh_presence', row).then(function(){
+    dbLoadAll('rh_presence').then(function(rows){ RH_PRESENCE = rows.map(mapRhPresenceFromDb); renderPresenceTable(); });
+    logAction('Presence enregistree', nom + ' — ' + statut + ' le ' + date + ' (arrivee: ' + arrivee + ')', 'blue');
+    el('presence-form-wrap').innerHTML = '';
+  });
+}
+
+function showCongeForm(){
+  var wrap = el('conge-form-wrap');
+  if(!wrap) return;
+  var userOptions = USERS.filter(function(u){ return u.actif; }).map(function(u){
+    var sel = (u.nom === CU.nom) ? ' selected' : '';
+    return '<option value="'+u.nom+'"'+sel+'>'+u.nom+' ('+u.departement+')</option>';
+  }).join('');
+  wrap.innerHTML = '<div class="card" style="background:var(--bg-secondary);margin-bottom:12px;border:1px solid var(--gold)">' +
+    '<div style="font-weight:600;margin-bottom:12px">🌴 Demande de conge</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">' +
+    '<div><label class="form-label">Employe *</label><select id="cg-nom" class="form-input"><option value="">-- Choisir --</option>'+userOptions+'</select></div>' +
+    '<div><label class="form-label">Motif *</label><select id="cg-motif" class="form-input"><option>Conge annuel</option><option>Conge maladie</option><option>Conge maternite/paternite</option><option>Conge sans solde</option><option>Evenement familial</option><option>Autre</option></select></div>' +
+    '<div><label class="form-label">Date de debut *</label><input type="date" id="cg-debut" class="form-input"></div>' +
+    '<div><label class="form-label">Date de fin *</label><input type="date" id="cg-fin" class="form-input"></div>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px">' +
+    '<button class="btn btn-primary btn-sm" onclick="saveConge()">✓ Soumettre la demande</button>' +
+    '<button class="btn btn-ghost btn-sm" onclick="el(\'conge-form-wrap\').innerHTML=\'\'">Annuler</button>' +
+    '</div></div>';
+}
+
+function saveConge(){
+  var nom = el('cg-nom').value.trim();
+  var debut = el('cg-debut').value;
+  var fin = el('cg-fin').value;
+  var motif = el('cg-motif').value;
+  if(!nom){ alert('Veuillez choisir un employe.'); return; }
+  if(!debut || !fin){ alert('Veuillez indiquer les dates de debut et de fin.'); return; }
+  if(fin < debut){ alert('La date de fin doit etre apres la date de debut.'); return; }
+  var id = Date.now();
+  var cg = { id:id, nom:nom, debut:debut, fin:fin, motif:motif, statut:'En attente' };
+  RH_CONGES.unshift(cg);
+  dbInsert('rh_conges', cg);
+  logAction('Demande de conge soumise', nom + ' — ' + motif + ' du ' + debut + ' au ' + fin, 'gold');
+  el('conge-form-wrap').innerHTML = '';
+  renderCongesTable();
 }
 
 function approveConge(id){
-  const cg = RH_CONGES.find(function(x){return String(x.id)===String(id);});
-  if(cg){ cg.statut = "Approuve"; logAction("Conge approuve", cg.nom + " - " + cg.debut + " au " + cg.fin, "green"); go('rh'); }
+  var cg = RH_CONGES.find(function(x){return String(x.id)===String(id);});
+  if(cg){ cg.statut = 'Approuve'; logAction('Conge approuve', cg.nom + ' — ' + cg.debut + ' au ' + cg.fin, 'green'); renderCongesTable(); }
 }
 function rejectConge(id){
-  const cg = RH_CONGES.find(function(x){return String(x.id)===String(id);});
-  if(cg){ cg.statut = "Refuse"; logAction("Conge refuse", cg.nom + " - " + cg.debut + " au " + cg.fin, "red"); go('rh'); }
+  var cg = RH_CONGES.find(function(x){return String(x.id)===String(id);});
+  if(cg){ cg.statut = 'Refuse'; logAction('Conge refuse', cg.nom + ' — ' + cg.debut + ' au ' + cg.fin, 'red'); renderCongesTable(); }
+}
+function deletePresence(id){
+  if(!isSuperAdmin()){ alert('Action reservee au Super Admin.'); return; }
+  if(!confirm('Supprimer cet enregistrement de presence ?')) return;
+  RH_PRESENCE = RH_PRESENCE.filter(function(p){ return String(p.id) !== String(id); });
+  dbDelete('rh_presence', id);
+  renderPresenceTable();
+}
+function deleteConge(id){
+  if(!isSuperAdmin()){ alert('Action reservee au Super Admin.'); return; }
+  if(!confirm('Supprimer cette demande de conge ?')) return;
+  RH_CONGES = RH_CONGES.filter(function(cg){ return String(cg.id) !== String(id); });
+  dbDelete('rh_conges', id);
+  renderCongesTable();
 }
 
 
