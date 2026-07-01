@@ -916,11 +916,12 @@ function go(view){
   GLOBAL_SEARCH = '';
   const searchInput = el('global-search');
   if(searchInput) searchInput.value = '';
-  // Pour le journal : afficher immédiatement puis recharger en arrière-plan
+  // Pour le journal : afficher immédiatement puis mettre à jour les listes en arrière-plan
+  // sans reconstruire le HTML (évite le flash blanc sur connexion lente)
   if(view === 'journal'){
-    renderView('journal'); // affichage immédiat avec les données en mémoire
+    renderView('journal');
     loadAuditFromDb().then(function(){
-      if(CURRENT_VIEW === 'journal') renderView('journal'); // mise à jour si toujours sur journal
+      if(CURRENT_VIEW === 'journal') refreshJournalLists();
     });
   } else {
     renderView(view);
@@ -2466,6 +2467,29 @@ function renderJournal(c){
 
 function reloadJournal(){
   loadAuditFromDb().then(function(){ go('journal'); });
+}
+
+// Met a jour uniquement le contenu des listes du journal sans reconstruire le HTML.
+// Appelee apres un rechargement depuis la base pour eviter le flash blanc.
+function refreshJournalLists(){
+  if(!el('jl-list-a')) return; // journal pas dans le DOM
+  var scoped = AUDIT;
+  if(!canSeeAllAudit()){
+    scoped = AUDIT.filter(function(a){ return a.dept === CU.departement; });
+  }
+  function fill(items, targetId){
+    var tgt = el(targetId);
+    if(!tgt) return;
+    if(!items.length){ tgt.innerHTML = '<div class="empty-state">Aucune activite</div>'; return; }
+    tgt.innerHTML = items.map(function(a){
+      return '<div class="audit-item"><div class="audit-av '+a.col+'">'+a.ini+'</div><div style="flex:1"><div style="font-size:12px"><strong>'+a.user+'</strong> ('+a.dept+') — '+a.action+'</div><div class="td-muted">'+a.detail+'</div><div class="td-muted">🕒 '+fmtDate(a.ts)+' • IP: '+a.ip+'</div></div></div>';
+    }).join('');
+  }
+  fill(scoped, 'jl-list-a');
+  fill(scoped.filter(function(a){return a.dept==='Direction';}), 'jl-list-d');
+  fill(scoped.filter(function(a){return a.dept==='Commercial';}), 'jl-list-c');
+  fill(scoped.filter(function(a){return a.dept==='Marketing';}), 'jl-list-m');
+  fill(scoped.filter(function(a){return a.dept==='Communication';}), 'jl-list-k');
 }
 
 // ── RH SIMPLIFIE ──────────────────────────────────────────────────────────────
