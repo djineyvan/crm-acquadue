@@ -7,7 +7,7 @@ const { getSql } = require('../lib/db');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -17,6 +17,18 @@ module.exports = async function handler(req, res) {
     if (req.method === 'GET') {
       const reveal = req.query.reveal; // email of user whose password to reveal
       const requestedBy = req.query.requestedBy;
+
+      // GET sessions actives : /api/users?sessions=1
+      if (req.query.sessions) {
+        const sessions = await sql`
+          SELECT s.token, s.created_at, s.last_seen, s.user_agent,
+                 u.nom, u.departement, u.ini, u.col
+          FROM sessions s
+          JOIN users u ON u.id = s.user_id
+          ORDER BY s.last_seen DESC
+        `;
+        return res.status(200).json({ sessions });
+      }
 
       const rows = await sql`SELECT * FROM users ORDER BY id ASC`;
 
@@ -109,6 +121,25 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ success: true, count: deptUsers.length });
       }
 
+      if (action === 'update_profile') {
+        const { role, departement, ville } = req.body;
+        await sql`UPDATE users SET role = ${role}, departement = ${departement}, ville = ${ville} WHERE id = ${id}`;
+        await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)
+                   VALUES (${requestedBy||'Super Admin'}, 'Direction', 'Profil modifie',
+                   ${target.nom + ' — role: ' + role + ', dept: ' + departement + ', ville: ' + ville},
+                   'dot-gold', 'SA', 'av-red', 'web')`;
+        return res.status(200).json({ success: true });
+      }
+
+      return res.status(400).json({ error: 'Action inconnue' });
+    }
+
+    if (req.method === 'DELETE') {
+      const { action, token } = req.body || {};
+      if (action === 'delete_session' && token) {
+        await sql`DELETE FROM sessions WHERE token = ${token}`;
+        return res.status(200).json({ success: true });
+      }
       return res.status(400).json({ error: 'Action inconnue' });
     }
 

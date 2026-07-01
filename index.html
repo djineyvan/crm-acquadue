@@ -2481,6 +2481,7 @@ function renderUsers(c){
   el('users-list').innerHTML = USERS.map(function(u){
     let actions = '';
     if(isSuperAdmin() && u.id !== CU.id){
+      actions += '<button class="btn btn-ghost btn-sm" onclick="openEditUser('+u.id+')">✏️ Modifier</button>';
       actions += '<button class="btn btn-ghost btn-sm" onclick="toggleUserActive('+u.id+')">'+(u.actif?'Desactiver':'Activer')+'</button>';
       if(u.verrouille) actions += '<button class="btn btn-ghost btn-sm" onclick="unlockUser('+u.id+')">🔓 Deverrouiller</button>';
       actions += '<button class="btn btn-ghost btn-sm" onclick="openResetPwd('+u.id+')">🔑 Reset mdp</button>';
@@ -2521,6 +2522,77 @@ function renderUsers(c){
 
 // revealPassword() is defined in db-bridge.js (fetches the real password
 // securely via /api/users — the in-memory USERS array never holds it).
+
+let editUserTargetId = null;
+function openEditUser(id){
+  if(!isSuperAdmin()) return;
+  editUserTargetId = id;
+  var u = USERS.find(function(x){ return String(x.id)===String(id); });
+  if(!u) return;
+  var roles = ['collaborateur','responsable','admin'];
+  var depts = ['Commercial','Marketing','Communication','Direction'];
+  var villes = ['Niamey','Ouagadougou','Bamako'];
+  var h = '<div class="form-group"><label class="form-label">Nom</label><div style="font-weight:600;padding:6px 0">'+u.nom+'</div></div>';
+  h += '<div class="form-group"><label class="form-label">Role *</label><select id="eu-role" class="form-input">';
+  h += roles.map(function(r){ return '<option value="'+r+'"'+(u.role===r?' selected':'')+'>'+r.charAt(0).toUpperCase()+r.slice(1)+'</option>'; }).join('');
+  h += '</select></div>';
+  h += '<div class="form-group"><label class="form-label">Departement / Equipe *</label><select id="eu-dept" class="form-input">';
+  h += depts.map(function(d){ return '<option value="'+d+'"'+(u.departement===d?' selected':'')+'>'+d+'</option>'; }).join('');
+  h += '</select></div>';
+  h += '<div class="form-group"><label class="form-label">Ville</label><select id="eu-ville" class="form-input">';
+  h += villes.map(function(v){ return '<option value="'+v+'"'+(u.ville===v?' selected':'')+'>'+v+'</option>'; }).join('');
+  h += '</select></div>';
+  el('edit-user-body').innerHTML = h;
+  el('edit-user-title').textContent = 'Modifier — '+u.nom;
+  openModal('modal-edit-user');
+}
+
+function saveEditUser(){
+  if(!isSuperAdmin() || !editUserTargetId) return;
+  var role  = el('eu-role').value;
+  var dept  = el('eu-dept').value;
+  var ville = el('eu-ville').value;
+  var u = USERS.find(function(x){ return String(x.id)===String(editUserTargetId); });
+  if(!u) return;
+  apiPut('/api/users', { id: editUserTargetId, action:'update_profile', role:role, departement:dept, ville:ville, requestedBy:CU.nom })
+    .then(function(result){
+      if(!result.ok){ alert('Erreur lors de la modification. Veuillez reessayer.'); return; }
+      u.role = role; u.departement = dept; u.ville = ville;
+      logAction('Profil modifie', u.nom+' — role: '+role+', dept: '+dept+', ville: '+ville, 'gold');
+      closeModal('modal-edit-user');
+      go('users');
+      alert('✅ Profil de '+u.nom+' mis a jour avec succes !');
+    })
+    .catch(function(){ alert('Impossible de contacter le serveur.'); });
+}
+
+function loadActiveSessions(){
+  apiGet('/api/users?sessions=1').then(function(result){
+    if(!result.ok || !result.data.sessions) return;
+    var sessions = result.data.sessions;
+    var tbl = el('tbl-sessions');
+    if(!tbl) return;
+    if(!sessions.length){
+      tbl.querySelector('tbody').innerHTML = '<tr><td colspan="5" class="td-muted" style="text-align:center;padding:14px">Aucune session active en ce moment</td></tr>';
+      return;
+    }
+    tbl.querySelector('tbody').innerHTML = sessions.map(function(s, i){
+      var appareil = (s.user_agent||'').indexOf('iPhone')>=0||((s.user_agent||'').indexOf('Android')>=0) ? '📱 Mobile' :
+                     (s.user_agent||'').indexOf('iPad')>=0 ? '📱 Tablette' : '💻 Ordinateur';
+      var debut = s.created_at ? new Date(s.created_at).toLocaleString('fr-FR') : '-';
+      var lastSeen = s.last_seen ? new Date(s.last_seen).toLocaleString('fr-FR') : '-';
+      return '<tr><td class="td-bold">'+s.nom+' <span class="td-muted">('+s.departement+')</span></td><td class="td-muted">'+appareil+'</td><td class="td-muted">—</td><td class="td-muted">'+debut+'</td><td><button class="btn btn-ghost btn-sm" onclick="forceDisconnectByToken(\''+s.token+'\',\''+s.nom+'\')">Deconnecter</button></td></tr>';
+    }).join('');
+  });
+}
+
+function forceDisconnectByToken(token, nom){
+  if(!confirm('Deconnecter '+nom+' de toutes ses sessions ?')) return;
+  apiDelete('/api/users', { action:'delete_session', token:token }).then(function(){
+    logAction('Deconnexion forcee', 'Super Admin a deconnecte '+nom, 'red');
+    loadActiveSessions();
+  });
+}
 
 let resetPwdTargetId = null;
 function openResetPwd(id){
@@ -4746,8 +4818,8 @@ function renderControle(c){
   h += '</div></div>';
   c.innerHTML = h;
 
-  el('tbl-sessions').innerHTML = '<thead><tr><th>Utilisateur</th><th>Appareil</th><th>IP</th><th>Debut session</th><th></th></tr></thead><tbody>' +
-    SESSIONS_ACTIVES.map(function(s,i){ return '<tr><td class="td-bold">'+s.user+'</td><td class="td-muted">'+s.appareil+'</td><td class="td-muted">'+s.ip+'</td><td class="td-muted">'+s.debut+'</td><td><button class="btn btn-ghost btn-sm" onclick="forceDisconnect('+i+')">Deconnecter</button></td></tr>'; }).join('') + '</tbody>';
+  el('tbl-sessions').innerHTML = '<thead><tr><th>Utilisateur</th><th>Appareil</th><th>IP</th><th>Debut session</th><th></th></tr></thead><tbody><tr><td colspan="5" class="td-muted" style="text-align:center;padding:14px">Chargement...</td></tr></tbody>';
+  loadActiveSessions();
 
   el('tbl-backups').innerHTML = '<tbody><tr><td colspan="5" class="td-muted" style="padding:14px;text-align:center">Chargement de l\'historique des sauvegardes...</td></tr></tbody>';
   refreshBackupHistory();
@@ -4964,6 +5036,11 @@ function buildModals(){
     '<label style="display:flex;align-items:center;gap:7px;font-size:12px;margin-top:8px"><input type="checkbox" id="reset-pwd-force" checked/> Forcer le changement a la prochaine connexion</label>';
   modals += modalShell('modal-reset-pwd', 'Reinitialiser le mot de passe', resetBody,
     btnGhost('Annuler', "closeModal('modal-reset-pwd')") + btnRed('Reinitialiser', 'confirmResetPwd()'));
+
+  // ── Modal: Modifier profil utilisateur (Super Admin) ──
+  var editUserBody = '<div id="edit-user-title" style="font-weight:600;margin-bottom:12px"></div><div id="edit-user-body"></div>';
+  modals += modalShell('modal-edit-user', 'Modifier le profil', editUserBody,
+    btnGhost('Annuler', "closeModal('modal-edit-user')") + btnRed('Enregistrer', 'saveEditUser()'));
 
   // ── Modal: Mon mot de passe (tous) ──
   const myPwdBody =
