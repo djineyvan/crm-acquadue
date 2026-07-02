@@ -912,6 +912,32 @@ function buildApp(){
   updateAllBadges();
 }
 
+// Joue un petit "ding" leger a deux notes a l'arrivee d'une nouvelle notification.
+// Genere directement par le navigateur (Web Audio) : aucun fichier son a heberger,
+// fonctionne sur Safari/Chrome (Mac) et iPhone. Silencieux si le navigateur bloque le son.
+function playNotifSound(){
+  try{
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    if(!window._notifAudioCtx) window._notifAudioCtx = new AC();
+    var ctx = window._notifAudioCtx;
+    if(ctx.state === 'suspended' && ctx.resume) ctx.resume();
+    var notes = [ {f:880, t:0}, {f:1174, t:0.12} ]; // deux notes douces
+    notes.forEach(function(n){
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = n.f;
+      var start = ctx.currentTime + n.t;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.18, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.22);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(start); osc.stop(start + 0.24);
+    });
+  }catch(e){ /* son non disponible : on ignore silencieusement */ }
+}
+
 function updateAllBadges(){
   el("nb-pipe") && (el("nb-pipe").textContent = PIPELINE.filter(visiblePipeFilter).length);
   el("nb-comm") && (el("nb-comm").textContent = COMM_PERF.length);
@@ -928,6 +954,7 @@ function updateAllBadges(){
     // On ne l'allume pas si on est deja sur l'ecran des notifications.
     if(unread > LAST_UNREAD_NOTIF && CURRENT_VIEW !== 'notifs'){
       badge.classList.add('has-new');
+      playNotifSound(); // son leger a l'arrivee d'une nouvelle notification
     }
     if(unread === 0){
       badge.classList.remove('has-new');
@@ -2884,7 +2911,8 @@ function renderRH(c){
   h += '</div>';
   h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
   h += '<span style="font-size:12px;color:var(--text-muted)">Periode du rapport :</span>' + periodSelector(RH_PERIOD,'changeRhPeriod');
-  h += '<button class="btn btn-ghost btn-sm" onclick="exportRhPDF()">📄 Exporter le rapport RH (PDF)</button>';
+  h += '<button class="btn btn-ghost btn-sm" onclick="exportRhPDF()">📄 Exporter (PDF)</button>';
+  h += '<button class="btn btn-ghost btn-sm" onclick="exportRhExcel()">📊 Exporter (Excel)</button>';
   h += '</div>';
   h += '</div>';
 
@@ -3057,6 +3085,72 @@ function exportRhPDF(){
   win.document.write(html);
   win.document.close();
   logAction('Rapport RH exporte', 'Periode : ' + periodeLabel, 'blue');
+}
+
+// Genere le meme rapport RH au format Excel (fichier .csv separe par point-virgule,
+// avec BOM UTF-8 pour les accents). S'ouvre directement dans Excel et dans Numbers (Mac).
+function exportRhExcel(){
+  var periodeLabel = periodLabel(RH_PERIOD);
+  function cell(v){
+    var s = String(v == null ? '' : v);
+    if(s.indexOf(';') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0){
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+  function row(arr){ return arr.map(cell).join(';'); }
+
+  // Presences de la periode choisie, regroupees par employe.
+  var presencesMois = RH_PRESENCE.filter(function(p){ return isRhDateInPeriod(p.date, RH_PERIOD); });
+  var parEmp = {};
+  presencesMois.forEach(function(p){
+    if(!parEmp[p.nom]) parEmp[p.nom]={present:0,absent:0,retard:0,total:0};
+    parEmp[p.nom].total++;
+    if(p.statut==='Present'||p.statut==='Teletravail'||p.statut==='Mi-temps') parEmp[p.nom].present++;
+    else if(p.statut==='Absent') parEmp[p.nom].absent++;
+    else if(p.statut==='En retard') parEmp[p.nom].retard++;
+  });
+  var congesPeriode = RH_CONGES.filter(function(cg){ return isRhDateInPeriod(cg.debut, RH_PERIOD); });
+  var enAttenteN = congesPeriode.filter(function(cg){ return cg.statut==='En attente'; }).length;
+  var approuvesN = congesPeriode.filter(function(cg){ return cg.statut==='Approuve'; }).length;
+
+  var lines = [];
+  lines.push(row(['Rapport RH — Acqua Due by Lorenzetti']));
+  lines.push(row(['Periode : ' + periodeLabel + ' — Genere le ' + new Date().toLocaleDateString('fr-FR') + ' a ' + new Date().toLocaleTimeString('fr-FR')]));
+  lines.push('');
+  lines.push(row(['Employes suivis', Object.keys(parEmp).length]));
+  lines.push(row(['Jours de presence', presencesMois.length]));
+  lines.push(row(['Conges en attente', enAttenteN]));
+  lines.push(row(['Conges approuves', approuvesN]));
+  lines.push('');
+
+  lines.push(row(['RESUME PAR EMPLOYE']));
+  lines.push(row(['Employe','Jours','Presents','Absents','Retards','Taux presence']));
+  Object.keys(parEmp).sort().forEach(function(nom){
+    var r = parEmp[nom];
+    var taux = r.total>0 ? Math.round(r.present/r.total*100) : 0;
+    lines.push(row([nom, r.total, r.present, r.absent, r.retard, taux + '%']));
+  });
+  if(Object.keys(parEmp).length === 0) lines.push(row(['Aucune presence enregistree sur cette periode']));
+  lines.push('');
+
+  lines.push(row(['DETAIL DES PRESENCES (' + periodeLabel + ')']));
+  lines.push(row(['Employe','Date','Arrivee','Depart','Statut']));
+  presencesMois.slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); }).forEach(function(p){
+    lines.push(row([p.nom, formatDateFr(p.date), p.arrivee||'-', p.depart||'-', p.statut]));
+  });
+  if(presencesMois.length === 0) lines.push(row(['Aucune presence sur cette periode']));
+  lines.push('');
+
+  lines.push(row(['DEMANDES DE CONGES']));
+  lines.push(row(['Employe','Debut','Fin','Motif','Statut']));
+  congesPeriode.slice().sort(function(a,b){ return (b.debut||'').localeCompare(a.debut||''); }).forEach(function(cg){
+    lines.push(row([cg.nom, formatDateFr(cg.debut), formatDateFr(cg.fin), cg.motif, cg.statut]));
+  });
+  if(congesPeriode.length === 0) lines.push(row(['Aucune demande de conge sur cette periode']));
+
+  downloadTextFile('rapport-rh-acquadue-' + new Date().toISOString().slice(0,10) + '.csv', '\uFEFF' + lines.join('\n'), 'text/csv;charset=utf-8');
+  logAction('Rapport RH exporte (Excel)', 'Periode : ' + periodeLabel, 'green');
 }
 
 function showPresenceForm(){
