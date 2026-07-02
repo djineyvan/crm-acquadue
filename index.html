@@ -1586,8 +1586,19 @@ function renderNotifs(c){
   }
   h += '</div>';
   c.innerHTML = h;
-  // mark as read
-  mine.forEach(function(n){ n.read = true; });
+  // Marquer comme lues — a l'ecran ET en base, pour que le compteur ne
+  // reapparaisse pas au prochain rechargement automatique ou changement de module.
+  // (Auparavant seul n.read local etait mis a jour : la base gardait "non lu",
+  //  donc le prochain dbLoadAll rechargeait les notifs en "non lu" et le
+  //  chiffre revenait. On persiste desormais chaque passage a "lu".)
+  mine.forEach(function(n){
+    if(!n.read){
+      n.read = true;
+      if(typeof dbUpdate === 'function' && n.id){
+        dbUpdate('notifications', n.id, { lu: true });
+      }
+    }
+  });
   updateAllBadges();
 }
 
