@@ -350,6 +350,31 @@ let TASKS = [];
 // ── NOTIFICATIONS ─────────────────────────────────────────────────────────────
 let NOTIFICATIONS = [];
 
+// Fonction centrale de creation d'une notification.
+// - icon   : l'emoji affiche (ex: '🏖️')
+// - text   : le message lu par l'utilisateur
+// - target : 'all' (tout le monde) ou le nom exact d'une personne
+// - dedupeKey (optionnel) : evite de recreer une alerte identique deja presente
+//   et non lue (utile pour "conge en attente" ou "paiement en retard" qui
+//   sont re-verifies periodiquement).
+// Elle ajoute la notif a l'ecran, met a jour le compteur, et l'enregistre en
+// base pour qu'elle survive a un rafraichissement de page (F5).
+function pushNotif(icon, text, target, dedupeKey){
+  target = target || 'all';
+  if(dedupeKey){
+    var exists = NOTIFICATIONS.some(function(n){ return !n.read && n._key === dedupeKey; });
+    if(exists) return null;
+  }
+  var notif = { id: Date.now() + Math.floor(Math.random()*1000), icon: icon, text: text, time: "A l'instant", read: false, target: target, _key: dedupeKey || null };
+  NOTIFICATIONS.unshift(notif);
+  // Persistance en base (colonnes reelles : id, icon, texte, cible, lu)
+  if(typeof dbInsert === 'function'){
+    dbInsert('notifications', { id: notif.id, icon: icon, texte: text, cible: target, lu: false });
+  }
+  if(typeof updateAllBadges === 'function') updateAllBadges();
+  return notif;
+}
+
 // ── RH SIMPLIFIE ──────────────────────────────────────────────────────────────
 let RH_PRESENCE = [];
 
@@ -2796,11 +2821,13 @@ function renderRH(c){
     else if(p.statut==='En retard') parEmp[p.nom].retard++;
   });
 
-  let h = '<div style="margin-bottom:11px"><div class="tabs">';
+  let h = '<div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><div class="tabs">';
   h += '<button class="tab active" onclick="switchTab(this,\'rh\',\'d\')">📊 Tableau de bord</button>';
   h += '<button class="tab" onclick="switchTab(this,\'rh\',\'p\')">Presence du jour</button>';
   h += '<button class="tab" onclick="switchTab(this,\'rh\',\'c\')">Conges</button>';
-  h += '</div></div>';
+  h += '</div>';
+  h += '<button class="btn btn-ghost btn-sm" onclick="exportRhPDF()">📄 Exporter le rapport RH (PDF)</button>';
+  h += '</div>';
 
   // Onglet Tableau de bord
   h += '<div id="rh-d">';
@@ -2902,6 +2929,77 @@ function renderCongesTable(){
     '</tbody></table>';
 }
 
+// Genere un rapport RH imprimable / enregistrable en PDF.
+// Reprend exactement la mecanique de exportReportPDF() : on ouvre une nouvelle
+// fenetre avec une mise en page propre, puis window.print() permet a l'utilisateur
+// d'enregistrer en PDF (sur Mac : "Enregistrer au format PDF" dans la fenetre d'impression).
+function exportRhPDF(){
+  var todayISOv = new Date().toISOString().slice(0,10);
+  var moisISO = todayISOv.slice(0,7);
+  var moisLabel = new Date().toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+
+  // Presences du mois en cours, regroupees par employe.
+  var presencesMois = RH_PRESENCE.filter(function(p){ return p.date && p.date.slice(0,7)===moisISO; });
+  var parEmp = {};
+  presencesMois.forEach(function(p){
+    if(!parEmp[p.nom]) parEmp[p.nom]={present:0,absent:0,retard:0,total:0};
+    parEmp[p.nom].total++;
+    if(p.statut==='Present'||p.statut==='Teletravail'||p.statut==='Mi-temps') parEmp[p.nom].present++;
+    else if(p.statut==='Absent') parEmp[p.nom].absent++;
+    else if(p.statut==='En retard') parEmp[p.nom].retard++;
+  });
+
+  var resumeRows = Object.keys(parEmp).sort().map(function(nom){
+    var r = parEmp[nom];
+    var taux = r.total>0 ? Math.round(r.present/r.total*100) : 0;
+    return '<tr><td>'+nom+'</td><td>'+r.total+'</td><td>'+r.present+'</td><td>'+r.absent+'</td><td>'+r.retard+'</td><td>'+taux+'%</td></tr>';
+  }).join('') || '<tr><td colspan="6" style="text-align:center;color:#6b7e90">Aucune presence enregistree ce mois-ci</td></tr>';
+
+  var presenceRows = presencesMois.slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); }).map(function(p){
+    return '<tr><td>'+p.nom+'</td><td>'+formatDateFr(p.date)+'</td><td>'+(p.arrivee||'-')+'</td><td>'+(p.depart||'-')+'</td><td>'+p.statut+'</td></tr>';
+  }).join('') || '<tr><td colspan="5" style="text-align:center;color:#6b7e90">Aucune presence ce mois-ci</td></tr>';
+
+  var congesRows = RH_CONGES.slice().sort(function(a,b){ return (b.debut||'').localeCompare(a.debut||''); }).map(function(cg){
+    return '<tr><td>'+cg.nom+'</td><td>'+formatDateFr(cg.debut)+'</td><td>'+formatDateFr(cg.fin)+'</td><td>'+cg.motif+'</td><td>'+cg.statut+'</td></tr>';
+  }).join('') || '<tr><td colspan="5" style="text-align:center;color:#6b7e90">Aucune demande de conge</td></tr>';
+
+  var enAttenteN = RH_CONGES.filter(function(cg){ return cg.statut==='En attente'; }).length;
+  var approuvesN = RH_CONGES.filter(function(cg){ return cg.statut==='Approuve'; }).length;
+
+  var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Rapport RH Acqua Due</title><style>' +
+    'body{font-family:Arial,sans-serif;color:#1a2535;padding:24px;}' +
+    'h1{color:#C8102E;font-size:20px;margin-bottom:4px}' +
+    'h2{font-size:14px;margin-top:24px;border-bottom:2px solid #C8102E;padding-bottom:4px}' +
+    'table{width:100%;border-collapse:collapse;margin-top:8px;font-size:11px}' +
+    'th{background:#1a2535;color:white;text-align:left;padding:6px}' +
+    'td{padding:6px;border-bottom:1px solid #e0e8f0}' +
+    '.kpi{display:inline-block;margin-right:24px;margin-top:8px}' +
+    '.kpi-val{font-size:18px;font-weight:800;color:#C8102E}' +
+    '.kpi-lbl{font-size:10px;color:#6b7e90;text-transform:uppercase}' +
+    '@media print{body{padding:0}}' +
+    '</style></head><body>' +
+    '<h1>Rapport RH — Acqua Due by Lorenzetti</h1>' +
+    '<div style="color:#6b7e90;font-size:11px">Periode : '+moisLabel+' — Genere le ' + new Date().toLocaleDateString('fr-FR') + ' a ' + new Date().toLocaleTimeString('fr-FR') + '</div>' +
+    '<div class="kpi"><div class="kpi-lbl">Employes suivis</div><div class="kpi-val">' + Object.keys(parEmp).length + '</div></div>' +
+    '<div class="kpi"><div class="kpi-lbl">Jours de presence</div><div class="kpi-val">' + presencesMois.length + '</div></div>' +
+    '<div class="kpi"><div class="kpi-lbl">Conges en attente</div><div class="kpi-val">' + enAttenteN + '</div></div>' +
+    '<div class="kpi"><div class="kpi-lbl">Conges approuves</div><div class="kpi-val">' + approuvesN + '</div></div>' +
+    '<h2>Resume mensuel par employe</h2><table><thead><tr><th>Employe</th><th>Jours</th><th>Presents</th><th>Absents</th><th>Retards</th><th>Taux presence</th></tr></thead><tbody>' +
+    resumeRows + '</tbody></table>' +
+    '<h2>Detail des presences (' + moisLabel + ')</h2><table><thead><tr><th>Employe</th><th>Date</th><th>Arrivee</th><th>Depart</th><th>Statut</th></tr></thead><tbody>' +
+    presenceRows + '</tbody></table>' +
+    '<h2>Demandes de conges</h2><table><thead><tr><th>Employe</th><th>Debut</th><th>Fin</th><th>Motif</th><th>Statut</th></tr></thead><tbody>' +
+    congesRows + '</tbody></table>' +
+    '<scr' + 'ipt>window.onload=function(){window.print();}</scr' + 'ipt>' +
+    '</body></html>';
+
+  var win = window.open('', '_blank');
+  if(!win){ alert('Veuillez autoriser les fenetres popup pour generer le PDF.'); return; }
+  win.document.write(html);
+  win.document.close();
+  logAction('Rapport RH exporte', 'Periode : ' + moisLabel, 'blue');
+}
+
 function showPresenceForm(){
   var wrap = el('presence-form-wrap');
   if(!wrap) return;
@@ -2975,6 +3073,12 @@ function saveConge(){
   RH_CONGES.unshift(cg);
   dbInsert('rh_conges', cg);
   logAction('Demande de conge soumise', nom + ' — ' + motif + ' du ' + debut + ' au ' + fin, 'gold');
+  // Notifier toutes les personnes habilitees a approuver (Super Admin, Admins,
+  // Responsables) qu'une demande de conge attend leur decision.
+  USERS.filter(function(u){ return u.actif !== false && PERMISSIONS[u.role] && PERMISSIONS[u.role].valider; })
+    .forEach(function(u){
+      pushNotif('🏖️', 'Conge en attente : ' + nom + ' (' + motif + ') du ' + debut + ' au ' + fin, u.nom, 'conge-' + id + '-' + u.nom);
+    });
   el('conge-form-wrap').innerHTML = '';
   renderCongesTable();
 }
@@ -5861,7 +5965,10 @@ function addTache(){
     desc: el('ta-desc').value.trim(), locked: false
   };
   TASKS.unshift(task);
-  NOTIFICATIONS.unshift({ id: Date.now()+1, icon: '✅', text: 'Tache assignee: ' + titre, time: "A l'instant", read: false, target: asg });
+  // Notifier la personne a qui la tache est confiee (persiste en base via pushNotif).
+  if(asg && asg !== CU.nom){
+    pushNotif('✅', 'Nouvelle tache assignee : ' + titre, asg, 'tache-' + task.id + '-' + asg);
+  }
   logAction('Tache creee', titre + ' → ' + asg, 'gold');
   closeModal('modal-tache');
   updateAllBadges();
@@ -6607,7 +6714,22 @@ function bootstrapApp(){
       setTimeout(function(){ openModal('modal-force-pwd'); }, 200);
     }
     go('dash');
+    checkPaiementsEnRetard();
     maybeRunDailyBackup();
+  });
+}
+
+// Parcourt les factures et cree une alerte pour chaque facture dont l'echeance
+// de paiement est depassee (impayee + expediee). Reservee au Super Admin et aux
+// Admins. Le dedupeKey par facture evite de repeter l'alerte a chaque chargement.
+function checkPaiementsEnRetard(){
+  if(!CU || !isAdmin()) return;
+  var today = todayISO();
+  FACTURES.forEach(function(f){
+    var enRetard = f.sortieAppliquee && f.statut === 'Impayee' && f.echeancePaiement && f.echeancePaiement < today;
+    if(enRetard){
+      pushNotif('💰', 'Paiement en retard : facture ' + f.id + ' (' + (f.client||'client') + ') echue le ' + formatDateFr(f.echeancePaiement), CU.nom, 'retard-' + f.id);
+    }
   });
 }
 
