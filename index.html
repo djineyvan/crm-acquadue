@@ -700,10 +700,11 @@ function isSameDayAsToday(dateStr){
 function canEditRecord(record, dept, owner){
   if(!CU) return false;
   if(CU.role === "superadmin") return true;
-  // Non-superadmin: only their own record, and only if created today
+  // Non-superadmin: peut modifier ses propres fiches sans limite de temps.
+  // (L'ancienne contrainte "cree aujourd'hui" a ete retiree a la demande du
+  //  Super Admin — un membre garde la main sur ce qu'il a lui-meme cree.)
   const isOwner = owner === CU.nom;
-  const createdToday = record && isSameDayAsToday(record.date || record.dateCreation || record.date_creation);
-  return isOwner && createdToday;
+  return isOwner;
 }
 
 // Stamp a record with who modified it and when (called after every edit by the Super Admin)
