@@ -545,6 +545,7 @@ function autoRefreshTick(){
   if(document.querySelector('#conge-form-wrap > *')) return;
   loadAllDataFromDb().then(function(){
     updateAllBadges();
+    if(typeof checkTachesEnRetard === 'function') checkTachesEnRetard(); // alerte si une tache vient de depasser son echeance
     // Le journal est alimente en temps reel par logAction et ne doit pas etre
     // reconstruit automatiquement (provoque un clignotement et un ecran vide)
     if(CURRENT_VIEW && CURRENT_VIEW !== 'journal') renderView(CURRENT_VIEW);
@@ -6869,6 +6870,7 @@ function bootstrapApp(){
     }
     go('dash');
     checkPaiementsEnRetard();
+    checkTachesEnRetard();
     maybeRunDailyBackup();
   });
 }
@@ -6883,6 +6885,30 @@ function checkPaiementsEnRetard(){
     var enRetard = f.sortieAppliquee && f.statut === 'Impayee' && f.echeancePaiement && f.echeancePaiement < today;
     if(enRetard){
       pushNotif('💰', 'Paiement en retard : facture ' + f.id + ' (' + (f.client||'client') + ') echue le ' + formatDateFr(f.echeancePaiement), CU.nom, 'retard-' + f.id);
+    }
+  });
+}
+
+// Parcourt les taches et cree une alerte pour chaque tache dont la date limite
+// est depassee et qui n'est pas encore terminee. La notification est envoyee a
+// la personne a qui la tache est assignee ; les Admins/Super Admin en sont aussi
+// informes pour garder un oeil global. Le dedupeKey par tache + destinataire
+// evite de repeter l'alerte a chaque chargement.
+function checkTachesEnRetard(){
+  if(!CU) return;
+  var today = todayISO();
+  TASKS.forEach(function(t){
+    var enRetard = t.date && t.date < today && t.statut !== 'Termine';
+    if(!enRetard) return;
+    var qui = t.asg || '';
+    var msg = 'Tache en retard : ' + (t.titre||'(sans titre)') + ' — echeance depassee depuis le ' + formatDateFr(t.date);
+    // Alerte a la personne assignee (si c'est une personne nommee)
+    if(qui && qui !== "Toute l'equipe"){
+      pushNotif('⏰', msg, qui, 'tache-retard-' + t.id + '-' + qui);
+    }
+    // Alerte au responsable global (Super Admin) pour supervision
+    if(CU && isSuperAdmin() && CU.nom !== qui){
+      pushNotif('⏰', msg + ' (assignee a ' + (qui||'personne') + ')', CU.nom, 'tache-retard-' + t.id + '-admin');
     }
   });
 }
