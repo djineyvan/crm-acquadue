@@ -371,7 +371,16 @@ let LAST_UNREAD_NOTIF = 0;
 function pushNotif(icon, text, target, dedupeKey){
   target = target || 'all';
   if(dedupeKey){
-    var exists = NOTIFICATIONS.some(function(n){ return !n.read && n._key === dedupeKey; });
+    // Anti-doublon robuste : on bloque si une alerte non lue identique existe deja,
+    // qu'on la reconnaisse par sa cle interne (_key, valable pendant la session)
+    // OU par son texte + destinataire (qui, eux, survivent au rechargement depuis
+    // la base toutes les 5s — le _key n'etant pas stocke en base). Sans ce second
+    // critere, les alertes automatiques se recreaient a chaque rafraichissement.
+    var exists = NOTIFICATIONS.some(function(n){
+      if(n.read) return false;
+      if(n._key === dedupeKey) return true;
+      return n.text === text && n.target === target;
+    });
     if(exists) return null;
   }
   var notif = { id: Date.now() + Math.floor(Math.random()*1000), icon: icon, text: text, time: "A l'instant", read: false, target: target, _key: dedupeKey || null };
@@ -6653,6 +6662,22 @@ function mapDepenseFromDb(r){
 function mapNotificationFromDb(r){
   return { id:r.id, icon:r.icon, text:r.texte, target:r.cible, read:r.lu, time:'' };
 }
+// Retire les doublons non lus (meme texte + meme destinataire) qui ont pu etre
+// crees en masse par les verifications automatiques avant la correction de
+// l'anti-doublon. On garde la premiere occurrence de chaque alerte, on jette les
+// copies. Les notifications deja lues ne sont jamais touchees.
+function dedupeNotifs(list){
+  var seen = {};
+  var out = [];
+  (list||[]).forEach(function(n){
+    if(n.read){ out.push(n); return; }
+    var sig = (n.target||'') + '||' + (n.text||'');
+    if(seen[sig]) return; // doublon non lu : on ignore
+    seen[sig] = true;
+    out.push(n);
+  });
+  return out;
+}
 // sensitive_perms is a config object keyed by role, not a list-style entity —
 // merge the DB rows into SENSITIVE_PERMS rather than replacing a JS array.
 function applySensitivePermsFromDb(rows){
@@ -6729,7 +6754,7 @@ function applyBulkData(data){
   DEVIS = (data.devis||[]).map(mapDevisFromDb);
   FACTURES = (data.factures||[]).map(mapFactureFromDb);
   DEPENSES = (data.depenses||[]).map(mapDepenseFromDb);
-  NOTIFICATIONS = (data.notifications||[]).map(mapNotificationFromDb);
+  NOTIFICATIONS = dedupeNotifs((data.notifications||[]).map(mapNotificationFromDb));
   DOCUMENTS = (data.documents||[]).map(mapDocumentFromDb);
   RH_PRESENCE = (data.rh_presence||[]).map(mapRhPresenceFromDb);
   RH_CONGES = (data.rh_conges||[]).map(mapRhCongesFromDb);
@@ -6785,7 +6810,7 @@ function loadAllDataFromDbLegacy(){
     dbLoadAll('devis').then(function(rows){ DEVIS = rows.map(mapDevisFromDb); }),
     dbLoadAll('factures').then(function(rows){ FACTURES = rows.map(mapFactureFromDb); }),
     dbLoadAll('depenses').then(function(rows){ DEPENSES = rows.map(mapDepenseFromDb); }),
-    dbLoadAll('notifications').then(function(rows){ NOTIFICATIONS = rows.map(mapNotificationFromDb); }),
+    dbLoadAll('notifications').then(function(rows){ NOTIFICATIONS = dedupeNotifs(rows.map(mapNotificationFromDb)); }),
     dbLoadAll('documents').then(function(rows){ DOCUMENTS = rows.map(mapDocumentFromDb); }),
     dbLoadAll('rh_presence').then(function(rows){ RH_PRESENCE = rows.map(mapRhPresenceFromDb); }),
     dbLoadAll('rh_conges').then(function(rows){ RH_CONGES = rows.map(mapRhCongesFromDb); }),
