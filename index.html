@@ -1342,10 +1342,17 @@ function renderDash(c){
 
 // ── PIPELINE (6 etapes selon cahier des charges) ────────────────────────────
 let PIPE_TYPE_FILTER = 'Tous';
+// Filtre par agent (le commercial qui a ajoute le prospect). Reserve au
+// Super Admin et aux Admins. 'Tous' = pas de filtre.
+let PIPE_AGENT_FILTER = 'Tous';
 function setPipeTypeFilter(btn, type){
   PIPE_TYPE_FILTER = type;
   btn.closest('.tabs').querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
   btn.classList.add('active');
+  renderPipeBoard();
+}
+function setPipeAgentFilter(value){
+  PIPE_AGENT_FILTER = value;
   renderPipeBoard();
 }
 function renderPipe(c){
@@ -1355,6 +1362,16 @@ function renderPipe(c){
     '<button class="tab' + (PIPE_TYPE_FILTER==='B2C'?' active':'') + '" onclick="setPipeTypeFilter(this,\'B2C\')">B2C</button>' +
     '<button class="tab' + (PIPE_TYPE_FILTER==='B2B'?' active':'') + '" onclick="setPipeTypeFilter(this,\'B2B\')">B2B</button>' +
     '</div>';
+  // Filtre par agent : reserve au Super Admin et aux Admins.
+  if(isAdmin()){
+    const agents = PIPELINE.filter(visiblePipeFilter).map(function(p){ return p.asg; })
+      .filter(function(v,i,arr){ return v && arr.indexOf(v)===i; }).sort();
+    var agentOpts = '<option value="Tous"'+(PIPE_AGENT_FILTER==='Tous'?' selected':'')+'>👤 Agent : Tous</option>';
+    agents.forEach(function(a){
+      agentOpts += '<option value="'+String(a).replace(/"/g,'&quot;')+'"'+(PIPE_AGENT_FILTER===a?' selected':'')+'>'+a+'</option>';
+    });
+    h += '<select class="form-input" style="width:auto;min-width:170px;padding:6px 10px;font-size:12px" onchange="setPipeAgentFilter(this.value)">'+agentOpts+'</select>';
+  }
   h += '<button class="btn btn-ghost btn-sm" onclick="openRoiCalc()">🧮 Calculateur ROI</button>';
   h += '<button class="btn btn-red btn-sm" onclick="openModal(\'modal-prospect\')">+ Nouveau prospect</button>';
   h += '</div><div class="pipeline" id="pipe-board"></div>';
@@ -1364,7 +1381,8 @@ function renderPipe(c){
 
 function renderPipeBoard(){
   const data = PIPELINE.filter(visiblePipeFilter).filter(function(x){ return searchMatch(x, ['nom','ville','tel','asg','sku','type']); })
-    .filter(function(x){ return PIPE_TYPE_FILTER === 'Tous' || x.type === PIPE_TYPE_FILTER; });
+    .filter(function(x){ return PIPE_TYPE_FILTER === 'Tous' || x.type === PIPE_TYPE_FILTER; })
+    .filter(function(x){ return !isAdmin() || PIPE_AGENT_FILTER === 'Tous' || x.asg === PIPE_AGENT_FILTER; });
   const cols = ["muted2","blue","gold","purple","green","red"];
   let board = '';
   PIPELINE_STAGES.forEach(function(stage, i){
@@ -1972,16 +1990,71 @@ function viewClientDetail(id){
 }
 
 // ── TACHES ────────────────────────────────────────────────────────────────────
+// Etat des filtres du module Taches. 'Tous' = pas de filtre sur ce critere.
+var TASK_FILTER_ASG = 'Tous';
+var TASK_FILTER_STATUT = 'Tous';
+var TASK_FILTER_DEPT = 'Tous';
+var TASK_FILTER_PRI = 'Tous';
+
+// Applique un filtre quand l'utilisateur choisit une valeur dans un menu.
+function setTaskFilter(which, value){
+  if(which === 'asg') TASK_FILTER_ASG = value;
+  else if(which === 'statut') TASK_FILTER_STATUT = value;
+  else if(which === 'dept') TASK_FILTER_DEPT = value;
+  else if(which === 'pri') TASK_FILTER_PRI = value;
+  go('taches');
+}
+
+// Remet tous les filtres a zero.
+function resetTaskFilters(){
+  TASK_FILTER_ASG = 'Tous'; TASK_FILTER_STATUT = 'Tous';
+  TASK_FILTER_DEPT = 'Tous'; TASK_FILTER_PRI = 'Tous';
+  go('taches');
+}
+
 function renderTaches(c){
+  // Construction dynamique des listes de valeurs a partir des taches visibles,
+  // pour que les menus refletent toujours exactement ce qui existe reellement.
+  const base = TASKS.filter(visibleTaskFilter);
+  const uniq = function(arr){ return arr.filter(function(v,i){ return v && arr.indexOf(v)===i; }).sort(); };
+  const asgList = uniq(base.map(function(t){ return t.asg; }));
+  const statutList = uniq(base.map(function(t){ return t.statut; }));
+  const deptList = uniq(base.map(function(t){ return t.dept; }));
+  const priOrder = ['Haute','Moyenne','Basse'];
+  const priList = uniq(base.map(function(t){ return t.pri; })).sort(function(a,b){ return priOrder.indexOf(a)-priOrder.indexOf(b); });
+
+  // Petit fabricant de menu deroulant de filtre.
+  function filterSelect(which, current, label, values){
+    var opts = '<option value="Tous"'+(current==='Tous'?' selected':'')+'>'+label+' : Tous</option>';
+    values.forEach(function(v){
+      opts += '<option value="'+String(v).replace(/"/g,'&quot;')+'"'+(current===v?' selected':'')+'>'+v+'</option>';
+    });
+    return '<select class="form-input" style="width:auto;min-width:150px;padding:6px 10px;font-size:12px" onchange="setTaskFilter(\''+which+'\',this.value)">'+opts+'</select>';
+  }
+
+  const anyFilterActive = (TASK_FILTER_ASG!=='Tous'||TASK_FILTER_STATUT!=='Tous'||TASK_FILTER_DEPT!=='Tous'||TASK_FILTER_PRI!=='Tous');
+
   let h = '<div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">';
   h += '<div class="tabs"><button class="tab active" onclick="switchTab(this,\'tt\',\'a\')">Toutes</button><button class="tab" onclick="switchTab(this,\'tt\',\'u\')">Urgentes</button></div>';
   h += '<button class="btn btn-red btn-sm" onclick="openModal(\'modal-tache\')">+ Tache</button>';
+  h += '</div>';
+  // Barre de filtres
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:11px">';
+  h += filterSelect('asg', TASK_FILTER_ASG, '👤 Assignee', asgList);
+  h += filterSelect('statut', TASK_FILTER_STATUT, '📌 Statut', statutList);
+  h += filterSelect('dept', TASK_FILTER_DEPT, '🏢 Departement', deptList);
+  h += filterSelect('pri', TASK_FILTER_PRI, '⚡ Priorite', priList);
+  if(anyFilterActive) h += '<button class="btn btn-ghost btn-sm" onclick="resetTaskFilters()">✕ Reinitialiser</button>';
   h += '</div>';
   h += '<div id="tt-a"><div class="card"><div class="table-wrap"><table id="tbl-tsk"></table></div></div></div>';
   h += '<div id="tt-u" style="display:none"><div class="card"><div class="table-wrap"><table id="tbl-urg"></table></div></div></div>';
   c.innerHTML = h;
 
-  const data = TASKS.filter(visibleTaskFilter).filter(function(t){ return searchMatch(t, ['titre','asg','dept']); });
+  const data = TASKS.filter(visibleTaskFilter).filter(function(t){ return searchMatch(t, ['titre','asg','dept']); })
+    .filter(function(t){ return TASK_FILTER_ASG === 'Tous' || t.asg === TASK_FILTER_ASG; })
+    .filter(function(t){ return TASK_FILTER_STATUT === 'Tous' || t.statut === TASK_FILTER_STATUT; })
+    .filter(function(t){ return TASK_FILTER_DEPT === 'Tous' || t.dept === TASK_FILTER_DEPT; })
+    .filter(function(t){ return TASK_FILTER_PRI === 'Tous' || t.pri === TASK_FILTER_PRI; });
   function mkTable(d){
     return '<thead><tr><th>Tache</th><th>Assignee a</th><th>Departement</th><th>Priorite</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>' +
       d.map(function(t){
