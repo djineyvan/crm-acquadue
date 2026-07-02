@@ -49,6 +49,12 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-
 .ni.active{background:rgba(255,255,255,.22);color:#fff;font-weight:600}
 .ni.hidden-role{display:none}
 .nb{margin-left:auto;background:rgba(255,255,255,.25);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px}
+/* Badge notifications : quand une NOUVELLE notif arrive en temps reel, il
+   devient rouge et pulse pour attirer l'oeil, avec un point clignotant. */
+.nb.has-new{background:#C8102E;color:#fff;animation:notifPulse 1.4s ease-in-out infinite;position:relative}
+.nb.has-new::after{content:'';position:absolute;top:-3px;right:-3px;width:8px;height:8px;background:#ff3b30;border-radius:50%;border:1.5px solid #1a2535;animation:notifBlink 1s ease-in-out infinite}
+@keyframes notifPulse{0%,100%{box-shadow:0 0 0 0 rgba(200,16,46,.6)}50%{box-shadow:0 0 0 5px rgba(200,16,46,0)}}
+@keyframes notifBlink{0%,100%{opacity:1}50%{opacity:.3}}
 .sf{padding:8px 10px;border-top:1px solid rgba(255,255,255,.15)}
 .uc{display:flex;align-items:center;gap:8px}
 .uav{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:700;flex-shrink:0}
@@ -349,6 +355,9 @@ let TASKS = [];
 
 // ── NOTIFICATIONS ─────────────────────────────────────────────────────────────
 let NOTIFICATIONS = [];
+// Memoire du dernier nombre de notifications non lues, pour detecter l'arrivee
+// d'une NOUVELLE notification en temps reel et allumer la pastille pulsante.
+let LAST_UNREAD_NOTIF = 0;
 
 // Fonction centrale de creation d'une notification.
 // - icon   : l'emoji affiche (ex: '🏖️')
@@ -500,6 +509,7 @@ let BOOT_VERSION = null;
 let BOOTSTRAP_DONE = false; // garde anti-double-boot (tryAutoLogin + login manuel)
 let DASH_PERIOD    = 'this_month'; // filtre periode du tableau de bord
 let RAPPORT_PERIOD = 'this_month'; // filtre periode des rapports
+let RH_PERIOD      = 'this_month'; // filtre periode du rapport RH (PDF)
 function checkAppVersion(){
   fetch('/api/version').then(function(r){ return r.json(); }).then(function(d){
     if(!d || !d.version) return;
@@ -910,7 +920,20 @@ function updateAllBadges(){
   el("nb-clients") && (el("nb-clients").textContent = CLIENTS.filter(visibleClientFilter).length);
   el("nb-taches") && (el("nb-taches").textContent = TASKS.filter(visibleTaskFilter).filter(function(t){return t.statut!=="Termine";}).length);
   const unread = NOTIFICATIONS.filter(function(n){ return !n.read && (n.target==="all" || n.target===CU.nom); }).length;
-  el("nb-notif") && (el("nb-notif").textContent = unread);
+  const badge = el("nb-notif");
+  if(badge){
+    badge.textContent = unread;
+    // Point de couleur "temps reel" : si le nombre de non-lues a AUGMENTE
+    // depuis la derniere verification, on allume la pastille pulsante.
+    // On ne l'allume pas si on est deja sur l'ecran des notifications.
+    if(unread > LAST_UNREAD_NOTIF && CURRENT_VIEW !== 'notifs'){
+      badge.classList.add('has-new');
+    }
+    if(unread === 0){
+      badge.classList.remove('has-new');
+    }
+  }
+  LAST_UNREAD_NOTIF = unread;
 }
 
 function visibleClientFilter(c){
@@ -1186,6 +1209,23 @@ function periodLabel(period){
   return labels[period] || period;
 }
 
+// Meme logique que isInPeriod, mais pour les dates RH stockees au format
+// ISO "AAAA-MM-JJ" (presences et conges), alors que isInPeriod attend "JJ/MM/AAAA".
+function isRhDateInPeriod(isoDate, period){
+  if(!isoDate || !period) return true;
+  var parts = String(isoDate).slice(0,10).split('-');
+  if(parts.length !== 3) return false;
+  var d = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+  var now = new Date();
+  if(period === 'this_month') return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+  if(period === 'last_month'){ var lm = new Date(now.getFullYear(), now.getMonth()-1, 1); return d.getFullYear()===lm.getFullYear() && d.getMonth()===lm.getMonth(); }
+  if(period === 'last_3m') return d >= new Date(now.getFullYear(), now.getMonth()-3, now.getDate());
+  if(period === 'last_6m') return d >= new Date(now.getFullYear(), now.getMonth()-6, now.getDate());
+  if(period === 'this_year') return d.getFullYear()===now.getFullYear();
+  if(period === 'last_year') return d.getFullYear()===now.getFullYear()-1;
+  return true; // 'all'
+}
+
 function periodSelector(current, onchangeFn){
   var opts = ['this_month','last_month','last_3m','last_6m','this_year','last_year','all'];
   return '<select class="form-input" style="width:auto;padding:4px 10px;font-size:12px" onchange="'+onchangeFn+'(this.value)">' +
@@ -1195,6 +1235,7 @@ function periodSelector(current, onchangeFn){
 
 function changeDashPeriod(p){ DASH_PERIOD = p; go('dash'); }
 function changeRapportPeriod(p){ RAPPORT_PERIOD = p; go('rapports'); }
+function changeRhPeriod(p){ RH_PERIOD = p; go('rh'); }
 
 // Real sales per commercial, computed directly from paid invoices — NOT from
 // COMM_PERF.ventes, which is only ever set once (when the member is created)
@@ -1599,6 +1640,10 @@ function renderNotifs(c){
       }
     }
   });
+  // Eteindre la pastille "nouvelle notification" : on vient de tout lire.
+  var badge = el("nb-notif");
+  if(badge) badge.classList.remove('has-new');
+  LAST_UNREAD_NOTIF = 0;
   updateAllBadges();
 }
 
@@ -2837,7 +2882,10 @@ function renderRH(c){
   h += '<button class="tab" onclick="switchTab(this,\'rh\',\'p\')">Presence du jour</button>';
   h += '<button class="tab" onclick="switchTab(this,\'rh\',\'c\')">Conges</button>';
   h += '</div>';
+  h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+  h += '<span style="font-size:12px;color:var(--text-muted)">Periode du rapport :</span>' + periodSelector(RH_PERIOD,'changeRhPeriod');
   h += '<button class="btn btn-ghost btn-sm" onclick="exportRhPDF()">📄 Exporter le rapport RH (PDF)</button>';
+  h += '</div>';
   h += '</div>';
 
   // Onglet Tableau de bord
@@ -2945,12 +2993,10 @@ function renderCongesTable(){
 // fenetre avec une mise en page propre, puis window.print() permet a l'utilisateur
 // d'enregistrer en PDF (sur Mac : "Enregistrer au format PDF" dans la fenetre d'impression).
 function exportRhPDF(){
-  var todayISOv = new Date().toISOString().slice(0,10);
-  var moisISO = todayISOv.slice(0,7);
-  var moisLabel = new Date().toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+  var periodeLabel = periodLabel(RH_PERIOD);
 
-  // Presences du mois en cours, regroupees par employe.
-  var presencesMois = RH_PRESENCE.filter(function(p){ return p.date && p.date.slice(0,7)===moisISO; });
+  // Presences de la periode choisie, regroupees par employe.
+  var presencesMois = RH_PRESENCE.filter(function(p){ return isRhDateInPeriod(p.date, RH_PERIOD); });
   var parEmp = {};
   presencesMois.forEach(function(p){
     if(!parEmp[p.nom]) parEmp[p.nom]={present:0,absent:0,retard:0,total:0};
@@ -2964,18 +3010,20 @@ function exportRhPDF(){
     var r = parEmp[nom];
     var taux = r.total>0 ? Math.round(r.present/r.total*100) : 0;
     return '<tr><td>'+nom+'</td><td>'+r.total+'</td><td>'+r.present+'</td><td>'+r.absent+'</td><td>'+r.retard+'</td><td>'+taux+'%</td></tr>';
-  }).join('') || '<tr><td colspan="6" style="text-align:center;color:#6b7e90">Aucune presence enregistree ce mois-ci</td></tr>';
+  }).join('') || '<tr><td colspan="6" style="text-align:center;color:#6b7e90">Aucune presence enregistree sur cette periode</td></tr>';
 
   var presenceRows = presencesMois.slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); }).map(function(p){
     return '<tr><td>'+p.nom+'</td><td>'+formatDateFr(p.date)+'</td><td>'+(p.arrivee||'-')+'</td><td>'+(p.depart||'-')+'</td><td>'+p.statut+'</td></tr>';
-  }).join('') || '<tr><td colspan="5" style="text-align:center;color:#6b7e90">Aucune presence ce mois-ci</td></tr>';
+  }).join('') || '<tr><td colspan="5" style="text-align:center;color:#6b7e90">Aucune presence sur cette periode</td></tr>';
 
-  var congesRows = RH_CONGES.slice().sort(function(a,b){ return (b.debut||'').localeCompare(a.debut||''); }).map(function(cg){
+  // Conges : on garde ceux dont la date de debut tombe dans la periode choisie.
+  var congesPeriode = RH_CONGES.filter(function(cg){ return isRhDateInPeriod(cg.debut, RH_PERIOD); });
+  var congesRows = congesPeriode.slice().sort(function(a,b){ return (b.debut||'').localeCompare(a.debut||''); }).map(function(cg){
     return '<tr><td>'+cg.nom+'</td><td>'+formatDateFr(cg.debut)+'</td><td>'+formatDateFr(cg.fin)+'</td><td>'+cg.motif+'</td><td>'+cg.statut+'</td></tr>';
-  }).join('') || '<tr><td colspan="5" style="text-align:center;color:#6b7e90">Aucune demande de conge</td></tr>';
+  }).join('') || '<tr><td colspan="5" style="text-align:center;color:#6b7e90">Aucune demande de conge sur cette periode</td></tr>';
 
-  var enAttenteN = RH_CONGES.filter(function(cg){ return cg.statut==='En attente'; }).length;
-  var approuvesN = RH_CONGES.filter(function(cg){ return cg.statut==='Approuve'; }).length;
+  var enAttenteN = congesPeriode.filter(function(cg){ return cg.statut==='En attente'; }).length;
+  var approuvesN = congesPeriode.filter(function(cg){ return cg.statut==='Approuve'; }).length;
 
   var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Rapport RH Acqua Due</title><style>' +
     'body{font-family:Arial,sans-serif;color:#1a2535;padding:24px;}' +
@@ -2990,14 +3038,14 @@ function exportRhPDF(){
     '@media print{body{padding:0}}' +
     '</style></head><body>' +
     '<h1>Rapport RH — Acqua Due by Lorenzetti</h1>' +
-    '<div style="color:#6b7e90;font-size:11px">Periode : '+moisLabel+' — Genere le ' + new Date().toLocaleDateString('fr-FR') + ' a ' + new Date().toLocaleTimeString('fr-FR') + '</div>' +
+    '<div style="color:#6b7e90;font-size:11px">Periode : '+periodeLabel+' — Genere le ' + new Date().toLocaleDateString('fr-FR') + ' a ' + new Date().toLocaleTimeString('fr-FR') + '</div>' +
     '<div class="kpi"><div class="kpi-lbl">Employes suivis</div><div class="kpi-val">' + Object.keys(parEmp).length + '</div></div>' +
     '<div class="kpi"><div class="kpi-lbl">Jours de presence</div><div class="kpi-val">' + presencesMois.length + '</div></div>' +
     '<div class="kpi"><div class="kpi-lbl">Conges en attente</div><div class="kpi-val">' + enAttenteN + '</div></div>' +
     '<div class="kpi"><div class="kpi-lbl">Conges approuves</div><div class="kpi-val">' + approuvesN + '</div></div>' +
-    '<h2>Resume mensuel par employe</h2><table><thead><tr><th>Employe</th><th>Jours</th><th>Presents</th><th>Absents</th><th>Retards</th><th>Taux presence</th></tr></thead><tbody>' +
+    '<h2>Resume par employe</h2><table><thead><tr><th>Employe</th><th>Jours</th><th>Presents</th><th>Absents</th><th>Retards</th><th>Taux presence</th></tr></thead><tbody>' +
     resumeRows + '</tbody></table>' +
-    '<h2>Detail des presences (' + moisLabel + ')</h2><table><thead><tr><th>Employe</th><th>Date</th><th>Arrivee</th><th>Depart</th><th>Statut</th></tr></thead><tbody>' +
+    '<h2>Detail des presences (' + periodeLabel + ')</h2><table><thead><tr><th>Employe</th><th>Date</th><th>Arrivee</th><th>Depart</th><th>Statut</th></tr></thead><tbody>' +
     presenceRows + '</tbody></table>' +
     '<h2>Demandes de conges</h2><table><thead><tr><th>Employe</th><th>Debut</th><th>Fin</th><th>Motif</th><th>Statut</th></tr></thead><tbody>' +
     congesRows + '</tbody></table>' +
@@ -3008,7 +3056,7 @@ function exportRhPDF(){
   if(!win){ alert('Veuillez autoriser les fenetres popup pour generer le PDF.'); return; }
   win.document.write(html);
   win.document.close();
-  logAction('Rapport RH exporte', 'Periode : ' + moisLabel, 'blue');
+  logAction('Rapport RH exporte', 'Periode : ' + periodeLabel, 'blue');
 }
 
 function showPresenceForm(){
