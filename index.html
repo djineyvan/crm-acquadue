@@ -3438,7 +3438,7 @@ function renderPromoPackBuilderLignes(){
       '<div style="font-size:12px">Qte: <strong>'+l.qte+'</strong></div>' +
       '<button class="btn btn-ghost btn-sm" onclick="removePromoPackBuilderLigne('+i+')">🗑</button>' +
     '</div>';
-  }).join('') || '<div class="td-muted" style="margin-bottom:8px">Aucun produit ajoute encore — un pack doit en combiner au moins 2.</div>';
+  }).join('') || '<div class="td-muted" style="margin-bottom:8px">Aucun produit ajoute encore — un pack doit contenir au moins 2 articles (2 produits differents, ou plusieurs unites d\'un meme produit).</div>';
 
   if(skuOptions.length === 0){
     h += '<div style="background:var(--red-light);color:var(--red);border-radius:8px;padding:9px;font-size:11px;margin-top:8px">⚠️ Aucun produit n\'existe encore. Creez-en un dans Produits avant de creer un pack.</div>';
@@ -3474,7 +3474,8 @@ function savePromoPack(){
   if(!isSuperAdmin()) return;
   const nom = el('pp-nom').value.trim();
   if(!nom){ alert('Entrez un nom pour le pack.'); return; }
-  if(PROMO_PACK_BUILDER_LIGNES.length < 2){ alert("Un pack promo doit combiner au moins 2 produits (sinon ce n'est pas une combinaison)."); return; }
+  const totalArticles = PROMO_PACK_BUILDER_LIGNES.reduce(function(s,l){ return s + (parseInt(l.qte)||0); }, 0);
+  if(totalArticles < 2){ alert("Un pack promo doit contenir au moins 2 articles au total (soit 2 produits differents, soit plusieurs unites d'un meme produit)."); return; }
   const prixPack = parseInt(el('pp-prix').value) || 0;
   if(prixPack <= 0){ alert('Entrez un prix de pack valide (superieur a 0).'); return; }
 
