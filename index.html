@@ -6531,18 +6531,40 @@ window.addEventListener('beforeunload', function(e){
 });
 
 function dbInsert(entity, row){
-  return trackPendingWrite(apiPost('/api/data', { entity: entity, row: row }).then(function(result){
-    if(!result.ok){
+  // On tente l'enregistrement. Si le serveur repond avec une erreur
+  // (cold start Vercel, pic de charge momentane), on attend 3 secondes
+  // et on reessaye UNE fois avant d'afficher la banniere rouge.
+  // Cela evite les faux positifs : Nadia voit "Erreur" alors que
+  // l'enregistrement a bien reussi quelques secondes plus tard.
+  function attempt(){
+    return apiPost('/api/data', { entity: entity, row: row }).then(function(result){
+      if(!result.ok){
+        return new Promise(function(resolve){
+          setTimeout(function(){
+            apiPost('/api/data', { entity: entity, row: row }).then(function(r2){
+              if(!r2.ok){
+                SYNC_FAILURES++;
+                console.error('DB INSERT FAILED for ' + entity + ':', r2.data && r2.data.error);
+                showSyncWarning();
+              }
+              resolve(r2);
+            }).catch(function(err){
+              SYNC_FAILURES++;
+              console.error('DB INSERT NETWORK ERROR (retry) for ' + entity + ':', err);
+              showSyncWarning();
+              resolve({ ok: false });
+            });
+          }, 3000);
+        });
+      }
+      return result;
+    }).catch(function(err){
       SYNC_FAILURES++;
-      console.error('DB INSERT FAILED for ' + entity + ':', result.data && result.data.error);
+      console.error('DB INSERT NETWORK ERROR for ' + entity + ':', err);
       showSyncWarning();
-    }
-    return result;
-  }).catch(function(err){
-    SYNC_FAILURES++;
-    console.error('DB INSERT NETWORK ERROR for ' + entity + ':', err);
-    showSyncWarning();
-  }));
+    });
+  }
+  return trackPendingWrite(attempt());
 }
 function dbUpdate(entity, id, patch){
   return trackPendingWrite(apiPut('/api/data', { entity: entity, id: id, patch: patch }).then(function(result){
@@ -6887,6 +6909,14 @@ function bootstrapApp(){
   BOOTSTRAP_DONE = true;
   Promise.all([loadAllDataFromDb(), loadAuditFromDb()]).then(function(){
     buildApp();
+    // Initialiser LAST_UNREAD_NOTIF avec le vrai nombre de non-lues au
+    // premier chargement. Sans cela, la variable vaut 0 au démarrage, et
+    // dès que updateAllBadges() lit le vrai nombre (ex: 5), il croit que 5
+    // nouvelles notifications viennent d'arriver → son qui sonne à chaque
+    // connexion ou changement d'onglet pour Nadia et les autres membres.
+    LAST_UNREAD_NOTIF = NOTIFICATIONS.filter(function(n){
+      return !n.read && (n.target === 'all' || (CU && n.target === CU.nom));
+    }).length;
     updateAllBadges(); // safety net: ensure sidebar counts reflect freshly-loaded DB data
     el('login-screen').style.display = 'none';
     el('app').classList.add('on');
