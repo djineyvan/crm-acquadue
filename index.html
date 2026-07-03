@@ -2179,7 +2179,8 @@ function renderTaches(c){
         const isOwnTask = t.asg === CU.nom || t.asg === "Toute l'equipe";
         const doneBtn = (isOwnTask && t.statut!=="Termine") ? '<button class="btn btn-ghost btn-sm" onclick="markTaskDone('+t.id+')">✓ Termine</button>' : '';
         const detailBtn = '<button class="btn btn-ghost btn-sm" onclick="viewTaskDetail('+t.id+')">👁 Details</button>';
-        return '<tr><td class="td-bold">'+t.titre+(t.locked?' 🔒':'')+'</td><td class="td-muted">'+t.asg+'</td><td>'+deptTag(t.dept)+'</td><td>'+statusTag(t.pri)+'</td><td class="td-muted">'+t.date+'</td><td>'+statusTag(t.statut)+'</td><td>'+detailBtn+' '+doneBtn+'</td></tr>';
+        const delBtn = isSuperAdmin() ? '<button class="btn btn-ghost btn-sm" style="color:#dc2626" onclick="deleteTache('+t.id+')">🗑</button>' : '';
+        return '<tr><td class="td-bold">'+t.titre+(t.locked?' 🔒':'')+'</td><td class="td-muted">'+t.asg+'</td><td>'+deptTag(t.dept)+'</td><td>'+statusTag(t.pri)+'</td><td class="td-muted">'+t.date+'</td><td>'+statusTag(t.statut)+'</td><td>'+detailBtn+' '+doneBtn+' '+delBtn+'</td></tr>';
       }).join('') + '</tbody>';
   }
   el('tbl-tsk').innerHTML = mkTable(data);
@@ -2216,6 +2217,18 @@ function submitTaskReport(){
   // le hook wrapAfter('submitTaskReport', ...) qui persiste en base s'execute
   // APRES la fin de cette fonction et a besoin de le relire pour savoir
   // quelle tache vient d'etre validee. Il sera ecrase au prochain markTaskDone().
+}
+
+function deleteTache(id){
+  if(!isSuperAdmin()) return alert('Seul le Super Admin peut supprimer une tache.');
+  const t = TASKS.find(function(x){ return String(x.id)===String(id); });
+  if(!t) return;
+  if(!confirm('Supprimer definitivement la tache "'+t.titre+'" ? Cette action est irreversible.')) return;
+  TASKS = TASKS.filter(function(x){ return String(x.id)!==String(id); });
+  logAction('Tache supprimee', t.titre + ' — assignee a ' + t.asg, 'red');
+  if(typeof dbDelete === 'function') dbDelete('tasks', t.id);
+  updateAllBadges();
+  go('taches');
 }
 
 function viewTaskDetail(id){
