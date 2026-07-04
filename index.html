@@ -1013,7 +1013,7 @@ function visibleDepenseFilter(d){
 const VIEW_TITLES = {
   dash:"Tableau de bord", pipe:"Pipeline Commercial", notifs:"Centre de notifications",
   comm:"Equipe Commerciale", mkt:"Equipe Marketing", com:"Equipe Communication",
-  clients:"Clients & Prospects", taches:"Taches & Objectifs", docs:"Gestion documentaire",
+  clients:"Clients & Prospects", taches:"Taches & RDV", docs:"Gestion documentaire",
   rapports:"Rapports & Analyses", users:"Utilisateurs & Acces", journal:"Journal d'audit", rh:"Ressources Humaines",
   produits:"Catalogue Produits", stock:"Gestion des Stocks", approv:"Fournisseurs & Approvisionnement",
   achats:"Workflow des Achats", inventaires:"Inventaires", facturation:"Devis & Facturation",
@@ -2113,6 +2113,7 @@ var TASK_FILTER_ASG = 'Tous';
 var TASK_FILTER_STATUT = 'Tous';
 var TASK_FILTER_DEPT = 'Tous';
 var TASK_FILTER_PRI = 'Tous';
+var TASK_FILTER_TYPE = 'Tous';
 
 // Applique un filtre quand l'utilisateur choisit une valeur dans un menu.
 function setTaskFilter(which, value){
@@ -2120,6 +2121,7 @@ function setTaskFilter(which, value){
   else if(which === 'statut') TASK_FILTER_STATUT = value;
   else if(which === 'dept') TASK_FILTER_DEPT = value;
   else if(which === 'pri') TASK_FILTER_PRI = value;
+  else if(which === 'type') TASK_FILTER_TYPE = value;
   go('taches');
 }
 
@@ -2127,7 +2129,19 @@ function setTaskFilter(which, value){
 function resetTaskFilters(){
   TASK_FILTER_ASG = 'Tous'; TASK_FILTER_STATUT = 'Tous';
   TASK_FILTER_DEPT = 'Tous'; TASK_FILTER_PRI = 'Tous';
+  TASK_FILTER_TYPE = 'Tous';
   go('taches');
+}
+
+// Renvoie le "type" d'un enregistrement du module : 'tache', 'rdv' ou 'installation'.
+// Les anciennes taches n'ont pas de champ type -> considerees comme 'tache' par defaut.
+function taskType(t){ return t.type_item || 'tache'; }
+// Libelle lisible + petite pastille couleur pour l'affichage dans la liste.
+function taskTypeLabel(t){
+  var ty = taskType(t);
+  if(ty === 'rdv') return '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:#e6f1fb;color:#0c447c">📅 RDV</span>';
+  if(ty === 'installation') return '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:#faeeda;color:#854f0b">🔧 Installation</span>';
+  return '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:#f1efe8;color:#444441">📋 Tâche</span>';
 }
 
 function renderTaches(c){
@@ -2150,14 +2164,16 @@ function renderTaches(c){
     return '<select class="form-input" style="width:auto;min-width:150px;padding:6px 10px;font-size:12px" onchange="setTaskFilter(\''+which+'\',this.value)">'+opts+'</select>';
   }
 
-  const anyFilterActive = (TASK_FILTER_ASG!=='Tous'||TASK_FILTER_STATUT!=='Tous'||TASK_FILTER_DEPT!=='Tous'||TASK_FILTER_PRI!=='Tous');
+  const anyFilterActive = (TASK_FILTER_ASG!=='Tous'||TASK_FILTER_STATUT!=='Tous'||TASK_FILTER_DEPT!=='Tous'||TASK_FILTER_PRI!=='Tous'||TASK_FILTER_TYPE!=='Tous');
 
   let h = '<div style="margin-bottom:11px;display:flex;justify-content:space-between;align-items:center">';
   h += '<div class="tabs"><button class="tab active" onclick="switchTab(this,\'tt\',\'a\')">Toutes</button><button class="tab" onclick="switchTab(this,\'tt\',\'u\')">Urgentes</button></div>';
-  h += '<button class="btn btn-red btn-sm" onclick="openModal(\'modal-tache\')">+ Tache</button>';
+  h += '<div style="display:flex;gap:6px"><button class="btn btn-red btn-sm" onclick="openModal(\'modal-tache\')">+ Tache</button>';
+  h += '<button class="btn btn-sm" style="background:#185fa5;color:#fff" onclick="openRdvModal()">+ RDV</button></div>';
   h += '</div>';
   // Barre de filtres
   h += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:11px">';
+  h += filterSelect('type', TASK_FILTER_TYPE, '🏷️ Type', ['Tâches','RDV','Installations']);
   h += filterSelect('asg', TASK_FILTER_ASG, '👤 Assignee', asgList);
   h += filterSelect('statut', TASK_FILTER_STATUT, '📌 Statut', statutList);
   h += filterSelect('dept', TASK_FILTER_DEPT, '🏢 Departement', deptList);
@@ -2168,19 +2184,21 @@ function renderTaches(c){
   h += '<div id="tt-u" style="display:none"><div class="card"><div class="table-wrap"><table id="tbl-urg"></table></div></div></div>';
   c.innerHTML = h;
 
+  const typeMap = { 'Tâches':'tache', 'RDV':'rdv', 'Installations':'installation' };
   const data = TASKS.filter(visibleTaskFilter).filter(function(t){ return searchMatch(t, ['titre','asg','dept']); })
+    .filter(function(t){ return TASK_FILTER_TYPE === 'Tous' || taskType(t) === typeMap[TASK_FILTER_TYPE]; })
     .filter(function(t){ return TASK_FILTER_ASG === 'Tous' || t.asg === TASK_FILTER_ASG; })
     .filter(function(t){ return TASK_FILTER_STATUT === 'Tous' || t.statut === TASK_FILTER_STATUT; })
     .filter(function(t){ return TASK_FILTER_DEPT === 'Tous' || t.dept === TASK_FILTER_DEPT; })
     .filter(function(t){ return TASK_FILTER_PRI === 'Tous' || t.pri === TASK_FILTER_PRI; });
   function mkTable(d){
-    return '<thead><tr><th>Tache</th><th>Assignee a</th><th>Departement</th><th>Priorite</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>' +
+    return '<thead><tr><th>Type</th><th>Tache / RDV</th><th>Assignee a</th><th>Departement</th><th>Priorite</th><th>Date</th><th>Statut</th><th></th></tr></thead><tbody>' +
       d.map(function(t){
         const isOwnTask = t.asg === CU.nom || t.asg === "Toute l'equipe";
         const doneBtn = (isOwnTask && t.statut!=="Termine") ? '<button class="btn btn-ghost btn-sm" onclick="markTaskDone('+t.id+')">✓ Termine</button>' : '';
         const detailBtn = '<button class="btn btn-ghost btn-sm" onclick="viewTaskDetail('+t.id+')">👁 Details</button>';
         const delBtn = isSuperAdmin() ? '<button class="btn btn-ghost btn-sm" style="color:#dc2626" onclick="deleteTache('+t.id+')">🗑</button>' : '';
-        return '<tr><td class="td-bold">'+t.titre+(t.locked?' 🔒':'')+'</td><td class="td-muted">'+t.asg+'</td><td>'+deptTag(t.dept)+'</td><td>'+statusTag(t.pri)+'</td><td class="td-muted">'+t.date+'</td><td>'+statusTag(t.statut)+'</td><td>'+detailBtn+' '+doneBtn+' '+delBtn+'</td></tr>';
+        return '<tr><td>'+taskTypeLabel(t)+'</td><td class="td-bold">'+t.titre+(t.locked?' 🔒':'')+'</td><td class="td-muted">'+t.asg+'</td><td>'+deptTag(t.dept)+'</td><td>'+statusTag(t.pri)+'</td><td class="td-muted">'+t.date+'</td><td>'+statusTag(t.statut)+'</td><td>'+detailBtn+' '+doneBtn+' '+delBtn+'</td></tr>';
       }).join('') + '</tbody>';
   }
   el('tbl-tsk').innerHTML = mkTable(data);
@@ -2234,20 +2252,24 @@ function deleteTache(id){
 function viewTaskDetail(id){
   const t = TASKS.find(function(x){return String(x.id)===String(id);});
   if(!t) return;
+  const ty = taskType(t);
+  const estRdv = (ty === 'rdv' || ty === 'installation');
+  const titreFenetre = ty === 'rdv' ? 'Detail RDV' : (ty === 'installation' ? 'Detail Installation' : 'Detail Tache');
   const rows = [
+    ['Type', taskTypeLabel(t)],
     ['Titre', '<strong>'+t.titre+'</strong>'],
-    ['Assignee a', t.asg],
-    ['Departement', deptTag(t.dept)],
-    ['Priorite', statusTag(t.pri)],
-    ['Date limite', t.date],
-    ['Description', t.desc ? t.desc.replace(/\n/g,'<br/>') : '<span class="td-muted">Aucune description fournie</span>'],
-    ['Statut', statusTag(t.statut)],
-    ['Verrouillage', t.locked ? lockBadge() : '<span class="td-muted">Modifiable</span>']
+    ['Assignee a', t.asg]
   ];
+  if(!estRdv) rows.push(['Departement', deptTag(t.dept)]);
+  if(!estRdv) rows.push(['Priorite', statusTag(t.pri)]);
+  rows.push([estRdv ? 'Date' : 'Date limite', t.date]);
+  rows.push(['Description', t.desc ? t.desc.replace(/\n/g,'<br/>') : '<span class="td-muted">Aucune description fournie</span>']);
+  rows.push(['Statut', statusTag(t.statut)]);
+  rows.push(['Verrouillage', t.locked ? lockBadge() : '<span class="td-muted">Modifiable</span>']);
   if(t.rapport) rows.push(['Rapport de fin de tache', t.rapport.replace(/\n/g,'<br/>')]);
   if(t.lastModifiedBy) rows.push(['Derniere modification', modStampHtml(t)]);
 
-  openDetailModal('Detail Tache', rows, {
+  openDetailModal(titreFenetre, rows, {
     record: t,
     entity: 'tasks',
     dept: t.dept,
@@ -5337,6 +5359,9 @@ function fieldText(id, label, placeholder){
 function fieldDate(id, label){
   return '<div class="form-group"><label class="form-label">' + label + '</label><input class="form-input" type="date" id="' + id + '"/></div>';
 }
+function fieldTime(id, label){
+  return '<div class="form-group"><label class="form-label">' + label + '</label><input class="form-input" type="time" id="' + id + '"/></div>';
+}
 function fieldPassword(id, label, placeholder){
   placeholder = placeholder || '';
   return '<div class="form-group"><label class="form-label">' + label + '</label>' +
@@ -5417,6 +5442,17 @@ function buildModals(){
     fieldTextarea('ta-desc','Description');
   modals += modalShell('modal-tache', 'Nouvelle Tache', tacheBody,
     btnGhost('Annuler', "closeModal('modal-tache')") + btnRed('Creer', 'addTache()'));
+
+  // ── Modal: Nouveau RDV / Installation programmée ──
+  const rdvBody =
+    fieldSelect('rdv-type','Type de rendez-vous',['RDV','Installation programmée']) +
+    fieldText('rdv-titre','Titre','Ex: Visite de demonstration chez le client') +
+    fieldRow(fieldDate('rdv-date','Date'), fieldTime('rdv-heure','Heure')) +
+    fieldRow(fieldSelect('rdv-client','Client / Prospect',[]), fieldSelect('rdv-asg','Assigné à',[])) +
+    fieldText('rdv-lieu','Lieu','Ex: Domicile client, Plateau — Niamey') +
+    fieldTextarea('rdv-notes','Notes');
+  modals += modalShell('modal-rdv', 'Nouveau RDV / Installation', rdvBody,
+    btnGhost('Annuler', "closeModal('modal-rdv')") + btnRed('Créer', 'addRdv()'));
 
   // ── Modal: Rapport de fin de tache ──
   const taskReportBody =
@@ -5852,7 +5888,11 @@ function syncDetailEditToDb(entity, record, oldNom){
       last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
     syncPipelineToClient(record, oldNom);
   } else if(entity === 'tasks'){
-    dbUpdate('tasks', record.id, { titre:record.titre, pri:record.pri, date_limite:record.date, desc_tache:record.desc, statut:record.statut,
+    // Pour un RDV/installation, on reapplique le marqueur de type en tete de
+    // description avant d'enregistrer, sinon le type serait perdu au refresh.
+    var ty = record.type_item || 'tache';
+    var descAvecType = (ty === 'rdv' || ty === 'installation') ? ('[[' + ty + ']]\n' + (record.desc||'')) : (record.desc||'');
+    dbUpdate('tasks', record.id, { titre:record.titre, pri:record.pri, date_limite:record.date, desc_tache:descAvecType, statut:record.statut,
       last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
   } else if(entity === 'produits'){
     dbUpdate('produits', record.sku, { nom:record.nom, categorie:record.categorie, marque:record.marque,
@@ -6148,6 +6188,52 @@ function addTache(){
   }
   logAction('Tache creee', titre + ' → ' + asg, 'gold');
   closeModal('modal-tache');
+  updateAllBadges();
+  go('taches');
+}
+
+// Ouvre le formulaire de RDV en remplissant d'abord les listes deroulantes
+// (clients existants + commerciaux). On remplit ici plutot qu'a la construction
+// du modal, car ces listes evoluent au fil des ajouts.
+function openRdvModal(){
+  fillClientSelect('rdv-client');
+  fillAssigneeSelect('rdv-asg');
+  openModal('modal-rdv');
+}
+
+// Enregistre un RDV ou une installation programmee. Techniquement c'est un
+// enregistrement de la meme famille que les taches (meme table, meme liste
+// TASKS), distingue par le champ type_item ('rdv' ou 'installation'). Les
+// details propres au RDV (heure, client, lieu) sont ranges dans la description
+// sous une forme lisible — ainsi aucune nouvelle colonne de base n'est requise.
+function addRdv(){
+  const titre = el('rdv-titre').value.trim();
+  if(!titre){ alert('Entrez un titre pour le rendez-vous'); return; }
+  const type_item = el('rdv-type').value === 'Installation programmée' ? 'installation' : 'rdv';
+  const asg = el('rdv-asg').value;
+  const heure = el('rdv-heure').value;
+  const client = el('rdv-client').value;
+  const lieu = el('rdv-lieu').value.trim();
+  const notes = el('rdv-notes').value.trim();
+  // On assemble une description lisible qui regroupe les infos du RDV.
+  const lignes = [];
+  if(client) lignes.push('Client : ' + client);
+  if(heure) lignes.push('Heure : ' + heure);
+  if(lieu) lignes.push('Lieu : ' + lieu);
+  if(notes) lignes.push('Notes : ' + notes);
+  const item = {
+    id: Date.now(), titre: titre, asg: asg, dept: 'Commercial',
+    pri: 'Moyenne', statut: 'A faire', date: el('rdv-date').value || '—',
+    desc: lignes.join('\n'), locked: false, type_item: type_item,
+    rdv_heure: heure, rdv_client: client, rdv_lieu: lieu
+  };
+  TASKS.unshift(item);
+  const libelle = type_item === 'installation' ? 'Installation programmée' : 'RDV';
+  if(asg && asg !== CU.nom){
+    pushNotif('📅', 'Nouveau ' + libelle + ' assigné : ' + titre, asg, 'rdv-' + item.id + '-' + asg);
+  }
+  logAction(libelle + ' créé', titre + (client ? ' — ' + client : '') + ' → ' + asg, 'blue');
+  closeModal('modal-rdv');
   updateAllBadges();
   go('taches');
 }
@@ -6626,8 +6712,17 @@ function mapPipelineFromDb(r){
     reservationFaite:r.reservation_faite, lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapTaskFromDb(r){
+  // Un RDV ou une installation est stocke dans la meme table que les taches.
+  // Son type est encode par un petit marqueur invisible en tete de description
+  // (ex: "[[rdv]]\n..."), qu'on retire ici pour l'affichage tout en retablissant
+  // le champ type_item. Une tache normale n'a pas de marqueur -> type 'tache'.
+  var descBrut = r.desc_tache || '';
+  var typeItem = 'tache';
+  var m = descBrut.match(/^\[\[(rdv|installation)\]\]\n?/);
+  if(m){ typeItem = m[1]; descBrut = descBrut.slice(m[0].length); }
   return { id:r.id, titre:r.titre, asg:r.asg, dept:r.dept, pri:r.pri, statut:r.statut,
-    date:r.date_limite, desc:r.desc_tache||'', locked:r.locked, rapport:r.rapport||'', lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
+    date:r.date_limite, desc:descBrut, locked:r.locked, rapport:r.rapport||'',
+    type_item:typeItem, lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapCommPerfFromDb(r){
   return { nom:r.nom, ville:r.ville, zone:r.zone, obj:r.obj, ventes:r.ventes, nb:r.nb, tx:Number(r.tx),
@@ -7460,6 +7555,16 @@ wrapAfter('addClient', function(){
 wrapAfter('addTache', function(){
   const t = TASKS[0];
   if(t) dbInsert('tasks', { id:t.id, titre:t.titre, asg:t.asg, dept:t.dept, pri:t.pri, statut:t.statut, date_limite:t.date, desc_tache:t.desc||'', locked:t.locked });
+});
+// RDV / Installation — addRdv() unshifts into TASKS[0] (meme table que les taches).
+// Le type est encode par un marqueur en tete de desc_tache ("[[rdv]]\n..." ou
+// "[[installation]]\n...") pour eviter d'ajouter une colonne en base — ainsi
+// aucune migration ni visite de /api/init-db n'est necessaire.
+wrapAfter('addRdv', function(){
+  const t = TASKS[0];
+  if(!t) return;
+  const marqueur = '[[' + (t.type_item || 'rdv') + ']]\n';
+  dbInsert('tasks', { id:t.id, titre:t.titre, asg:t.asg, dept:t.dept, pri:t.pri, statut:t.statut, date_limite:t.date, desc_tache:marqueur + (t.desc||''), locked:t.locked });
 });
 // markTaskDone() n'ouvre plus qu'une petite fenetre demandant un rapport — la
 // tache n'est marquee terminee qu'apres soumission de ce rapport (submitTaskReport).
