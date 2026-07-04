@@ -703,6 +703,27 @@ function fillAssigneeSelect(id){
   sel.innerHTML = opts;
 }
 
+// Affiche le champ "Assigné à / Commercial assigné" uniquement pour le Super Admin.
+// Pour un membre (Admin ou Collaborateur), on masque le champ et on force sa
+// valeur sur le nom de la personne connectee — ainsi la fiche lui appartient
+// automatiquement, sans qu'il ait a choisir. Le <select> reste dans le HTML
+// (juste masque) pour que le code d'enregistrement lise toujours sa valeur.
+function applyAssigneeVisibility(wrapId, selectId){
+  const wrap = el(wrapId);
+  const sel = el(selectId);
+  if(isSuperAdmin()){
+    if(wrap) wrap.style.display = '';
+  } else {
+    if(wrap) wrap.style.display = 'none';
+    if(sel && CU){
+      // Garantir que le nom du membre connecte est bien une option selectionnee.
+      let found = false;
+      for(let i=0;i<sel.options.length;i++){ if(sel.options[i].value === CU.nom){ sel.selectedIndex = i; found = true; break; } }
+      if(!found){ const o = document.createElement('option'); o.text = CU.nom; sel.add(o); sel.value = CU.nom; }
+    }
+  }
+}
+
 // ── ROLE / PERMISSION HELPERS ─────────────────────────────────────────────────
 function isSuperAdmin(){ return CU && CU.role === "superadmin"; }
 function isAdmin(){ return CU && (CU.role === "admin" || CU.role === "superadmin"); }
@@ -1185,6 +1206,9 @@ function openModal(id){
   fillEntrepotSelect('pr-entrepot');
   fillClientSelect('db-client-select');
   fillClientSelect('fb-client-select');
+  // Le champ "Commercial assigne" du formulaire client n'est visible que pour
+  // le Super Admin ; pour un membre, il est masque et prerempli a son nom.
+  applyAssigneeVisibility('wrap-m-asg-1', 'm-asg-1');
 }
 function closeModal(id){ const m = el(id); if(m) m.classList.remove('open'); }
 
@@ -5406,7 +5430,12 @@ function buildModals(){
     fieldRow(fieldText('cl-nom','Nom','Ex: Amadou Mahamane'), fieldSelect('cl-type','Type',['B2C — Famille','B2B — Hotel','B2B — Restaurant','B2B — Clinique','B2B — Bureau','B2B — Ecole','B2B — Administration'])) +
     fieldRow(fieldText('cl-tel','Telephone','+227 XX XX XX XX'), fieldSelect('m-ville-1','Ville — Niger',[])) +
     fieldRow(fieldText('cl-zone','Quartier / Zone','Plateau, Centre...'), fieldSelect('cl-source','Source',['Pipeline','Devis/Facturation','Prospection terrain','Bouche a oreille','Recommandation','Reseaux sociaux','Salon professionnel'])) +
-    fieldRow(fieldSelect('cl-statut','Statut',['Nouveau prospect','Contacte','Offre envoyee','En negociation','Client actif','Client perdu']), fieldSelect('m-asg-1','Commercial assigne',[])) +
+    // Le champ "Commercial assigne" est enveloppe dans un conteneur qu'on masque
+    // pour les membres (seul le Super Admin choisit a qui la fiche revient).
+    // Le champ reste present dans le HTML meme masque, pour que addClient() puisse
+    // toujours lire sa valeur (forcee sur le membre connecte a l'ouverture).
+    fieldRow(fieldSelect('cl-statut','Statut',['Nouveau prospect','Contacte','Offre envoyee','En negociation','Client actif','Client perdu']),
+             '<div id="wrap-m-asg-1">' + fieldSelect('m-asg-1','Commercial assigne',[]) + '</div>') +
     '<div class="form-label" style="margin-top:8px">Produit(s) d\'interet</div>' +
     '<div id="client-builder-lignes"></div>' +
     fieldTextarea('cl-notes','Notes');
@@ -5448,7 +5477,8 @@ function buildModals(){
     fieldSelect('rdv-type','Type de rendez-vous',['RDV','Installation programmée']) +
     fieldText('rdv-titre','Titre','Ex: Visite de demonstration chez le client') +
     fieldRow(fieldDate('rdv-date','Date'), fieldTime('rdv-heure','Heure')) +
-    fieldRow(fieldSelect('rdv-client','Client / Prospect',[]), fieldSelect('rdv-asg','Assigné à',[])) +
+    fieldRow(fieldSelect('rdv-client','Client / Prospect',[]),
+             '<div id="wrap-rdv-asg">' + fieldSelect('rdv-asg','Assigné à',[]) + '</div>') +
     fieldText('rdv-lieu','Lieu','Ex: Domicile client, Plateau — Niamey') +
     fieldTextarea('rdv-notes','Notes');
   modals += modalShell('modal-rdv', 'Nouveau RDV / Installation', rdvBody,
@@ -6082,7 +6112,7 @@ function addClient(){
     ville: ville, zone: zone || ville, tel: telSaisi, email:'',
     societe:'', source: el('cl-source').value,
     statut: el('cl-statut').value, produit: produitLabel,
-    asg: el('m-asg-1').value, notes: el('cl-notes').value.trim(), date: new Date().toLocaleDateString('fr-FR'),
+    asg: isSuperAdmin() ? el('m-asg-1').value : CU.nom, notes: el('cl-notes').value.trim(), date: new Date().toLocaleDateString('fr-FR'),
     locked: false, historique: []
   };
   CLIENTS.unshift(client);
@@ -6198,6 +6228,7 @@ function addTache(){
 function openRdvModal(){
   fillClientSelect('rdv-client');
   fillAssigneeSelect('rdv-asg');
+  applyAssigneeVisibility('wrap-rdv-asg', 'rdv-asg');
   openModal('modal-rdv');
 }
 
@@ -6210,7 +6241,7 @@ function addRdv(){
   const titre = el('rdv-titre').value.trim();
   if(!titre){ alert('Entrez un titre pour le rendez-vous'); return; }
   const type_item = el('rdv-type').value === 'Installation programmée' ? 'installation' : 'rdv';
-  const asg = el('rdv-asg').value;
+  const asg = isSuperAdmin() ? el('rdv-asg').value : CU.nom;
   const heure = el('rdv-heure').value;
   const client = el('rdv-client').value;
   const lieu = el('rdv-lieu').value.trim();
