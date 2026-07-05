@@ -3750,17 +3750,41 @@ function renderStock(c){
 
   // Reservations: all stock rows with reserve > 0, cross-referenced with what created them
   if(logistique){
-  const reserved = STOCK.filter(function(s){ return (s.reserve||0) > 0; });
-  el('reservations-view').innerHTML = reserved.length === 0
+  // Une ligne par reservation individuelle (Pipeline, Devis, Factures), chacune
+  // avec sa propre quantite et son origine claire — plutot qu'un regroupement
+  // par produit qui melangeait plusieurs origines sur une meme ligne.
+  const lignesReservation = [];
+  PIPELINE.forEach(function(pp){
+    if(pp.reservationFaite && pp.sku){
+      const p = PRODUITS.find(function(x){return x.sku===pp.sku;});
+      lignesReservation.push({ produit: p?p.nom:pp.sku, entrepot: pp.entrepot, qte: pp.qte, origine: 'Vente: '+pp.nom });
+    }
+  });
+  DEVIS.forEach(function(d){
+    if(d.reservationFaite){
+      (d.lignes||[]).forEach(function(l){
+        if(l.sku && l._reserve){
+          const p = PRODUITS.find(function(x){return x.sku===l.sku;});
+          lignesReservation.push({ produit: p?p.nom:l.sku, entrepot: l.entrepot, qte: l.qte, origine: 'Devis: '+d.id+(d.client?' ('+d.client+')':'') });
+        }
+      });
+    }
+  });
+  FACTURES.forEach(function(f){
+    if(f.reservationFaite){
+      (f.lignes||[]).forEach(function(l){
+        if(l.sku && l._reserve){
+          const p = PRODUITS.find(function(x){return x.sku===l.sku;});
+          lignesReservation.push({ produit: p?p.nom:l.sku, entrepot: l.entrepot, qte: l.qte, origine: 'Facture: '+f.id+(f.client?' ('+f.client+')':'') });
+        }
+      });
+    }
+  });
+  el('reservations-view').innerHTML = lignesReservation.length === 0
     ? '<div class="empty-state"><div class="empty-state-icon">📭</div>Aucune reservation active actuellement</div>'
     : '<table><thead><tr><th>Produit</th><th>Entrepot</th><th>Quantite reservee</th><th>Origine</th></tr></thead><tbody>' +
-      reserved.map(function(s){
-        const p = PRODUITS.find(function(x){return x.sku===s.sku;});
-        const fromPipe = PIPELINE.filter(function(pp){ return pp.sku===s.sku && pp.entrepot===s.entrepot && pp.reservationFaite; }).map(function(pp){ return 'Vente: '+pp.nom; });
-        const fromDevis = DEVIS.filter(function(d){ return d.sku===s.sku && d.entrepot===s.entrepot && d.reservationFaite; }).map(function(d){ return 'Devis: '+d.id; });
-        const fromFactures = FACTURES.filter(function(f){ return f.reservationFaite; }).filter(function(f){ return (f.lignes||[]).some(function(l){ return l.sku===s.sku && l.entrepot===s.entrepot && l._reserve; }); }).map(function(f){ return 'Facture: '+f.id+' ('+f.client+')'; });
-        const origines = fromPipe.concat(fromDevis).concat(fromFactures).join(', ') || '-';
-        return '<tr><td class="td-bold">'+(p?p.nom:s.sku)+'</td><td class="td-muted">'+s.entrepot+'</td><td style="font-weight:700;color:var(--gold)">'+s.reserve+'</td><td class="td-muted">'+origines+'</td></tr>';
+      lignesReservation.map(function(r){
+        return '<tr><td class="td-bold">'+r.produit+'</td><td class="td-muted">'+r.entrepot+'</td><td style="font-weight:700;color:var(--gold)">'+r.qte+'</td><td class="td-muted">'+r.origine+'</td></tr>';
       }).join('') + '</tbody></table>';
 
   el('tbl-mouvements').innerHTML = '<thead><tr><th>Date</th><th>Type</th><th>Motif</th><th>Produit</th><th>Quantite</th><th>Entrepot</th><th>Utilisateur</th><th></th></tr></thead><tbody>' +
@@ -3940,7 +3964,7 @@ function createPurchaseRequest(sku){
   const p = PRODUITS.find(function(x){return x.sku===sku;});
   DEMANDES_ACHAT.unshift({ id:Date.now(), produit:p.nom, qte:50, motif:"Stock disponible sous le seuil critique", demandeur:CU.nom, etape:"Demande", date:new Date().toLocaleDateString('fr-FR') });
   logAction("Demande d'achat creee", p.nom+' — Stock critique', "gold");
-  NOTIFICATIONS.unshift({ id:Date.now()+1, icon:"📦", text:"Alerte stock: "+p.nom+" sous le seuil critique", time:"A l'instant", read:false, target:"all" });
+  pushNotif('🛒', 'Nouvelle demande d\'achat : '+p.nom+' x50 — stock sous le seuil critique (par '+CU.nom+')', 'all');
   alert("Demande d'achat creee pour "+p.nom);
   go('achats');
 }
@@ -6571,6 +6595,7 @@ function addDemandeAchat(){
     demandeur: CU.nom, etape: 'Demande', date: new Date().toLocaleDateString('fr-FR')
   });
   logAction("Demande d'achat creee", produit + ' x' + qte, 'gold');
+  pushNotif('🛒', 'Nouvelle demande d\'achat : '+produit+' x'+qte+' (par '+CU.nom+')', 'all');
   closeModal('modal-demande-achat');
   go('achats');
 }
