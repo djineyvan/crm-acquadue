@@ -3758,7 +3758,8 @@ function renderStock(c){
         const p = PRODUITS.find(function(x){return x.sku===s.sku;});
         const fromPipe = PIPELINE.filter(function(pp){ return pp.sku===s.sku && pp.entrepot===s.entrepot && pp.reservationFaite; }).map(function(pp){ return 'Vente: '+pp.nom; });
         const fromDevis = DEVIS.filter(function(d){ return d.sku===s.sku && d.entrepot===s.entrepot && d.reservationFaite; }).map(function(d){ return 'Devis: '+d.id; });
-        const origines = fromPipe.concat(fromDevis).join(', ') || '-';
+        const fromFactures = FACTURES.filter(function(f){ return f.reservationFaite; }).filter(function(f){ return (f.lignes||[]).some(function(l){ return l.sku===s.sku && l.entrepot===s.entrepot && l._reserve; }); }).map(function(f){ return 'Facture: '+f.id+' ('+f.client+')'; });
+        const origines = fromPipe.concat(fromDevis).concat(fromFactures).join(', ') || '-';
         return '<tr><td class="td-bold">'+(p?p.nom:s.sku)+'</td><td class="td-muted">'+s.entrepot+'</td><td style="font-weight:700;color:var(--gold)">'+s.reserve+'</td><td class="td-muted">'+origines+'</td></tr>';
       }).join('') + '</tbody></table>';
 
