@@ -1028,11 +1028,15 @@ function privatize(content, asg){ return content; }
 // disparaissent chez lui") ; pour un Collaborateur, on se base alors sur
 // "Paye par" en dernier recours.
 function visibleDepenseFilter(d){
+  // Regle (demande explicite) : la visibilite des depenses se base UNIQUEMENT
+  // sur "Assigne a". Le departement n'entre plus en compte.
+  //   - Super Admin : voit tout.
+  //   - Toute autre personne : voit uniquement les depenses qui lui sont assignees.
+  // Filet de securite pour les depenses sans assignation (anciennes, avant ce
+  // champ) : on retombe sur le createur puis le payeur, pour qu'aucune depense
+  // ne devienne invisible pour la personne concernee.
   if(isSuperAdmin()) return true;
-  // Une depense assignee a la personne connectee est toujours visible pour elle,
-  // quel que soit son role ou son departement.
-  if(d.assigneA && d.assigneA === CU.nom) return true;
-  if(CU.role === "admin" || CU.role === "responsable") return !d.departement || d.departement === CU.departement;
+  if(d.assigneA) return d.assigneA === CU.nom;
   return d.creePar ? d.creePar === CU.nom : d.payePar === CU.nom;
 }
 
