@@ -518,6 +518,9 @@ let BOOT_VERSION = null;
 let BOOTSTRAP_DONE = false; // garde anti-double-boot (tryAutoLogin + login manuel)
 let DASH_PERIOD    = 'this_month'; // filtre periode du tableau de bord
 let RAPPORT_PERIOD = 'this_month'; // filtre periode des rapports
+let DEP_PERIOD    = 'all';  // filtre periode du module Depenses
+let DEP_CATEGORIE = 'all';  // filtre categorie du module Depenses
+let DEP_STATUT    = 'all';  // filtre statut du module Depenses
 let RH_PERIOD      = 'this_month'; // filtre periode du rapport RH (PDF)
 function checkAppVersion(){
   fetch('/api/version').then(function(r){ return r.json(); }).then(function(d){
@@ -1026,6 +1029,9 @@ function privatize(content, asg){ return content; }
 // "Paye par" en dernier recours.
 function visibleDepenseFilter(d){
   if(isSuperAdmin()) return true;
+  // Une depense assignee a la personne connectee est toujours visible pour elle,
+  // quel que soit son role ou son departement.
+  if(d.assigneA && d.assigneA === CU.nom) return true;
   if(CU.role === "admin" || CU.role === "responsable") return !d.departement || d.departement === CU.departement;
   return d.creePar ? d.creePar === CU.nom : d.payePar === CU.nom;
 }
@@ -1296,6 +1302,10 @@ function periodSelector(current, onchangeFn){
 
 function changeDashPeriod(p){ DASH_PERIOD = p; go('dash'); }
 function changeRapportPeriod(p){ RAPPORT_PERIOD = p; go('rapports'); }
+function changeDepPeriod(p){ DEP_PERIOD = p; go('depenses'); }
+function changeDepCategorie(v){ DEP_CATEGORIE = v; go('depenses'); }
+function changeDepStatut(v){ DEP_STATUT = v; go('depenses'); }
+function resetDepFiltres(){ DEP_PERIOD='all'; DEP_CATEGORIE='all'; DEP_STATUT='all'; go('depenses'); }
 function changeRhPeriod(p){ RH_PERIOD = p; go('rh'); }
 
 // Real sales per commercial, computed directly from paid invoices — NOT from
@@ -4246,8 +4256,23 @@ function renderAchats(c){
     } else if(isAdmin() && d.etape !== "Paiement" && d.etape !== "Demande"){
       actionBtn = '<button class="btn btn-red btn-sm" onclick="advanceAchat('+d.id+')">Etape suivante →</button>';
     }
-    return '<div style="padding:10px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div><div style="font-weight:700;font-size:12px">'+d.produit+' x'+d.qte+'</div><div class="td-muted">'+d.motif+' • Demandeur: '+d.demandeur+' • '+d.date+'</div></div>'+actionBtn+'</div><div class="progress-bar"><div class="progress-fill pf-blue" style="width:'+progress+'%"></div></div><div class="td-muted" style="margin-top:3px">Etape: '+d.etape+'</div></div>';
+    const delBtn = isSuperAdmin() ? ' <button class="btn btn-ghost btn-sm" onclick="deleteDemandeAchat('+d.id+')">🗑</button>' : '';
+    return '<div style="padding:10px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div><div style="font-weight:700;font-size:12px">'+d.produit+' x'+d.qte+'</div><div class="td-muted">'+d.motif+' • Demandeur: '+d.demandeur+' • '+d.date+'</div></div><div style="display:flex;gap:4px;align-items:center">'+actionBtn+delBtn+'</div></div><div class="progress-bar"><div class="progress-fill pf-blue" style="width:'+progress+'%"></div></div><div class="td-muted" style="margin-top:3px">Etape: '+d.etape+'</div></div>';
   }).join('') || '<div class="empty-state">Aucune demande d\'achat</div>';
+}
+
+// Suppression d'une demande d'achat — reservee au Super Admin (utile pour
+// nettoyer les anciennes demandes cloturees ou obsoletes).
+function deleteDemandeAchat(id){
+  if(!isSuperAdmin()){ alert('Seul le Super Admin peut supprimer une demande d\'achat.'); return; }
+  const d = DEMANDES_ACHAT.find(function(x){return String(x.id)===String(id);});
+  if(!d) return;
+  if(!confirm('Supprimer definitivement la demande d\'achat "'+d.produit+' x'+d.qte+'" (demandeur: '+d.demandeur+') ?\n\nCette action est irreversible.')) return;
+  const idx = DEMANDES_ACHAT.indexOf(d);
+  if(idx !== -1) DEMANDES_ACHAT.splice(idx,1);
+  logAction("Demande d'achat supprimee", d.produit+' x'+d.qte+' — demandeur: '+d.demandeur, 'red');
+  if(typeof dbDelete === 'function') dbDelete('demandes_achat', id);
+  go('achats');
 }
 
 function advanceAchat(id){
@@ -5796,6 +5821,7 @@ function buildModals2(){
     fieldText('dp-libelle','Libelle','Ex: Loyer entrepot Niamey') +
     fieldRow(fieldSelect('dp-categorie','Categorie', CATEGORIES_DEPENSES), fieldText('dp-montant','Montant (FCFA)')) +
     fieldRow(fieldDate('dp-date','Date de la depense'), fieldSelect('dp-payepar','Paye par', [])) +
+    '<div id="dp-assigne-wrap">' + fieldSelect('dp-assigne','Assigne a (qui doit voir cette depense)', []) + '</div>' +
     fieldRow(fieldSelect('dp-statut','Statut',['Payee','En attente']), fieldText('dp-justificatif','Justificatif','Ex: Recu signe, Facture n°...'));
   modals += modalShell('modal-depense', 'Depense', depenseBody,
     btnGhost('Annuler', "closeModal('modal-depense')") + btnRed('Enregistrer', 'saveDepense()'));
@@ -6066,7 +6092,14 @@ function renderDepenses(c){
   h += '<button class="btn btn-red btn-sm" onclick="openDepenseBuilder(null)">+ Depense</button>';
   h += '</div>';
 
-  const visibles = DEPENSES.filter(visibleDepenseFilter);
+  const visiblesToutes = DEPENSES.filter(visibleDepenseFilter);
+  // Application des filtres (categorie, statut, periode)
+  const visibles = visiblesToutes.filter(function(d){
+    if(DEP_CATEGORIE !== 'all' && d.categorie !== DEP_CATEGORIE) return false;
+    if(DEP_STATUT !== 'all' && d.statut !== DEP_STATUT) return false;
+    if(DEP_PERIOD !== 'all' && !isInPeriod(d.date, DEP_PERIOD)) return false;
+    return true;
+  });
   const total = visibles.reduce(function(s,d){ return s + d.montant; }, 0);
   const totalPayee = visibles.filter(function(d){return d.statut==='Payee';}).reduce(function(s,d){ return s + d.montant; }, 0);
   const totalAttente = visibles.filter(function(d){return d.statut==='En attente';}).reduce(function(s,d){ return s + d.montant; }, 0);
@@ -6077,15 +6110,26 @@ function renderDepenses(c){
   h += '<div class="kpi kgold"><div class="kpi-lbl">En attente</div><div class="kpi-val" style="font-size:18px">'+fcfa(totalAttente)+'</div></div>';
   h += '</div>';
 
+  // Barre de filtres : categorie, statut, periode
+  h += '<div class="card" style="margin-bottom:12px"><div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">';
+  h += '<span style="font-size:12px;color:var(--text-muted);font-weight:600">Filtrer :</span>';
+  h += '<select class="form-input" style="width:auto;padding:4px 10px;font-size:12px" onchange="changeDepCategorie(this.value)"><option value="all"'+(DEP_CATEGORIE==='all'?' selected':'')+'>Toutes categories</option>'+CATEGORIES_DEPENSES.map(function(cat){ return '<option value="'+cat+'"'+(DEP_CATEGORIE===cat?' selected':'')+'>'+cat+'</option>'; }).join('')+'</select>';
+  h += '<select class="form-input" style="width:auto;padding:4px 10px;font-size:12px" onchange="changeDepStatut(this.value)"><option value="all"'+(DEP_STATUT==='all'?' selected':'')+'>Tous statuts</option><option value="Payee"'+(DEP_STATUT==='Payee'?' selected':'')+'>Payee</option><option value="En attente"'+(DEP_STATUT==='En attente'?' selected':'')+'>En attente</option></select>';
+  h += '<span style="font-size:12px;color:var(--text-muted)">Periode :</span>'+periodSelector(DEP_PERIOD,'changeDepPeriod');
+  if(DEP_CATEGORIE!=='all' || DEP_STATUT!=='all' || DEP_PERIOD!=='all'){
+    h += '<button class="btn btn-ghost btn-sm" onclick="resetDepFiltres()">✕ Reinitialiser</button>';
+  }
+  h += '</div></div>';
+
   h += '<div class="card"><div class="table-wrap"><table id="tbl-depenses"></table></div></div>';
   c.innerHTML = h;
 
-  el('tbl-depenses').innerHTML = '<thead><tr><th>Libelle</th><th>Categorie</th><th>Montant</th><th>Date</th><th>Paye par</th><th>Statut</th><th></th></tr></thead><tbody>' +
+  el('tbl-depenses').innerHTML = '<thead><tr><th>Libelle</th><th>Categorie</th><th>Montant</th><th>Date</th><th>Paye par</th><th>Assigne a</th><th>Statut</th><th></th></tr></thead><tbody>' +
     visibles.filter(function(d){ return searchMatch(d, ['libelle','categorie','payePar']); }).map(function(d){
       let actions = '<button class="btn btn-ghost btn-sm" onclick="viewDepenseDetail('+d.id+')">👁 Details</button>';
       if(isSuperAdmin()) actions += ' <button class="btn btn-ghost btn-sm" onclick="openDepenseBuilder('+d.id+')">✏️ Modifier</button>';
-      return '<tr><td class="td-bold">'+d.libelle+'</td><td>'+tag(d.categorie,'tag-blue')+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(d.montant)+'</td><td class="td-muted">'+d.date+'</td><td class="td-muted">'+d.payePar+'</td><td>'+statusTag(d.statut)+'</td><td>'+actions+'</td></tr>';
-    }).join('') + (visibles.length === 0 ? '<tr><td colspan="7" class="td-muted" style="text-align:center;padding:14px">Aucune depense dans votre perimetre</td></tr>' : '') + '</tbody>';
+      return '<tr><td class="td-bold">'+d.libelle+'</td><td>'+tag(d.categorie,'tag-blue')+'</td><td style="font-weight:700;color:var(--red)">'+fcfa(d.montant)+'</td><td class="td-muted">'+d.date+'</td><td class="td-muted">'+d.payePar+'</td><td class="td-muted">'+(d.assigneA||'-')+'</td><td>'+statusTag(d.statut)+'</td><td>'+actions+'</td></tr>';
+    }).join('') + (visibles.length === 0 ? '<tr><td colspan="8" class="td-muted" style="text-align:center;padding:14px">Aucune depense'+(visiblesToutes.length>0?' pour ces filtres':' dans votre perimetre')+'</td></tr>' : '') + '</tbody>';
 }
 
 function viewDepenseDetail(id){
@@ -6097,6 +6141,7 @@ function viewDepenseDetail(id){
     ['Montant', '<strong style="color:var(--red)">'+fcfa(d.montant)+'</strong>'],
     ['Date', d.date],
     ['Paye par', d.payePar],
+    ['Assigne a', d.assigneA || '-'],
     ['Justificatif', d.justificatif || '-'],
     ['Statut', statusTag(d.statut)]
   ];
@@ -6114,6 +6159,12 @@ function openDepenseBuilder(id){
   el('dp-date').value = existing ? frDateToIso(existing.date) : new Date().toISOString().slice(0,10);
   fillAssigneeSelect('dp-payepar');
   el('dp-payepar').value = existing ? existing.payePar : CU.nom;
+  fillAssigneeSelect('dp-assigne');
+  el('dp-assigne').value = existing ? (existing.assigneA || CU.nom) : CU.nom;
+  // Le champ "Assigne a" n'est visible que pour le Super Admin. Un membre ne
+  // peut assigner qu'a lui-meme : on masque le champ et sa valeur reste son nom.
+  var dpAssWrap = el('dp-assigne-wrap');
+  if(dpAssWrap) dpAssWrap.style.display = isSuperAdmin() ? '' : 'none';
   el('dp-justificatif').value = existing ? existing.justificatif : '';
   el('dp-statut').value = existing ? existing.statut : 'En attente';
   el('modal-depense-title').textContent = existing ? 'Modifier la Depense' : 'Nouvelle Depense';
@@ -6139,6 +6190,7 @@ function saveDepense(){
     d.payePar = el('dp-payepar').value;
     d.justificatif = el('dp-justificatif').value;
     d.statut = el('dp-statut').value;
+    d.assigneA = el('dp-assigne') ? el('dp-assigne').value : d.assigneA;
     stampModification(d);
     logAction('Depense modifiee', libelle + ' — ' + fcfa(montant), 'gold');
   } else {
@@ -6146,7 +6198,8 @@ function saveDepense(){
       id: Date.now(), libelle: libelle, categorie: el('dp-categorie').value, montant: montant,
       date: dateChoisie, payePar: el('dp-payepar').value || CU.nom,
       justificatif: el('dp-justificatif').value, statut: el('dp-statut').value,
-      departement: CU.departement, creePar: CU.nom
+      departement: CU.departement, creePar: CU.nom,
+      assigneA: (isSuperAdmin() && el('dp-assigne')) ? el('dp-assigne').value : CU.nom
     });
     logAction('Depense ajoutee', libelle + ' — ' + fcfa(montant), 'red');
   }
@@ -6929,7 +6982,7 @@ function mapFactureFromDb(r){
 function mapDepenseFromDb(r){
   return { id:r.id, libelle:r.libelle, categorie:r.categorie, montant:r.montant, date:r.date_dep,
     payePar:r.paye_par, justificatif:r.justificatif, statut:r.statut,
-    departement:r.departement||null, creePar:r.cree_par||null,
+    departement:r.departement||null, creePar:r.cree_par||null, assigneA:r.assigne_a||null,
     lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapNotificationFromDb(r){
@@ -7918,13 +7971,13 @@ wrapAfter('saveDepense', function(){
   if(DEPENSE_EDIT_ID){
     const d = DEPENSES.find(function(x){return String(x.id)===String(DEPENSE_EDIT_ID);});
     if(d) dbUpdate('depenses', d.id, { libelle:d.libelle, categorie:d.categorie, montant:d.montant,
-      date_dep:d.date, paye_par:d.payePar, justificatif:d.justificatif, statut:d.statut,
+      date_dep:d.date, paye_par:d.payePar, justificatif:d.justificatif, statut:d.statut, assigne_a:d.assigneA,
       last_modified_by:d.lastModifiedBy, last_modified_at:d.lastModifiedAt });
   } else {
     const d = DEPENSES[0];
     if(d) dbInsert('depenses', { id:d.id, libelle:d.libelle, categorie:d.categorie, montant:d.montant,
       date_dep:d.date, paye_par:d.payePar, justificatif:d.justificatif, statut:d.statut,
-      departement:d.departement, cree_par:d.creePar });
+      departement:d.departement, cree_par:d.creePar, assigne_a:d.assigneA });
   }
 });
 

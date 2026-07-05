@@ -123,6 +123,7 @@ const COLUMN_TYPES = {
     // ne voit que ce qu'il a lui-meme enregistre). Fixes a la creation, jamais
     // modifies ensuite (meme si la depense est editee par le Super Admin).
     departement: 'TEXT', cree_par: 'TEXT',
+    assigne_a: 'TEXT',
     last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP', created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   notifications: {
