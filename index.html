@@ -4207,11 +4207,70 @@ function advanceAchat(id){
   if(d){
     const idx = etapes.indexOf(d.etape);
     if(idx < etapes.length-1){
-      d.etape = etapes[idx+1];
+      const prochaineEtape = etapes[idx+1];
+      // Pont Achats -> Commandes fournisseurs : au passage a l'etape "Commande",
+      // on genere automatiquement une vraie commande dans Fournisseurs &
+      // Approvisionnement, en demandant le fournisseur et l'entrepot.
+      if(prochaineEtape === "Commande"){
+        if(!creerCommandeDepuisDemande(d)) return; // annulation utilisateur -> on ne change pas l'etape
+      }
+      d.etape = prochaineEtape;
       logAction("Demande d'achat - etape avancee", d.produit+' → '+d.etape, "blue");
       go('achats');
     }
   }
+}
+
+// Genere une commande fournisseur a partir d'une demande d'achat validee.
+// Demande le fournisseur et l'entrepot a l'utilisateur. Renvoie false si l'utilisateur annule.
+function creerCommandeDepuisDemande(d){
+  if(ENTREPOTS.length === 0){ alert("Aucun entrepot n'existe encore. Creez d'abord un entrepot dans Stocks avant de passer une commande."); return false; }
+  // 1) Fournisseur
+  var fournisseur;
+  if(FOURNISSEURS.length > 0){
+    var listeF = FOURNISSEURS.map(function(f,i){ return (i+1)+'. '+f.nom; }).join('\n');
+    var repF = prompt("Commande pour : "+d.produit+" x"+d.qte+"\n\nChoisissez le fournisseur (tapez son numero) :\n"+listeF+"\n\n(ou tapez un nouveau nom de fournisseur)");
+    if(repF === null) return false; // annulation
+    repF = repF.trim();
+    if(repF === '') { alert('Aucun fournisseur choisi — commande annulee.'); return false; }
+    var numF = parseInt(repF);
+    fournisseur = (!isNaN(numF) && FOURNISSEURS[numF-1]) ? FOURNISSEURS[numF-1].nom : repF;
+  } else {
+    var nouvF = prompt("Commande pour : "+d.produit+" x"+d.qte+"\n\nAucun fournisseur enregistre. Tapez le nom du fournisseur :");
+    if(nouvF === null) return false;
+    nouvF = nouvF.trim();
+    if(nouvF === ''){ alert('Aucun fournisseur choisi — commande annulee.'); return false; }
+    fournisseur = nouvF;
+  }
+  // 2) Entrepot de destination
+  var listeE = ENTREPOTS.map(function(e,i){ return (i+1)+'. '+e.nom; }).join('\n');
+  var repE = prompt("Fournisseur : "+fournisseur+"\n\nDans quel entrepot cette commande sera-t-elle receptionnee ? (tapez son numero)\n"+listeE);
+  if(repE === null) return false;
+  var numE = parseInt(repE.trim());
+  var entrepot = (!isNaN(numE) && ENTREPOTS[numE-1]) ? ENTREPOTS[numE-1].nom : null;
+  if(!entrepot){ alert('Entrepot invalide — commande annulee.'); return false; }
+  // 3) Retrouver le SKU a partir du nom de produit de la demande
+  var prod = PRODUITS.find(function(p){ return p.nom === d.produit; });
+  var ligne = prod
+    ? { sku: prod.sku, nom: prod.nom, qte: d.qte, prixUnitaire: prod.prix_achat || 0 }
+    : { sku: '', nom: d.produit, qte: d.qte, prixUnitaire: 0 };
+  // 4) Creer la commande fournisseur
+  var nouvelleCommande = {
+    id: Date.now(), fournisseur: fournisseur, date: new Date().toLocaleDateString('fr-FR'),
+    lignes: [ligne], statut: 'En attente', entrepot: entrepot, stockReceptionne: false,
+    origineDemandeAchat: d.id
+  };
+  COMMANDES_FOURNISSEUR.unshift(nouvelleCommande);
+  if(typeof dbInsert === 'function'){
+    var montantCmd = typeof lignesTotalMontant === 'function' ? lignesTotalMontant(nouvelleCommande.lignes) : 0;
+    var produitsCmd = typeof lignesLabel === 'function' ? lignesLabel(nouvelleCommande.lignes) : d.produit;
+    dbInsert('commandes_fournisseur', { id:nouvelleCommande.id, fournisseur:fournisseur, date_cmd:nouvelleCommande.date, produits:produitsCmd, montant:montantCmd, statut:'En attente', entrepot:entrepot, lignes:nouvelleCommande.lignes, stock_receptionne:false });
+    nouvelleCommande._dbSynced = true;
+  }
+  logAction('Commande fournisseur creee (depuis demande d\'achat)', fournisseur+' — '+d.produit+' x'+d.qte+' -> '+entrepot, 'green');
+  pushNotif('📦', 'Commande fournisseur generee : '+d.produit+' x'+d.qte+' ('+fournisseur+')', 'all');
+  alert('✅ Commande fournisseur creee !\n\nFournisseur : '+fournisseur+'\nProduit : '+d.produit+' x'+d.qte+'\nEntrepot : '+entrepot+'\n\nRetrouvez-la dans Fournisseurs & Approvisionnement -> Commandes pour la completer et la receptionner.');
+  return true;
 }
 
 // ── INVENTAIRES ────────────────────────────────────────────────────────────────
