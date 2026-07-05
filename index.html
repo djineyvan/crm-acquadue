@@ -3750,28 +3750,22 @@ function renderStock(c){
 
   // Reservations: all stock rows with reserve > 0, cross-referenced with what created them
   if(logistique){
-  // Une ligne par reservation individuelle (Pipeline, Devis, Factures), chacune
-  // avec sa propre quantite et son origine claire — plutot qu'un regroupement
-  // par produit qui melangeait plusieurs origines sur une meme ligne.
+  // Onglet "Reservations EN COURS" : n'affiche QUE les reservations reellement
+  // actives, c.-a-d. celles dont la marchandise n'est pas encore sortie de
+  // l'entrepot. Des qu'une vente est payee / expediee / expediee en paiement
+  // differe, sa ligne disparait automatiquement. Une ligne par reservation.
+  //
+  // Regles par source :
+  //   - Facture : reservee ET pas encore expediee (sortieAppliquee === false).
+  //   - Devis   : reserve ET pas encore transforme en facture (statut !== 'Facture').
+  //   - Pipeline: gagne ET reserve, MAIS masque si une facture a deja consomme
+  //               ce stock pour le meme client+produit (evite la reservation
+  //               "fantome" qui restait apres facturation/expedition).
   const lignesReservation = [];
-  PIPELINE.forEach(function(pp){
-    if(pp.reservationFaite && pp.sku){
-      const p = PRODUITS.find(function(x){return x.sku===pp.sku;});
-      lignesReservation.push({ produit: p?p.nom:pp.sku, entrepot: pp.entrepot, qte: pp.qte, origine: 'Vente: '+pp.nom });
-    }
-  });
-  DEVIS.forEach(function(d){
-    if(d.reservationFaite){
-      (d.lignes||[]).forEach(function(l){
-        if(l.sku && l._reserve){
-          const p = PRODUITS.find(function(x){return x.sku===l.sku;});
-          lignesReservation.push({ produit: p?p.nom:l.sku, entrepot: l.entrepot, qte: l.qte, origine: 'Devis: '+d.id+(d.client?' ('+d.client+')':'') });
-        }
-      });
-    }
-  });
+
+  // Factures : uniquement celles encore reservees et NON expediees
   FACTURES.forEach(function(f){
-    if(f.reservationFaite){
+    if(f.reservationFaite && !f.sortieAppliquee){
       (f.lignes||[]).forEach(function(l){
         if(l.sku && l._reserve){
           const p = PRODUITS.find(function(x){return x.sku===l.sku;});
@@ -3780,8 +3774,39 @@ function renderStock(c){
       });
     }
   });
+
+  // Devis : uniquement ceux encore reserves et pas encore factures
+  DEVIS.forEach(function(d){
+    if(d.reservationFaite && d.statut !== 'Facture'){
+      (d.lignes||[]).forEach(function(l){
+        if(l.sku && l._reserve){
+          const p = PRODUITS.find(function(x){return x.sku===l.sku;});
+          lignesReservation.push({ produit: p?p.nom:l.sku, entrepot: l.entrepot, qte: l.qte, origine: 'Devis: '+d.id+(d.client?' ('+d.client+')':'') });
+        }
+      });
+    }
+  });
+
+  // Pipeline : opportunites gagnees encore reservees, SAUF si une facture
+  // expediee existe deja pour le meme client et le meme produit (la vente a
+  // alors ete soldee via la facture — la reservation Pipeline est un residu).
+  PIPELINE.forEach(function(pp){
+    if(pp.reservationFaite && pp.sku){
+      const dejaSoldeeParFacture = FACTURES.some(function(f){
+        return f.sortieAppliquee
+          && f.client && pp.nom
+          && f.client.trim().toLowerCase() === pp.nom.trim().toLowerCase()
+          && (f.lignes||[]).some(function(l){ return l.sku === pp.sku && l.entrepot === pp.entrepot; });
+      });
+      if(!dejaSoldeeParFacture){
+        const p = PRODUITS.find(function(x){return x.sku===pp.sku;});
+        lignesReservation.push({ produit: p?p.nom:pp.sku, entrepot: pp.entrepot, qte: pp.qte, origine: 'Vente: '+pp.nom });
+      }
+    }
+  });
+
   el('reservations-view').innerHTML = lignesReservation.length === 0
-    ? '<div class="empty-state"><div class="empty-state-icon">📭</div>Aucune reservation active actuellement</div>'
+    ? '<div class="empty-state"><div class="empty-state-icon">📭</div>Aucune reservation en cours actuellement</div>'
     : '<table><thead><tr><th>Produit</th><th>Entrepot</th><th>Quantite reservee</th><th>Origine</th></tr></thead><tbody>' +
       lignesReservation.map(function(r){
         return '<tr><td class="td-bold">'+r.produit+'</td><td class="td-muted">'+r.entrepot+'</td><td style="font-weight:700;color:var(--gold)">'+r.qte+'</td><td class="td-muted">'+r.origine+'</td></tr>';
@@ -5164,6 +5189,7 @@ function markFacturePaid(factureId){
     f.sortieAppliquee = true;
   }
   logAction(dejaExpediee ? 'Facture marquee payee (deja expediee anterieurement)' : 'Facture payee et expediee', f.id + ' — ' + f.client, 'green');
+  f.reservationFaite = false; // la reservation est soldee : le stock est sorti, plus "en cours"
   go('facturation');
 }
 
@@ -5195,6 +5221,7 @@ function confirmExpedierPaiementDiffere(){
     consumeReservedStock(ligne.sku, ligne.qte, ligne.entrepot, 'Facture ' + f.id, CU?CU.nom:'Systeme');
   });
   f.sortieAppliquee = true;
+  f.reservationFaite = false; // la reservation est soldee : marchandise expediee, plus "en cours"
   f.echeancePaiement = echeance;
   logAction('Facture expediee — paiement differe' + (echeance ? ' (echeance: ' + echeance + ')' : ''), f.id + ' — ' + f.client, 'gold');
   go('facturation');
