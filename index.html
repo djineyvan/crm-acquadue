@@ -4579,13 +4579,14 @@ function syncClientToPipeline(cl, oldNom){
   if(cl.tel && p.tel !== cl.tel){ p.tel = cl.tel; changed = true; }
   if(cl.ville && p.ville !== cl.ville){ p.ville = cl.ville; changed = true; }
   if(cl.type && p.type !== cl.type){ p.type = cl.type; changed = true; }
+  if(cl.asg && p.asg !== cl.asg){ p.asg = cl.asg; changed = true; }
   if(cl.statut){
     const newEtape = clientStatutToPipelineEtape(cl.statut);
     if(p.etape !== newEtape){ p.etape = newEtape; changed = true; }
   }
   if(changed){
     stampModification(p);
-    if(typeof dbUpdate === 'function') dbUpdate('pipeline', p.id, { nom:p.nom, ville:p.ville, tel:p.tel, type:p.type, etape:p.etape, last_modified_by:p.lastModifiedBy, last_modified_at:p.lastModifiedAt });
+    if(typeof dbUpdate === 'function') dbUpdate('pipeline', p.id, { nom:p.nom, ville:p.ville, tel:p.tel, type:p.type, etape:p.etape, asg:p.asg, last_modified_by:p.lastModifiedBy, last_modified_at:p.lastModifiedAt });
   }
 }
 
