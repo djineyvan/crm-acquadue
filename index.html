@@ -376,8 +376,13 @@ function pushNotif(icon, text, target, dedupeKey){
     // OU par son texte + destinataire (qui, eux, survivent au rechargement depuis
     // la base toutes les 5s — le _key n'etant pas stocke en base). Sans ce second
     // critere, les alertes automatiques se recreaient a chaque rafraichissement.
+    // On regarde TOUTES les alertes existantes (lues comme non lues), et pas
+    // seulement les non lues. Sinon une alerte automatique recurrente (ex:
+    // "tache en retard", verifiee toutes les 5s) se recreait indefiniment des
+    // qu'on l'avait lue : elle n'etait plus "non lue", donc l'ancien filtre ne
+    // la voyait plus comme un doublon et en fabriquait une nouvelle a chaque
+    // cycle — d'ou des centaines de copies accumulees en base.
     var exists = NOTIFICATIONS.some(function(n){
-      if(n.read) return false;
       if(n._key === dedupeKey) return true;
       return n.text === text && n.target === target;
     });
