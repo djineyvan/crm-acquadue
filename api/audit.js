@@ -18,15 +18,6 @@ module.exports = async function handler(req, res) {
   try {
     const sql = getSql();
 
-    if (req.method === 'GET' && req.query.purge_notifs) {
-      // TEMPORAIRE — vide entierement la table notifications (demande Yvan,
-      // 08/07/2026 : repartir de zero apres accumulation de centaines de
-      // doublons "tache en retard"). A RETIRER apres usage.
-      const avant = await sql`SELECT COUNT(*) AS n FROM notifications`;
-      await sql`DELETE FROM notifications`;
-      return res.status(200).json({ success: true, supprimees: Number(avant[0].n) });
-    }
-
     if (req.method === 'GET' && req.query.clients_stats) {
       // Diagnostic lecture-seule : repartition reelle des clients/prospects
       // par statut, pour comparer avec le KPI "Clients & Prospects actifs"
