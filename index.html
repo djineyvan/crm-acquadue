@@ -1489,7 +1489,7 @@ function renderDash(c){
 // ── PIPELINE (6 etapes selon cahier des charges) ────────────────────────────
 let PIPE_TYPE_FILTER = 'Tous';
 // Filtre par agent (le commercial qui a ajoute le prospect). Reserve au
-// Super Admin et aux Admins. 'Tous' = pas de filtre.
+// Super Admin, aux Admins et aux Responsables. 'Tous' = pas de filtre.
 let PIPE_AGENT_FILTER = 'Tous';
 function setPipeTypeFilter(btn, type){
   PIPE_TYPE_FILTER = type;
@@ -1508,8 +1508,8 @@ function renderPipe(c){
     '<button class="tab' + (PIPE_TYPE_FILTER==='B2C'?' active':'') + '" onclick="setPipeTypeFilter(this,\'B2C\')">B2C</button>' +
     '<button class="tab' + (PIPE_TYPE_FILTER==='B2B'?' active':'') + '" onclick="setPipeTypeFilter(this,\'B2B\')">B2B</button>' +
     '</div>';
-  // Filtre par agent : reserve au Super Admin et aux Admins.
-  if(isAdmin()){
+  // Filtre par agent : reserve au Super Admin, aux Admins et aux Responsables.
+  if(isResponsableOrAbove()){
     const agents = PIPELINE.filter(visiblePipeFilter).map(function(p){ return p.asg; })
       .filter(function(v,i,arr){ return v && arr.indexOf(v)===i; }).sort();
     var agentOpts = '<option value="Tous"'+(PIPE_AGENT_FILTER==='Tous'?' selected':'')+'>👤 Agent : Tous</option>';
@@ -1528,7 +1528,7 @@ function renderPipe(c){
 function renderPipeBoard(){
   const data = PIPELINE.filter(visiblePipeFilter).filter(function(x){ return searchMatch(x, ['nom','ville','tel','asg','sku','type']); })
     .filter(function(x){ return PIPE_TYPE_FILTER === 'Tous' || x.type === PIPE_TYPE_FILTER; })
-    .filter(function(x){ return !isAdmin() || PIPE_AGENT_FILTER === 'Tous' || x.asg === PIPE_AGENT_FILTER; });
+    .filter(function(x){ return !isResponsableOrAbove() || PIPE_AGENT_FILTER === 'Tous' || x.asg === PIPE_AGENT_FILTER; });
   const cols = ["muted2","blue","gold","purple","green","red"];
   let board = '';
   PIPELINE_STAGES.forEach(function(stage, i){
