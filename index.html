@@ -569,7 +569,7 @@ function autoRefreshTick(){
     restoreSubTabs();
   }).catch(function(){ /* prochaine tentative dans 5 secondes */ });
 }
-setInterval(autoRefreshTick, 5000);
+setInterval(autoRefreshTick, 20000);
 
 // ── HELPER FUNCTIONS (avoid nested-quote bugs by centralizing HTML snippets) ──
 function el(id){ return document.getElementById(id); }
