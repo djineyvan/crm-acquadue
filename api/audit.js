@@ -9,14 +9,24 @@
 // POST: insert a new audit log entry (called by logAction() on every write action)
 
 const { getSql } = require('../lib/db');
+const { requireAuth } = require('../lib/auth');
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  // Securite : plus d'en-tete CORS ouvert (Access-Control-Allow-Origin: *).
+  if (req.method === 'OPTIONS') return res.status(204).end();
 
   try {
     const sql = getSql();
+
+    // SECURITE : connexion obligatoire. Les routes de diagnostic (qui lisent
+    // ou corrigent des donnees en masse) sont reservees au Super Admin.
+    const me = await requireAuth(req, res, sql);
+    if (!me) return;
+    const isDiagnostic = req.method === 'GET' &&
+      (req.query.clients_stats || req.query.createurs || req.query.search_contact || req.query.sync_audit);
+    if (isDiagnostic && me.role !== 'superadmin') {
+      return res.status(403).json({ error: 'acces_refuse' });
+    }
 
     if (req.method === 'GET' && req.query.clients_stats) {
       // Diagnostic lecture-seule : repartition reelle des clients/prospects

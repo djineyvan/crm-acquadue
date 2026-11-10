@@ -10,6 +10,7 @@
 // from ever silently drifting out of sync again.
 
 const { getSql } = require('../lib/db');
+const { requireAuth, verifyPassword } = require('../lib/auth');
 
 const ALL_BUSINESS_TABLES = [
   'audit_log', 'clients', 'pipeline', 'tasks', 'comm_perf', 'campagnes', 'publications',
@@ -19,10 +20,8 @@ const ALL_BUSINESS_TABLES = [
 ];
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  // Securite : plus d'en-tete CORS ouvert (Access-Control-Allow-Origin: *).
+  if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Methode non autorisee' });
 
   try {
@@ -33,11 +32,18 @@ module.exports = async function handler(req, res) {
     if (!email || !password) return res.status(400).json({ error: 'Identifiants requis' });
 
     const sql = getSql();
-    const rows = await sql`SELECT * FROM users WHERE email = ${email}`;
+
+    // SECURITE : double verrou. 1) session de Super Admin valide, 2) mot de
+    // passe re-saisi, qui doit etre celui du compte connecte.
+    const me = await requireAuth(req, res, sql, ['superadmin']);
+    if (!me) return;
+    if (String(email).toLowerCase() !== String(me.email).toLowerCase()) {
+      return res.status(403).json({ error: 'Identifiants differents du compte connecte' });
+    }
+    const rows = await sql`SELECT * FROM users WHERE id = ${me.id}`;
     if (rows.length === 0) return res.status(404).json({ error: 'Utilisateur introuvable' });
     const user = rows[0];
-    if (user.role !== 'superadmin') return res.status(403).json({ error: 'Seul le Super Admin peut reinitialiser les donnees' });
-    if (user.pass !== password) return res.status(401).json({ error: 'Mot de passe incorrect' });
+    if (!(await verifyPassword(password, user.pass))) return res.status(401).json({ error: 'Mot de passe incorrect' });
 
     const wiped = [];
     const skipped = [];

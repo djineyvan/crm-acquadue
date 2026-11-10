@@ -5,6 +5,7 @@
 
 const { getSql } = require('../lib/db');
 const crypto = require('crypto');
+const { hashPassword, verifyPassword, isHashed, publicUser, isWeakDefaultPassword } = require('../lib/auth');
 const MAX_TENTATIVES = 5;
 
 function generateToken(){
@@ -12,10 +13,8 @@ function generateToken(){
 }
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  // Securite : plus d'en-tete CORS ouvert (Access-Control-Allow-Origin: *).
+  if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Methode non autorisee' });
 
   try {
@@ -31,14 +30,14 @@ module.exports = async function handler(req, res) {
         SELECT u.* FROM sessions s
         JOIN users u ON u.id = s.user_id
         WHERE s.token = ${token}
+          AND (s.created_at IS NULL OR s.created_at > NOW() - INTERVAL '90 days')
       `;
       if (rows.length === 0) return res.status(401).json({ error: 'invalid_token' });
       const user = rows[0];
       if (!user.actif) return res.status(403).json({ error: 'inactive' });
 
       await sql`UPDATE sessions SET last_seen = NOW() WHERE token = ${token}`;
-      delete user.pass;
-      return res.status(200).json({ success: true, user: user });
+      return res.status(200).json({ success: true, user: publicUser(user) });
     }
 
     // ── action: "logout" — revoke a session token ──
@@ -59,7 +58,8 @@ module.exports = async function handler(req, res) {
     if (user.verrouille) return res.status(403).json({ error: 'locked' });
     if (!user.actif) return res.status(403).json({ error: 'inactive' });
 
-    if (user.pass !== password) {
+    const passwordOk = await verifyPassword(password, user.pass);
+    if (!passwordOk) {
       const newAttempts = (user.tentatives || 0) + 1;
       const shouldLock = newAttempts >= MAX_TENTATIVES;
       await sql`UPDATE users SET tentatives = ${newAttempts}, verrouille = ${shouldLock} WHERE id = ${user.id}`;
@@ -72,15 +72,29 @@ module.exports = async function handler(req, res) {
       return res.status(401).json({ error: 'wrong_password', tentatives: newAttempts, max: MAX_TENTATIVES });
     }
 
-    // Success: issue a persistent session token
+    // Succes. Migration transparente : un ancien mot de passe en clair est
+    // rechiffre maintenant. S'il s'agit d'un mot de passe de depart connu
+    // (ex. ancien compte de demonstration), le changement est impose.
+    if (!isHashed(user.pass)) {
+      const newHash = await hashPassword(password);
+      await sql`UPDATE users SET pass = ${newHash} WHERE id = ${user.id}`;
+    }
+    if (isWeakDefaultPassword(password) && !user.doit_changer_pass) {
+      await sql`UPDATE users SET doit_changer_pass = true WHERE id = ${user.id}`;
+      user.doit_changer_pass = true;
+    }
+
+    // Menage : supprime les sessions expirees (plus de 90 jours)
+    await sql`DELETE FROM sessions WHERE created_at < NOW() - INTERVAL '90 days'`;
+
+    // Issue a persistent session token
     const token = generateToken();
     await sql`INSERT INTO sessions (token, user_id, user_agent) VALUES (${token}, ${user.id}, ${req.headers['user-agent'] || ''})`;
     await sql`UPDATE users SET tentatives = 0, dernier_login = NOW() WHERE id = ${user.id}`;
     await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)
                VALUES (${user.nom}, ${user.departement}, 'Connexion', ${user.nom + " s'est connecte(e)"}, 'dot-green', ${user.ini}, ${user.col}, 'web')`;
 
-    delete user.pass;
-    return res.status(200).json({ success: true, user: user, token: token });
+    return res.status(200).json({ success: true, user: publicUser(user), token: token });
 
   } catch (err) {
     return res.status(500).json({ error: err.message });

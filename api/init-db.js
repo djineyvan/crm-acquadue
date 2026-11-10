@@ -14,6 +14,7 @@
 // created it.
 
 const { getSql } = require('../lib/db');
+const { requireAuth, hashPassword, isHashed, isWeakDefaultPassword } = require('../lib/auth');
 
 // Single source of truth: table -> { column: postgresType }
 // Keep this in sync with /api/data.js's COLUMNS whitelist (same column names).
@@ -187,11 +188,27 @@ const PRIMARY_KEYS = {
 };
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // Securite : plus d'en-tete CORS ouvert (Access-Control-Allow-Origin: *).
+  if (req.method === 'OPTIONS') return res.status(204).end();
 
   try {
     const sql = getSql();
     const healed = [];
+
+    // SECURITE : des qu'au moins un compte existe, une session valide est
+    // exigee pour lancer la verification/reparation de la base (plus d'acces
+    // anonyme). Au tout premier
+    // demarrage (aucune table ou aucun compte), l'initialisation reste libre,
+    // sinon personne ne pourrait jamais creer le premier compte.
+    let hasUsers = false;
+    try {
+      const c = await sql`SELECT COUNT(*) AS count FROM users`;
+      hasUsers = parseInt(c[0].count) > 0;
+    } catch (e) { hasUsers = false; }
+    if (hasUsers) {
+      const me = await requireAuth(req, res, sql);
+      if (!me) return;
+    }
 
     // ── Step 1: CREATE TABLE IF NOT EXISTS for every table, with its primary key ──
     for (const table of Object.keys(COLUMN_TYPES)) {
@@ -314,9 +331,25 @@ module.exports = async function handler(req, res) {
 
     if (parseInt(existingUsers[0].count) === 0) {
       seeded = true;
-      await sql`INSERT INTO users (nom,email,pass,role,departement,ini,col,ville)
-                 VALUES ('Yvan Leunkeu Djine','yvan@acquadue.ne','Admin@2026','superadmin','Direction','YL','av-red','Niamey')
+      // Mot de passe de depart chiffre ; son changement est impose des la 1re connexion.
+      const seedHash = await hashPassword('Admin@2026');
+      await sql`INSERT INTO users (nom,email,pass,role,departement,ini,col,ville,doit_changer_pass)
+                 VALUES ('Yvan Leunkeu Djine','yvan@acquadue.ne',${seedHash},'superadmin','Direction','YL','av-red','Niamey',true)
                  ON CONFLICT (email) DO NOTHING`;
+    }
+
+    // ── Migration securite : chiffre tous les mots de passe encore en clair ──
+    // (idempotent : ne touche que les comptes dont le mot de passe n'est pas
+    // deja chiffre). Si un compte utilise encore un mot de passe de depart
+    // connu, son changement est impose a la prochaine connexion.
+    let migratedPasswords = 0;
+    const plainUsers = await sql`SELECT id, pass, doit_changer_pass FROM users WHERE pass IS NOT NULL AND pass NOT LIKE 'scrypt$%'`;
+    for (const u of plainUsers) {
+      if (isHashed(u.pass)) continue;
+      const h = await hashPassword(u.pass);
+      const mustChange = isWeakDefaultPassword(u.pass) || u.doit_changer_pass === true;
+      await sql`UPDATE users SET pass = ${h}, doit_changer_pass = ${mustChange} WHERE id = ${u.id}`;
+      migratedPasswords++;
     }
 
     // ── Seed default sensitive permissions per role if the table is empty ──
@@ -369,6 +402,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       success: true,
       seeded: seeded,
+      mots_de_passe_chiffres: migratedPasswords,
       tables_checked: Object.keys(COLUMN_TYPES).length,
       healing_issues: healed,
       message: 'Base de donnees initialisee et reparee avec succes (schema complet verifie pour chaque table)'

@@ -20,6 +20,7 @@
 // GET /api/bulk-load -> { clients: [...], pipeline: [...], ... } for every table
 
 const { getSql } = require('../lib/db');
+const { requireAuth } = require('../lib/auth');
 
 const TABLES = [
   'clients', 'pipeline', 'tasks', 'comm_perf', 'campagnes', 'publications',
@@ -30,13 +31,16 @@ const TABLES = [
 ];
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  // Securite : plus d'en-tete CORS ouvert (Access-Control-Allow-Origin: *).
+  if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'Methode non autorisee' });
 
   try {
     const sql = getSql();
+
+    // SECURITE : connexion obligatoire.
+    const me = await requireAuth(req, res, sql);
+    if (!me) return;
 
     // Run every table's SELECT concurrently within this single invocation.
     // A failure on one table must not take down the whole response — the

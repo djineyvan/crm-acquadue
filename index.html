@@ -251,12 +251,6 @@ tr:last-child td{border-bottom:none}
     <div style="text-align:center;margin-top:10px"><span class="hint" onclick="openForgotPassword()">Mot de passe oublié ?</span></div>
     <div class="login-error" id="li-error">Identifiant ou mot de passe incorrect.</div>
     <div class="lock-banner" id="li-lock">🔒 Compte verrouillé après plusieurs tentatives. Contactez votre administrateur.</div>
-    <div class="login-hints">
-      <p>Comptes de démonstration</p>
-      <div class="hint" onclick="fillLogin('yvan@acquadue.ne','Admin@2026')">👑 yvan@acquadue.ne — Super Admin</div>
-      <div class="hint" onclick="fillLogin('moussa@acquadue.ne','Comm@2026')">🤝 moussa@acquadue.ne — Collaborateur Commercial</div>
-      <div class="hint" onclick="fillLogin('salimata@acquadue.ne','Mkt@2026')">📣 salimata@acquadue.ne — Admin Marketing</div>
-    </div>
   </div>
 </div>
 
@@ -328,7 +322,7 @@ const ROLE_LABELS = {
 // Tous les autres membres d'equipe doivent etre crees par le Super Admin via
 // "Utilisateurs & Acces" ou directement dans chaque module Equipe.
 let USERS = [
-  { id:1, nom:"Yvan Leunkeu Djine", email:"yvan@acquadue.ne", pass:"Admin@2026", role:"superadmin", departement:"Direction", ini:"YL", col:"av-red", actif:true, ville:"Niamey", tentatives:0, verrouille:false, doitChangerPass:false, dernierLogin:null, sessions:[] },
+  { id:1, nom:"Yvan Leunkeu Djine", email:"yvan@acquadue.ne", pass:"", role:"superadmin", departement:"Direction", ini:"YL", col:"av-red", actif:true, ville:"Niamey", tentatives:0, verrouille:false, doitChangerPass:false, dernierLogin:null, sessions:[] },
 ];
 
 // ── AUDIT LOG ────────────────────────────────────────────────────────────────
@@ -2772,7 +2766,6 @@ function renderUsers(c){
       actions += '<button class="btn btn-ghost btn-sm" onclick="toggleUserActive('+u.id+')">'+(u.actif?'Desactiver':'Activer')+'</button>';
       if(u.verrouille) actions += '<button class="btn btn-ghost btn-sm" onclick="unlockUser('+u.id+')">🔓 Deverrouiller</button>';
       actions += '<button class="btn btn-ghost btn-sm" onclick="openResetPwd('+u.id+')">🔑 Reset mdp</button>';
-      actions += '<button class="btn btn-ghost btn-sm" onclick="revealPassword('+u.id+')">👁 Voir mdp</button>';
     } else if(canManageUsers() && u.departement === CU.departement && u.id !== CU.id){
       actions += '<button class="btn btn-ghost btn-sm" onclick="openResetPwd('+u.id+')">🔑 Reset mdp</button>';
     }
@@ -2786,7 +2779,6 @@ function renderUsers(c){
       ["Modifier les enregistrements", "modifier_tout"],
       ["Supprimer des enregistrements", "supprimer"],
       ["Gerer les utilisateurs", "gerer_users"],
-      ["Voir les mots de passe", "voir_pass"],
       ["Valider/Confirmer (verrouiller)", "valider"],
       ["Voir tout le journal d'audit", "voir_audit_tout"],
     ].map(function(row){
@@ -6751,20 +6743,46 @@ function fpPwdListener(){
 
 const SESSION_TOKEN_KEY = 'crm_session_token';
 
+// ── SECURITE : chaque appel a l'API envoie le jeton de session de l'utilisateur
+// connecte (en-tete Authorization). Sans jeton valide, le serveur repond 401.
+function authHeaders(extra){
+  var h = extra || {};
+  var t = getSessionToken();
+  if(t) h['Authorization'] = 'Bearer ' + t;
+  return h;
+}
+// Lit la reponse ; si le serveur dit que la session n'est plus valide
+// (expiree, compte desactive...), on renvoie proprement vers la connexion.
+function apiHandle(url, r){
+  return r.json().then(function(d){
+    if(r.status === 401 && d && d.error === 'session_invalide' && !/^\/api\/(login|forgot-password)/.test(url)){
+      forceRelogin();
+    }
+    return { ok:r.ok, status:r.status, data:d };
+  });
+}
+var RELOGIN_IN_PROGRESS = false;
+function forceRelogin(){
+  if(RELOGIN_IN_PROGRESS || !CU) return; // deja sur l'ecran de connexion ou deja en cours
+  RELOGIN_IN_PROGRESS = true;
+  clearSessionToken();
+  alert("Votre session a expiré ou n'est plus valide.\nLa page va se recharger : reconnectez-vous.");
+  location.reload();
+}
 function apiPost(url, body){
-  return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
-    .then(function(r){ return r.json().then(function(d){ return { ok:r.ok, status:r.status, data:d }; }); });
+  return fetch(url, { method:'POST', headers:authHeaders({'Content-Type':'application/json'}), body:JSON.stringify(body) })
+    .then(function(r){ return apiHandle(url, r); });
 }
 function apiPut(url, body){
-  return fetch(url, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
-    .then(function(r){ return r.json().then(function(d){ return { ok:r.ok, status:r.status, data:d }; }); });
+  return fetch(url, { method:'PUT', headers:authHeaders({'Content-Type':'application/json'}), body:JSON.stringify(body) })
+    .then(function(r){ return apiHandle(url, r); });
 }
 function apiDelete(url, body){
-  return fetch(url, { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
-    .then(function(r){ return r.json().then(function(d){ return { ok:r.ok, status:r.status, data:d }; }); });
+  return fetch(url, { method:'DELETE', headers:authHeaders({'Content-Type':'application/json'}), body:JSON.stringify(body) })
+    .then(function(r){ return apiHandle(url, r); });
 }
 function apiGet(url){
-  return fetch(url).then(function(r){ return r.json().then(function(d){ return { ok:r.ok, status:r.status, data:d }; }); });
+  return fetch(url, { headers:authHeaders() }).then(function(r){ return apiHandle(url, r); });
 }
 
 // ── GENERIC ENTITY SYNC — replicate any local array change to Postgres ──────
@@ -7221,6 +7239,8 @@ function clearSessionToken(){
 function bootstrapApp(){
   if(BOOTSTRAP_DONE) return; // protection contre le double-boot
   BOOTSTRAP_DONE = true;
+  // Verification/reparation de la base apres connexion (necessite le jeton de session)
+  fetch('/api/init-db', { headers: authHeaders() }).catch(function(){});
   Promise.all([loadAllDataFromDb(), loadAuditFromDb()]).then(function(){
     buildApp();
     // Initialiser LAST_UNREAD_NOTIF avec le vrai nombre de non-lues au
@@ -7376,16 +7396,8 @@ function doLogout(){
 
 // ── DB-backed: reveal password (Super Admin only) ──
 function revealPassword(id){
-  if(!canSeePasswords()) return alert("Seul le Super Admin peut consulter les mots de passe.");
-  const u = USERS.find(function(x){ return String(x.id)===String(id); });
-  if(!u) return;
-  apiGet('/api/users?reveal=' + encodeURIComponent(u.email) + '&requestedBy=' + encodeURIComponent(CU.nom)).then(function(result){
-    if(result.ok && result.data.revealedPassword){
-      alert("Mot de passe de " + u.nom + " :\n\n" + result.data.revealedPassword + "\n\n⚠️ Cette consultation a ete enregistree dans le journal d'audit.");
-    } else {
-      alert("Impossible de recuperer le mot de passe.");
-    }
-  });
+  // SECURITE : les mots de passe sont desormais chiffres et ne peuvent plus etre relus.
+  alert("Pour des raisons de securite, les mots de passe sont chiffres et ne peuvent plus etre consultes.\n\nUtilisez « 🔑 Reset mdp » pour definir un nouveau mot de passe a communiquer a la personne.");
 }
 
 function toggleUserActive(id){
@@ -7425,6 +7437,10 @@ function confirmResetPwd(){
       closeModal('modal-reset-pwd');
       go('users');
       alert("Mot de passe reinitialise pour " + u.nom + ".\nNouveau mot de passe: " + newPwd);
+    } else if(result.data && result.data.error === 'mot_de_passe_trop_faible'){
+      alert("Ce mot de passe n'est pas autorise (mot de passe de depart connu ou regles non respectees). Choisissez-en un autre.");
+    } else if(result.data && result.data.error === 'acces_refuse'){
+      alert("Vous n'avez pas le droit de reinitialiser le mot de passe de ce compte.");
     } else {
       alert("Erreur lors de la reinitialisation.");
     }
@@ -7457,6 +7473,8 @@ function changeMyPassword(){
       if(!result.ok){
         if(result.data && result.data.error === 'wrong_current_password'){
           alert('Mot de passe actuel incorrect. Veuillez reessayer.');
+        } else if(result.data && result.data.error === 'mot_de_passe_trop_faible'){
+          alert("Ce nouveau mot de passe n'est pas autorise (trop courant, mot de passe de depart, ou regles non respectees). Choisissez-en un autre.");
         } else {
           alert('Erreur lors du changement de mot de passe. Veuillez reessayer.');
         }
@@ -7529,6 +7547,7 @@ function sendResetCode(){
       const err = result.data.error;
       errorEl.textContent = err === 'not_found' ? "Aucun compte associe a cet email."
         : err === 'inactive' ? "Ce compte est desactive. Contactez le Super Admin."
+        : err === 'trop_rapide' ? "Un code vient d'etre envoye. Patientez une minute avant d'en demander un nouveau."
         : "Erreur d'envoi: " + (err || 'Veuillez reessayer');
       errorEl.style.display = 'block';
       return;
@@ -7575,6 +7594,8 @@ function confirmResetCode(){
       const err = result.data.error;
       errorEl.textContent = err === 'invalid_code' ? "Code incorrect."
         : err === 'code_expired' ? "Ce code a expire. Demandez-en un nouveau."
+        : err === 'too_many_attempts' ? "Trop d'essais incorrects. Demandez un nouveau code."
+        : err === 'mot_de_passe_trop_faible' ? "Ce mot de passe n'est pas autorise (trop courant ou regles non respectees). Choisissez-en un autre."
         : "Erreur lors de la reinitialisation.";
       errorEl.style.display = 'block';
       return;
@@ -7605,14 +7626,23 @@ function confirmResetAllData(){
 // ── Download a complete JSON backup of every table in the database ──────────
 function downloadFullBackup(){
   if(!isSuperAdmin()) return alert('Seul le Super Admin peut telecharger une sauvegarde complete.');
-  const url = '/api/export-data?by=' + encodeURIComponent(CU.nom);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'sauvegarde-crm-acquadue-' + new Date().toISOString().slice(0,10) + '.json';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  logAction('Sauvegarde telechargee', CU.nom + ' a telecharge une sauvegarde complete de la base', 'blue');
+  // Le serveur exige la connexion : on recupere le fichier avec le jeton, puis on le telecharge.
+  fetch('/api/export-data', { headers: authHeaders() }).then(function(r){
+    if(!r.ok) throw new Error('http ' + r.status);
+    return r.blob();
+  }).then(function(blob){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sauvegarde-crm-acquadue-' + new Date().toISOString().slice(0,10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 3000);
+    logAction('Sauvegarde telechargee', CU.nom + ' a telecharge une sauvegarde complete de la base', 'blue');
+  }).catch(function(){
+    alert("Impossible de telecharger la sauvegarde. Reconnectez-vous puis reessayez.");
+  });
 }
 
 // ── Real backup history (stored in DB, distinct from the file-download export above) ──
@@ -7729,7 +7759,8 @@ function confirmRestoreBackup(){
 // La connexion automatique au rafraichissement de la page a ete retiree
 // (demande explicite) : on redemande desormais toujours l'email et le mot
 // de passe, meme si un onglet etait deja connecte juste avant.
-fetch('/api/init-db').catch(function(){});
+// SECURITE : /api/init-db n'est plus appele au chargement de la page (acces
+// anonyme supprime) ; il est lance apres connexion, dans bootstrapApp().
 
 // ════════════════════════════════════════════════════════════════════════════
 // AUTO-SYNC WRAPPER — wraps each create/edit function so that after it runs

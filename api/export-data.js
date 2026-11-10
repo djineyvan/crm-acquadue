@@ -4,6 +4,7 @@
 // automatic infrastructure backups, which the user cannot access directly).
 
 const { getSql } = require('../lib/db');
+const { requireAuth, publicUser } = require('../lib/auth');
 
 const TABLES = [
   'users', 'clients', 'pipeline', 'tasks', 'comm_perf', 'campagnes', 'publications',
@@ -13,11 +14,16 @@ const TABLES = [
 ];
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // Securite : plus d'en-tete CORS ouvert (Access-Control-Allow-Origin: *).
   if (req.method !== 'GET') return res.status(405).json({ error: 'Methode non autorisee' });
 
   try {
     const sql = getSql();
+
+    // SECURITE : export complet reserve au Super Admin connecte.
+    const me = await requireAuth(req, res, sql, ['superadmin']);
+    if (!me) return;
+
     const dump = {};
 
     for (const t of TABLES) {
@@ -25,7 +31,7 @@ module.exports = async function handler(req, res) {
         const rows = await sql.query('SELECT * FROM ' + t);
         // Never export password hashes/plaintext in the backup file
         if (t === 'users') {
-          dump[t] = rows.map(function(r) { const c = Object.assign({}, r); delete c.pass; return c; });
+          dump[t] = rows.map(publicUser);
         } else {
           dump[t] = rows;
         }
@@ -36,7 +42,7 @@ module.exports = async function handler(req, res) {
 
     dump._meta = {
       exported_at: new Date().toISOString(),
-      exported_by: req.query.by || 'inconnu',
+      exported_by: me.nom,
       version: 'CRM Lorenzetti v10'
     };
 

@@ -10,6 +10,7 @@
 // DELETE /api/backup { id }     -> remove one backup entry (Super Admin only, enforced client-side + here)
 
 const { getSql } = require('../lib/db');
+const { requireAuth, publicUser } = require('../lib/auth');
 
 const TABLES = [
   'users', 'clients', 'pipeline', 'tasks', 'comm_perf', 'campagnes', 'publications',
@@ -21,13 +22,15 @@ const TABLES = [
 const MAX_HISTORY = 14; // keep the last 14 snapshots (e.g. ~2 weeks of dailies), prune older ones
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  // Securite : plus d'en-tete CORS ouvert (Access-Control-Allow-Origin: *).
+  if (req.method === 'OPTIONS') return res.status(204).end();
 
   try {
     const sql = getSql();
+
+    // SECURITE : sauvegardes reservees au Super Admin connecte.
+    const me = await requireAuth(req, res, sql, ['superadmin']);
+    if (!me) return;
 
     await sql`CREATE TABLE IF NOT EXISTS backups_history (
       id SERIAL PRIMARY KEY,
@@ -54,7 +57,7 @@ module.exports = async function handler(req, res) {
       for (const t of TABLES) {
         try {
           const rows = await sql.query('SELECT * FROM ' + t);
-          dump[t] = t === 'users' ? rows.map(function(r) { const c = Object.assign({}, r); delete c.pass; return c; }) : rows;
+          dump[t] = t === 'users' ? rows.map(publicUser) : rows;
         } catch (e) {
           dump[t] = [];
         }

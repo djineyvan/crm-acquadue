@@ -5,16 +5,19 @@
 // so instead we store the code + expiry directly in the users table (added columns).
 
 const { getSql } = require('../lib/db');
+const crypto = require('crypto');
+const { hashPassword, validatePasswordRules } = require('../lib/auth');
 
+const MAX_CODE_ATTEMPTS = 5; // essais autorises par code avant invalidation
+
+// Code a 6 chiffres genere avec un vrai generateur aleatoire securise
 function generateCode(){
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return String(crypto.randomInt(100000, 1000000));
 }
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  // Securite : plus d'en-tete CORS ouvert (Access-Control-Allow-Origin: *).
+  if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Methode non autorisee' });
 
   try {
@@ -24,6 +27,7 @@ module.exports = async function handler(req, res) {
     // Ensure reset-code columns exist (idempotent, runs fast if already there)
     await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code TEXT`;
     await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code_expires TIMESTAMP`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_attempts INTEGER DEFAULT 0`;
 
     if (action === 'request') {
       const { email } = req.body;
@@ -34,10 +38,17 @@ module.exports = async function handler(req, res) {
       const user = rows[0];
       if (!user.actif) return res.status(403).json({ error: 'inactive' });
 
+      // Anti-abus : pas plus d'un code par minute et par compte (evite de
+      // saturer la boite mail et l'envoi d'emails).
+      if (user.reset_code && user.reset_code_expires &&
+          new Date(user.reset_code_expires).getTime() > Date.now() + 14 * 60 * 1000) {
+        return res.status(429).json({ error: 'trop_rapide' });
+      }
+
       const code = generateCode();
       const expires = new Date(Date.now() + 15 * 60 * 1000);
 
-      await sql`UPDATE users SET reset_code = ${code}, reset_code_expires = ${expires.toISOString()} WHERE id = ${user.id}`;
+      await sql`UPDATE users SET reset_code = ${code}, reset_code_expires = ${expires.toISOString()}, reset_attempts = 0 WHERE id = ${user.id}`;
 
       const RESEND_API_KEY = process.env.RESEND_API_KEY;
       if (!RESEND_API_KEY) return res.status(500).json({ error: 'Cle API Resend non configuree' });
@@ -89,14 +100,29 @@ module.exports = async function handler(req, res) {
       if (rows.length === 0) return res.status(404).json({ error: 'not_found' });
       const user = rows[0];
 
-      if (!user.reset_code || user.reset_code !== code) {
+      if (!validatePasswordRules(newPassword)) {
+        return res.status(400).json({ error: 'mot_de_passe_trop_faible' });
+      }
+      if (!user.reset_code) {
+        return res.status(401).json({ error: 'invalid_code' });
+      }
+      // Anti-devinette : au bout de 5 mauvais essais, le code est detruit
+      if ((user.reset_attempts || 0) >= MAX_CODE_ATTEMPTS) {
+        await sql`UPDATE users SET reset_code = NULL, reset_code_expires = NULL, reset_attempts = 0 WHERE id = ${user.id}`;
+        return res.status(429).json({ error: 'too_many_attempts' });
+      }
+      if (String(user.reset_code) !== String(code)) {
+        await sql`UPDATE users SET reset_attempts = COALESCE(reset_attempts, 0) + 1 WHERE id = ${user.id}`;
         return res.status(401).json({ error: 'invalid_code' });
       }
       if (new Date(user.reset_code_expires) < new Date()) {
         return res.status(401).json({ error: 'code_expired' });
       }
 
-      await sql`UPDATE users SET pass = ${newPassword}, doit_changer_pass = false, verrouille = false, tentatives = 0, reset_code = NULL, reset_code_expires = NULL WHERE id = ${user.id}`;
+      const newHash = await hashPassword(newPassword);
+      await sql`UPDATE users SET pass = ${newHash}, doit_changer_pass = false, verrouille = false, tentatives = 0, reset_code = NULL, reset_code_expires = NULL, reset_attempts = 0 WHERE id = ${user.id}`;
+      // Par prudence, toutes les sessions ouvertes de ce compte sont fermees
+      await sql`DELETE FROM sessions WHERE user_id = ${user.id}`;
       await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)
                  VALUES (${user.nom}, ${user.departement}, 'Mot de passe reinitialise via email', 'Recuperation par code envoye a djineyvan@yahoo.fr', 'dot-green', ${user.ini}, ${user.col}, 'web')`;
 

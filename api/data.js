@@ -11,6 +11,7 @@
 // DELETE /api/data   { entity, id }             -> delete one row by id
 
 const { getSql } = require('../lib/db');
+const { requireAuth } = require('../lib/auth');
 
 // Maps entity name -> { table, idColumn, columns (camelCase -> snake_case) }
 const ENTITY_MAP = {
@@ -70,18 +71,26 @@ const COLUMNS = {
 };
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  // Securite : plus d'en-tete CORS ouvert (Access-Control-Allow-Origin: *).
+  if (req.method === 'OPTIONS') return res.status(204).end();
 
   try {
     const sql = getSql();
+
+    // SECURITE : il faut etre connecte (jeton de session valide) pour lire ou modifier les donnees.
+    const me = await requireAuth(req, res, sql);
+    if (!me) return;
+
     const entityKey = req.method === 'GET' ? req.query.entity : (req.body || {}).entity;
     const meta = ENTITY_MAP[entityKey];
     if (!meta) return res.status(400).json({ error: 'Entite inconnue: ' + entityKey });
 
     const allowedCols = COLUMNS[entityKey];
+
+    // La matrice des permissions ne peut etre modifiee que par le Super Admin.
+    if (entityKey === 'sensitive_perms' && req.method !== 'GET' && me.role !== 'superadmin') {
+      return res.status(403).json({ error: 'acces_refuse' });
+    }
 
     if (req.method === 'GET') {
       const rows = await sql.query('SELECT * FROM ' + meta.table + ' ORDER BY ' + meta.idCol + ' ASC');
