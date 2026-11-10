@@ -2066,7 +2066,7 @@ function clientFiltersPanelHtml(){
       '</select></div>';
   }
   const villes = distinctSortedValues(CLIENTS, 'ville');
-  const sources = ['Pipeline','Prospection terrain','Bouche a oreille','Recommandation','Reseaux sociaux','Salon professionnel','Devis/Facturation'];
+  const sources = ['Pipeline','Prospection terrain','Bouche a oreille','Recommandation','Reseaux sociaux','Meta Ads','Salon professionnel','Devis/Facturation'];
   const statuts = ['Nouveau prospect','Contacte','Offre envoyee','En negociation','Client actif','Client perdu'];
   const commerciaux = distinctSortedValues(CLIENTS, 'asg');
 
@@ -2125,6 +2125,7 @@ function viewClientDetail(id){
         {label:'Bouche a oreille',selected:cl.source==='Bouche a oreille'},
         {label:'Recommandation',selected:cl.source==='Recommandation'},
         {label:'Reseaux sociaux',selected:cl.source==='Reseaux sociaux'},
+        {label:'Meta Ads',selected:cl.source==='Meta Ads'},
         {label:'Salon professionnel',selected:cl.source==='Salon professionnel'},
         {label:'Devis/Facturation',selected:cl.source==='Devis/Facturation'}
       ], 'select'],
@@ -5416,6 +5417,47 @@ function renderDirection(c){
 }
 
 // ── CENTRE DE CONTROLE SUPER ADMIN (sessions, sauvegardes, RBAC sensible) ───
+
+// ── CONNEXION META (formulaires de leads Facebook / Instagram) ───────────────
+// Etat de la connexion : lu depuis /api/version?meta=status (reserve Admin / Super Admin).
+// Les noms des leads viennent de personnes exterieures : toujours echapper avant affichage.
+function metaEsc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function loadMetaStatus(){
+  const box = el('meta-status'); if(!box) return;
+  box.innerHTML = 'Chargement...';
+  apiGet('/api/version?meta=status').then(function(d){
+    if(!d || d.error){ box.innerHTML = '<span style="color:var(--red)">Impossible de lire l\'etat de la connexion.</span>'; return; }
+    const cf = d.configure || {};
+    function ligne(ok, label){ return '<div style="margin:3px 0">'+(ok?'✅':'❌')+' '+label+'</div>'; }
+    let h = '<div class="card-title">Etat de la connexion Meta</div>';
+    h += ligne(cf.verify_token,'Mot de verification (META_VERIFY_TOKEN)');
+    h += ligne(cf.app_secret,'Cle secrete de l\'application (META_APP_SECRET)');
+    h += ligne(cf.page_token,'Jeton d\'acces de la Page (META_PAGE_ACCESS_TOKEN)');
+    const tout = cf.verify_token && cf.app_secret && cf.page_token;
+    h += '<div style="margin:10px 0;padding:9px;border-radius:8px;background:'+(tout?'var(--green-light,#e6f6ec)':'var(--gold-light,#fff6e0)')+'">'+
+         (tout ? 'Les 3 cles sont presentes dans Vercel. Les leads Meta arrivent automatiquement dans <b>Clients &amp; Prospects</b> et dans le <b>Pipeline</b> (source « Meta Ads »).'
+               : 'Configuration incomplete : suivez le guide pour ajouter les cles manquantes dans Vercel.')+'</div>';
+    h += '<div style="margin:3px 0">Commercial qui recoit les leads : <b>'+metaEsc(String(d.commercial||''))+'</b></div>';
+    h += '<div style="margin:3px 0">Leads recus : <b>'+d.leads.ok+'</b> · en erreur : <b style="color:'+(d.leads.erreur?'var(--red)':'inherit')+'">'+d.leads.erreur+'</b> · en cours : '+d.leads.en_cours+'</div>';
+    h += '<div style="margin:3px 0">Dernier lead : <b>'+(d.dernier_lead ? new Date(d.dernier_lead).toLocaleString('fr-FR') : 'aucun pour le moment')+'</b></div>';
+    if(d.leads.erreur && isSuperAdmin()) h += '<div style="margin-top:8px"><button class="btn btn-ghost btn-sm" onclick="retryMetaLeads()">🔁 Relancer les leads en erreur</button></div>';
+    if(d.recents && d.recents.length){
+      h += '<div style="margin-top:12px;font-weight:600">10 derniers leads</div><div class="table-wrap"><table><thead><tr><th>Nom</th><th>Etat</th><th>Detail</th></tr></thead><tbody>';
+      d.recents.forEach(function(r){
+        h += '<tr><td>'+metaEsc(r.nom||'(en attente)')+'</td><td>'+(r.status==='ok'?'✅ recu':(r.status==='erreur'?'❌ erreur':'⏳ '+metaEsc(r.status)))+'</td><td class="td-muted">'+metaEsc(r.error||'')+'</td></tr>';
+      });
+      h += '</tbody></table></div>';
+    }
+    box.innerHTML = h;
+  }).catch(function(){ box.innerHTML = '<span style="color:var(--red)">Erreur reseau.</span>'; });
+}
+function retryMetaLeads(){
+  apiPost('/api/version?meta=retry', {}).then(function(d){
+    alert(d && !d.error ? ('Relance terminee : '+d.ok+' lead(s) recupere(s), '+d.erreurs+' encore en erreur.') : 'La relance a echoue.');
+    loadMetaStatus();
+  });
+}
+
 function renderControle(c){
   if(!isSuperAdmin()){
     c.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔒</div>Centre de controle reserve au Super Admin.</div>';
@@ -5425,11 +5467,13 @@ function renderControle(c){
   h += '<button class="tab active" onclick="switchTab(this,\'co\',\'s\')">Sessions actives</button>';
   h += '<button class="tab" onclick="switchTab(this,\'co\',\'b\')">Sauvegardes</button>';
   h += '<button class="tab" onclick="switchTab(this,\'co\',\'p\')">Permissions sensibles</button>';
+  h += '<button class="tab" onclick="switchTab(this,\'co\',\'m\');loadMetaStatus()">📣 Connexion Meta</button>';
   h += '<button class="tab" onclick="switchTab(this,\'co\',\'z\')" style="color:var(--red)">⚠️ Zone dangereuse</button>';
   h += '</div></div>';
   h += '<div id="co-s"><div class="card"><div class="table-wrap"><table id="tbl-sessions"></table></div></div></div>';
   h += '<div id="co-b" style="display:none"><div class="card"><div class="table-wrap"><table id="tbl-backups"></table></div></div></div>';
   h += '<div id="co-p" style="display:none"><div class="card"><div id="sensitive-matrix"></div></div></div>';
+  h += '<div id="co-m" style="display:none"><div class="card"><div id="meta-status" class="td-muted">Chargement...</div></div></div>';
   h += '<div id="co-z" style="display:none"><div class="card" style="border-color:var(--red)">';
   h += '  <div class="card-title" style="color:var(--red)">⚠️ Reinitialisation complete de la base</div>';
   h += '  <p class="td-muted" style="margin-bottom:12px">Cette action supprime DEFINITIVEMENT toutes les donnees metier (clients, pipeline, taches, stock, produits, devis, factures, depenses, journal d\'audit...) ainsi que TOUS les comptes utilisateurs sauf le votre. Cette action est irreversible.</p>';
@@ -5567,7 +5611,7 @@ function buildModals(){
   const clientBody =
     fieldRow(fieldText('cl-nom','Nom','Ex: Amadou Mahamane'), fieldSelect('cl-type','Type',['B2C — Famille','B2B — Hotel','B2B — Restaurant','B2B — Clinique','B2B — Bureau','B2B — Ecole','B2B — Administration'])) +
     fieldRow(fieldText('cl-tel','Telephone','+227 XX XX XX XX'), fieldSelect('m-ville-1','Ville — Niger',[])) +
-    fieldRow(fieldText('cl-zone','Quartier / Zone','Plateau, Centre...'), fieldSelect('cl-source','Source',['Pipeline','Devis/Facturation','Prospection terrain','Bouche a oreille','Recommandation','Reseaux sociaux','Salon professionnel'])) +
+    fieldRow(fieldText('cl-zone','Quartier / Zone','Plateau, Centre...'), fieldSelect('cl-source','Source',['Pipeline','Devis/Facturation','Prospection terrain','Bouche a oreille','Recommandation','Reseaux sociaux','Meta Ads','Salon professionnel'])) +
     // Le champ "Commercial assigne" est enveloppe dans un conteneur qu'on masque
     // pour les membres (seul le Super Admin choisit a qui la fiche revient).
     // Le champ reste present dans le HTML meme masque, pour que addClient() puisse
