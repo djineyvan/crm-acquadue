@@ -5425,8 +5425,9 @@ function metaEsc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){
 function loadMetaStatus(){
   const box = el('meta-status'); if(!box) return;
   box.innerHTML = 'Chargement...';
-  apiGet('/api/version?meta=status').then(function(d){
-    if(!d || d.error){ box.innerHTML = '<span style="color:var(--red)">Impossible de lire l\'etat de la connexion.</span>'; return; }
+  apiGet('/api/version?meta=status').then(function(r){
+    const d = r && r.data;
+    if(!r || !r.ok || !d || d.error){ box.innerHTML = '<span style="color:var(--red)">Impossible de lire l\'etat de la connexion.</span>'; return; }
     const cf = d.configure || {};
     function ligne(ok, label){ return '<div style="margin:3px 0">'+(ok?'✅':'❌')+' '+label+'</div>'; }
     let h = '<div class="card-title">Etat de la connexion Meta</div>';
@@ -5452,8 +5453,9 @@ function loadMetaStatus(){
   }).catch(function(){ box.innerHTML = '<span style="color:var(--red)">Erreur reseau.</span>'; });
 }
 function retryMetaLeads(){
-  apiPost('/api/version?meta=retry', {}).then(function(d){
-    alert(d && !d.error ? ('Relance terminee : '+d.ok+' lead(s) recupere(s), '+d.erreurs+' encore en erreur.') : 'La relance a echoue.');
+  apiPost('/api/version?meta=retry', {}).then(function(r){
+    const d = r && r.data;
+    alert(r && r.ok && d && !d.error ? ('Relance terminee : '+d.ok+' lead(s) recupere(s), '+d.erreurs+' encore en erreur.') : 'La relance a echoue.');
     loadMetaStatus();
   });
 }
