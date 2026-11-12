@@ -5459,7 +5459,7 @@ function loadMetaStatus(){
     if(d.recents && d.recents.length){
       h += '<div style="margin-top:12px;font-weight:600">10 derniers leads</div><div class="table-wrap"><table><thead><tr><th>Nom</th><th>Etat</th><th>Detail</th></tr></thead><tbody>';
       d.recents.forEach(function(r){
-        h += '<tr><td>'+metaEsc(r.nom||'(en attente)')+'</td><td>'+(r.status==='ok'?'✅ recu':(r.status==='erreur'?'❌ erreur':(r.status==='test'?'🧪 essai Meta':'⏳ '+metaEsc(r.status))))+'</td><td class="td-muted">'+metaEsc(r.error||'')+'</td></tr>';
+        h += '<tr><td>'+metaEsc(r.nom||'(en attente)')+'</td><td>'+(r.status==='ok'?'✅ recu':(r.status==='erreur'?'❌ erreur':(r.status==='test'?'🧪 essai Meta':(r.status==='ignore'?'🚫 ignore':'⏳ '+metaEsc(r.status)))))+'</td><td class="td-muted">'+metaEsc(r.error||'')+((r.status==='erreur'&&isSuperAdmin())?' <button class="btn btn-ghost btn-sm" onclick="ignoreMetaLead(\''+metaEsc(r.leadgen_id)+'\')">🚫 Ignorer</button>':'')+'</td></tr>';
       });
       h += '</tbody></table></div>';
     }
@@ -5494,6 +5494,13 @@ function diagMeta(){
     h += '<div style="margin-top:8px;padding:9px;border-radius:8px;background:var(--gold-light,#fff6e0)"><b>Conclusion :</b> '+metaEsc((d.conclusion||[]).join(' '))+'</div></div>';
     box.innerHTML = h;
   }).catch(function(){ box.innerHTML = '<span style="color:var(--red)">Erreur reseau.</span>'; });
+}
+function ignoreMetaLead(id){
+  if(!confirm("Ignorer ce lead ?\nA faire seulement s'il a ete supprime chez Meta ou si c'etait un test. Il ne sera plus relance.")) return;
+  apiPost('/api/version?meta=ignore', { leadgen_id: String(id) }).then(function(r){
+    if(!(r && r.ok && r.data && r.data.ok)) alert("Impossible d'ignorer ce lead.");
+    loadMetaStatus();
+  });
 }
 function retryMetaLeads(){
   apiPost('/api/version?meta=retry', {}).then(function(r){
