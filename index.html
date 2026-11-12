@@ -5482,9 +5482,25 @@ function loadMetaStatus(){
     h += '<div style="margin:3px 0">Dernier lead : <b>'+(d.dernier_lead ? new Date(d.dernier_lead).toLocaleString('fr-FR') : 'aucun pour le moment')+'</b></div>';
     if(isSuperAdmin()) h += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">'+(d.leads.erreur?'<button class="btn btn-ghost btn-sm" onclick="retryMetaLeads()">🔁 Relancer les leads en erreur</button>':'')+'<button class="btn btn-ghost btn-sm" onclick="diagMeta()">🩺 Diagnostiquer la lecture des leads</button></div><div id="meta-diag"></div>';
     if(d.recents && d.recents.length){
-      h += '<div style="margin-top:12px;font-weight:600">10 derniers leads</div><div class="table-wrap"><table><thead><tr><th>Nom</th><th>Etat</th><th>Detail</th></tr></thead><tbody>';
+      h += '<div style="margin-top:12px;font-weight:600">10 derniers leads</div><div class="table-wrap"><table><thead><tr><th>Nom</th><th>Publicite</th><th>Etat</th><th>Detail</th></tr></thead><tbody>';
       d.recents.forEach(function(r){
-        h += '<tr><td>'+metaEsc(r.nom||'(en attente)')+'</td><td>'+(r.status==='ok'?'✅ recu':(r.status==='erreur'?'❌ erreur':(r.status==='test'?'🧪 essai Meta':(r.status==='ignore'?'🚫 ignore':'⏳ '+metaEsc(r.status)))))+'</td><td class="td-muted">'+metaEsc(r.error||'')+((r.status==='erreur'&&isSuperAdmin())?' <button class="btn btn-ghost btn-sm" onclick="ignoreMetaLead(\''+metaEsc(r.leadgen_id)+'\')">🚫 Ignorer</button>':'')+'</td></tr>';
+        const pub = r.annonce || r.campagne
+          ? '<b>'+metaEsc(r.annonce||'')+'</b>'+(r.campagne?'<div class="td-muted">'+metaEsc(r.campagne)+'</div>':'')+(r.plateforme?'<div class="td-muted">'+metaEsc(r.plateforme)+'</div>':'')
+          : '<span class="td-muted">'+(r.ad_id?'Annonce '+metaEsc(r.ad_id):'—')+'</span>';
+        h += '<tr><td>'+metaEsc(r.nom||'(en attente)')+'</td><td>'+pub+'</td><td>'+(r.status==='ok'?'✅ recu':(r.status==='erreur'?'❌ erreur':(r.status==='test'?'🧪 essai Meta':(r.status==='ignore'?'🚫 ignore':'⏳ '+metaEsc(r.status)))))+'</td><td class="td-muted">'+metaEsc(r.error||'')+((r.status==='erreur'&&isSuperAdmin())?' <button class="btn btn-ghost btn-sm" onclick="ignoreMetaLead(\''+metaEsc(r.leadgen_id)+'\')">🚫 Ignorer</button>':'')+'</td></tr>';
+      });
+      h += '</tbody></table></div>';
+    }
+    // Bilan par publicite : quelles pubs amenent de bons prospects
+    if(d.bilan_publicites && d.bilan_publicites.length){
+      h += '<div style="margin-top:14px;font-weight:600">📊 Bilan par publicite</div>'+
+           '<div class="td-muted" style="margin:2px 0 6px">Ce que sont devenus les leads de chaque pub, d\'apres le statut actuel de leur fiche dans Clients &amp; Prospects.</div>'+
+           '<div class="table-wrap"><table><thead><tr><th>Publicite</th><th>Leads</th><th>En discussion</th><th>Clients gagnes</th><th>Perdus</th><th>Taux de reussite</th></tr></thead><tbody>';
+      d.bilan_publicites.forEach(function(b){
+        const taux = b.leads ? Math.round(100*b.clients/b.leads) : 0;
+        h += '<tr><td><b>'+metaEsc(b.annonce)+'</b>'+(b.campagne?'<div class="td-muted">'+metaEsc(b.campagne)+'</div>':'')+'</td>'+
+             '<td>'+b.leads+'</td><td>'+b.en_cours+'</td><td style="color:var(--green,#16a34a);font-weight:700">'+b.clients+'</td><td>'+b.perdus+'</td>'+
+             '<td><b>'+taux+' %</b></td></tr>';
       });
       h += '</tbody></table></div>';
     }
