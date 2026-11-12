@@ -559,7 +559,10 @@ function autoRefreshTick(){
     if(typeof checkTachesEnRetard === 'function') checkTachesEnRetard(); // alerte si une tache vient de depasser son echeance
     // Le journal est alimente en temps reel par logAction et ne doit pas etre
     // reconstruit automatiquement (provoque un clignotement et un ecran vide)
-    if(CURRENT_VIEW && CURRENT_VIEW !== 'journal') renderView(CURRENT_VIEW);
+    // Le Centre de Controle (sessions, sauvegardes, connexion Meta, diagnostic) se
+    // charge a la demande : le reconstruire toutes les 20 s effacait les resultats
+    // affiches (ex. diagnostic Meta) et bloquait l'onglet Meta sur "Chargement...".
+    if(CURRENT_VIEW && CURRENT_VIEW !== 'journal' && CURRENT_VIEW !== 'controle') renderView(CURRENT_VIEW);
     restoreSubTabs();
   }).catch(function(){ /* prochaine tentative dans 5 secondes */ });
 }
