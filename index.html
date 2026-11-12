@@ -521,13 +521,38 @@ let DEP_PERIOD    = 'all';  // filtre periode du module Depenses
 let DEP_CATEGORIE = 'all';  // filtre categorie du module Depenses
 let DEP_STATUT    = 'all';  // filtre statut du module Depenses
 let RH_PERIOD      = 'this_month'; // filtre periode du rapport RH (PDF)
-function checkAppVersion(){
-  fetch('/api/version').then(function(r){ return r.json(); }).then(function(d){
+function checkAppVersion(autoReload){
+  fetch('/api/version', { cache:'no-store' }).then(function(r){ return r.json(); }).then(function(d){
     if(!d || !d.version) return;
     if(BOOT_VERSION === null){ BOOT_VERSION = d.version; return; }
-    if(d.version !== BOOT_VERSION) showUpdateBanner();
+    if(d.version !== BOOT_VERSION){
+      // Retour sur l'onglet (telephone sorti de veille, appli rouverte) avec une
+      // version perimee : on recharge tout seul si aucune saisie n'est en cours.
+      if(!(autoReload && reloadIfSafe())) showUpdateBanner();
+    }
   }).catch(function(){ /* network hiccup — try again next interval */ });
 }
+// Recharge la page seulement si cela ne peut rien faire perdre : aucun
+// enregistrement en cours, aucune fenetre de saisie ouverte.
+function reloadIfSafe(){
+  try { if(PENDING_WRITES > 0) return false; } catch(e){}
+  if(document.querySelector('.modal-overlay.open')) return false;
+  if(document.querySelector('#presence-form-wrap > *')) return false;
+  if(document.querySelector('#conge-form-wrap > *')) return false;
+  location.reload();
+  return true;
+}
+// iPhone/iPad : Safari « fige » un onglet en arriere-plan et le ressort tel quel,
+// parfois des heures plus tard. Au retour sur la page, on verifie la version et
+// on actualise les donnees tout de suite, sans attendre les 20 secondes.
+function onPageBackInFront(){
+  checkAppVersion(true);
+  if(CU) autoRefreshTick();
+}
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'visible') onPageBackInFront();
+});
+window.addEventListener('pageshow', function(e){ if(e.persisted) onPageBackInFront(); });
 function showUpdateBanner(){
   if(document.getElementById('update-banner')) return; // deja affiche
   const b = document.createElement('div');
@@ -7221,6 +7246,23 @@ function applyBulkData(data){
 // leaving the UI with a partial, inconsistent snapshot. One request means
 // one consistent snapshot, every time.
 function loadAllDataFromDb(){
+  return loadAllDataFromDbRaw().then(function(){
+    DATA_LOAD_FAILS = 0;
+    DATA_LOADED_ONCE = true;
+    hideLoadErrorBanner();
+  }, function(err){
+    // ECHEC COMPLET DU CHARGEMENT (connexion trop faible, serveur indisponible...).
+    // Les donnees deja affichees sont CONSERVEES (on ne les remplace plus par du vide).
+    // Au demarrage : message immediat. Pendant l'actualisation automatique (toutes
+    // les 20 s) : message seulement apres 3 echecs de suite, pour ne pas alarmer
+    // sur une micro-coupure.
+    DATA_LOAD_FAILS++;
+    if(!DATA_LOADED_ONCE || DATA_LOAD_FAILS >= 3) showLoadErrorBanner();
+    throw err;
+  });
+}
+
+function loadAllDataFromDbRaw(){
   return apiGet('/api/bulk-load').then(function(result){
     if(result.ok && result.data && result.data.data){
       applyBulkData(result.data.data);
@@ -7235,38 +7277,59 @@ function loadAllDataFromDb(){
     // than leaving the app with no data at all.
     console.error('bulk-load failed, falling back to per-table loading');
     return loadAllDataFromDbLegacy();
-  }).catch(function(){
+  }, function(){
     console.error('bulk-load network error, falling back to per-table loading');
     return loadAllDataFromDbLegacy();
   });
 }
 
+// Chargement table par table (secours). TOUT OU RIEN : si une seule table ne
+// se charge pas, on ne touche a rien et on signale l'echec. Avant, une table
+// en echec etait remplacee par une liste vide, ce qui donnait un CRM vide a
+// l'ecran sans aucun message (constate sur telephone le 12/11/2026).
+var LEGACY_TABLES = ['clients','pipeline','tasks','comm_perf','campagnes','publications',
+  'produits','entrepots','stock','mouvements_stock','fournisseurs','commandes_fournisseur',
+  'demandes_achat','inventaires','devis','factures','depenses','notifications','documents',
+  'rh_presence','rh_conges','sensitive_perms','roi_concurrents','promo_packs'];
 function loadAllDataFromDbLegacy(){
-  return Promise.all([
-    dbLoadAll('clients').then(function(rows){ CLIENTS = rows.map(mapClientFromDb); }),
-    dbLoadAll('pipeline').then(function(rows){ PIPELINE = rows.map(mapPipelineFromDb); }),
-    dbLoadAll('tasks').then(function(rows){ TASKS = rows.map(mapTaskFromDb); }),
-    dbLoadAll('comm_perf').then(function(rows){ COMM_PERF = rows.map(mapCommPerfFromDb); }),
-    dbLoadAll('campagnes').then(function(rows){ CAMPAGNES = rows.map(mapCampagneFromDb); }),
-    dbLoadAll('publications').then(function(rows){ PUBLICATIONS = rows.map(mapPublicationFromDb); }),
-    dbLoadAll('produits').then(function(rows){ PRODUITS = rows.map(mapProduitFromDb); }),
-    dbLoadAll('entrepots').then(function(rows){ ENTREPOTS = rows.map(mapEntrepotFromDb); }),
-    dbLoadAll('stock').then(function(rows){ STOCK = rows.map(mapStockFromDb); }),
-    dbLoadAll('mouvements_stock').then(function(rows){ MOUVEMENTS_STOCK = rows.map(mapMouvementFromDb); }),
-    dbLoadAll('fournisseurs').then(function(rows){ FOURNISSEURS = rows.map(mapFournisseurFromDb); }),
-    dbLoadAll('commandes_fournisseur').then(function(rows){ COMMANDES_FOURNISSEUR = rows.map(mapCommandeFromDb); }),
-    dbLoadAll('demandes_achat').then(function(rows){ DEMANDES_ACHAT = rows.map(mapDemandeAchatFromDb); }),
-    dbLoadAll('inventaires').then(function(rows){ INVENTAIRES = rows.map(mapInventaireFromDb); }),
-    dbLoadAll('devis').then(function(rows){ DEVIS = rows.map(mapDevisFromDb); }),
-    dbLoadAll('factures').then(function(rows){ FACTURES = rows.map(mapFactureFromDb); }),
-    dbLoadAll('depenses').then(function(rows){ DEPENSES = rows.map(mapDepenseFromDb); }),
-    dbLoadAll('notifications').then(function(rows){ NOTIFICATIONS = dedupeNotifs(rows.map(mapNotificationFromDb)); }),
-    dbLoadAll('documents').then(function(rows){ DOCUMENTS = rows.map(mapDocumentFromDb); }),
-    dbLoadAll('rh_presence').then(function(rows){ RH_PRESENCE = rows.map(mapRhPresenceFromDb); }),
-    dbLoadAll('rh_conges').then(function(rows){ RH_CONGES = rows.map(mapRhCongesFromDb); }),
-    dbLoadAll('sensitive_perms').then(function(rows){ applySensitivePermsFromDb(rows); }),
-    dbLoadAll('roi_concurrents').then(function(rows){ ROI_CONCURRENTS = rows.map(mapRoiConcurrentFromDb); }),
-  ]);
+  return Promise.all(LEGACY_TABLES.map(function(t){
+    return apiGet('/api/data?entity=' + t).then(function(result){
+      if(!(result.ok && result.data && result.data.rows)) throw new Error('chargement_echoue:' + t);
+      return result.data.rows;
+    });
+  })).then(function(all){
+    var data = {};
+    LEGACY_TABLES.forEach(function(t, i){ data[t] = all[i]; });
+    applyBulkData(data);
+  });
+}
+
+// ── MESSAGE "DONNEES NON CHARGEES" ──────────────────────────────────────────
+var DATA_LOAD_FAILS = 0;
+var DATA_LOADED_ONCE = false;
+function showLoadErrorBanner(){
+  var b = document.getElementById('load-error-banner');
+  if(!b){
+    b = document.createElement('div');
+    b.id = 'load-error-banner';
+    b.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#b45309;color:white;text-align:center;padding:10px 12px;font-size:13px;font-weight:700;z-index:9999;line-height:1.5';
+    document.body.appendChild(b);
+  }
+  b.innerHTML = '⚠️ Les données n\'ont pas pu être chargées (connexion trop faible ou serveur indisponible). ' +
+    '<button onclick="retryDataLoad()" style="margin-left:8px;background:white;color:#b45309;border:none;border-radius:6px;padding:5px 12px;font-weight:700;cursor:pointer">Réessayer</button>';
+}
+function hideLoadErrorBanner(){
+  var b = document.getElementById('load-error-banner');
+  if(b) b.remove();
+}
+function retryDataLoad(){
+  var b = document.getElementById('load-error-banner');
+  if(b) b.textContent = '⏳ Chargement des données…';
+  loadAllDataFromDb().then(function(){
+    updateAllBadges();
+    if(CURRENT_VIEW && CURRENT_VIEW !== 'journal' && CURRENT_VIEW !== 'controle') renderView(CURRENT_VIEW);
+    restoreSubTabs();
+  }).catch(function(){ showLoadErrorBanner(); });
 }
 
 function mapDocumentFromDb(r){
@@ -7337,7 +7400,9 @@ function bootstrapApp(){
   BOOTSTRAP_DONE = true;
   // Verification/reparation de la base apres connexion (necessite le jeton de session)
   fetch('/api/init-db', { headers: authHeaders() }).catch(function(){});
-  Promise.all([loadAllDataFromDb(), loadAuditFromDb()]).then(function(){
+  // Si le chargement echoue, l'application s'ouvre quand meme avec le message
+  // « Les donnees n'ont pas pu etre chargees — Reessayer » (au lieu de rester bloquee).
+  Promise.all([loadAllDataFromDb().catch(function(){}), loadAuditFromDb()]).then(function(){
     buildApp();
     // Initialiser LAST_UNREAD_NOTIF avec le vrai nombre de non-lues au
     // premier chargement. Sans cela, la variable vaut 0 au démarrage, et
