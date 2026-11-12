@@ -5489,7 +5489,7 @@ function diagMeta(){
       if(le.meme_page_que_le_jeton!==undefined) h += l(le.meme_page_que_le_jeton, 'Le lead vient de la meme Page que le jeton');
     }
     if(E.formulaire) h += l(E.formulaire.ok, 'Lecture du formulaire', E.formulaire.ok ? (E.formulaire.nom+' · '+E.formulaire.statut) : E.formulaire.error);
-    if(E.lecture_leads_du_formulaire) h += l(E.lecture_leads_du_formulaire.ok, 'Lecture des prospects du formulaire', E.lecture_leads_du_formulaire.ok ? '' : E.lecture_leads_du_formulaire.error);
+    if(E.lecture_leads_du_formulaire) h += l(E.lecture_leads_du_formulaire.ok, 'Lecture des prospects du formulaire', E.lecture_leads_du_formulaire.ok ? (E.lecture_leads_du_formulaire.nb_visibles+' prospect(s) visibles · lead '+(E.lecture_leads_du_formulaire.lead_present?'trouve ✅':'absent ❌')) : E.lecture_leads_du_formulaire.error);
     if(E.lecture_du_lead) h += l(E.lecture_du_lead.ok, 'Lecture du lead', E.lecture_du_lead.ok ? '' : E.lecture_du_lead.error);
     h += '<div style="margin-top:8px;padding:9px;border-radius:8px;background:var(--gold-light,#fff6e0)"><b>Conclusion :</b> '+metaEsc((d.conclusion||[]).join(' '))+'</div></div>';
     box.innerHTML = h;
