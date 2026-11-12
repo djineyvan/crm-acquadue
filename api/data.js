@@ -93,6 +93,18 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
+      // Documents : liste SANS le contenu des fichiers (connexion legere) ;
+      // ?id=... renvoie un seul document AVEC son contenu (ouverture / telechargement).
+      if (entityKey === 'documents') {
+        if (req.query.id !== undefined && req.query.id !== '') {
+          if (!/^[0-9]{1,20}$/.test(String(req.query.id))) return res.status(400).json({ error: 'identifiant_invalide' });
+          const one = await sql.query('SELECT * FROM documents WHERE id = $1', [String(req.query.id)]);
+          if (!one.length) return res.status(404).json({ error: 'document_introuvable' });
+          return res.status(200).json({ row: one[0] });
+        }
+        const light = await sql.query("SELECT id, nom, categorie, taille, date_doc, par_qui, mime_type, (data IS NOT NULL AND data <> '') AS has_data FROM documents ORDER BY id ASC");
+        return res.status(200).json({ rows: light });
+      }
       const rows = await sql.query('SELECT * FROM ' + meta.table + ' ORDER BY ' + meta.idCol + ' ASC');
       return res.status(200).json({ rows: rows });
     }

@@ -30,6 +30,8 @@ const TABLES = [
   'promo_packs'
 ];
 
+const DOCUMENTS_LIGHT_SELECT = "SELECT id, nom, categorie, taille, date_doc, par_qui, mime_type, (data IS NOT NULL AND data <> '') AS has_data FROM documents";
+
 module.exports = async function handler(req, res) {
   // Securite : plus d'en-tete CORS ouvert (Access-Control-Allow-Origin: *).
   if (req.method === 'OPTIONS') return res.status(204).end();
@@ -48,7 +50,11 @@ module.exports = async function handler(req, res) {
     // rather than the whole login/reload failing.
     const results = await Promise.all(
       TABLES.map(function(table) {
-        return sql.query('SELECT * FROM ' + table)
+        // CONNEXION LEGERE (12/11/2026) : la liste des documents est envoyee SANS le
+        // contenu des fichiers (souvent plusieurs Mo). Le contenu est demande
+        // seulement au moment d'ouvrir un document (/api/data?entity=documents&id=...).
+        const q = table === 'documents' ? DOCUMENTS_LIGHT_SELECT : 'SELECT * FROM ' + table;
+        return sql.query(q)
           .then(function(rows) { return { table: table, rows: rows, error: null }; })
           .catch(function(err) { return { table: table, rows: [], error: err.message }; });
       })

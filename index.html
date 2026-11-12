@@ -2419,11 +2419,27 @@ function handleDocUpload(input){
 function downloadDocument(id){
   const doc = DOCUMENTS.find(function(x){return String(x.id)===String(id);});
   if(!doc) return;
-  if(!doc.data){ alert('Le contenu de ce document n\'est plus disponible (peut-etre televerse avant la mise a jour du stockage).'); return; }
-  const a = document.createElement('a');
-  a.href = doc.data;
-  a.download = doc.nom;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  function save(dataUrl){
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = doc.nom;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
+  if(doc.data){ save(doc.data); return; }
+  if(!doc.hasData){ alert('Le contenu de ce document n\'est plus disponible (peut-etre televerse avant la mise a jour du stockage).'); return; }
+  // Connexion legere : le fichier est telecharge maintenant, seulement quand on l'ouvre.
+  const btn = (typeof event !== 'undefined' && event && event.target && event.target.tagName === 'BUTTON') ? event.target : null;
+  const label = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ Chargement...'; }
+  apiGet('/api/data?entity=documents&id=' + encodeURIComponent(doc.id)).then(function(r){
+    if(btn){ btn.disabled = false; btn.textContent = label; }
+    const row = r && r.ok && r.data && r.data.row;
+    if(!row || !row.data){ alert(r && r.status === 404 ? 'Ce document a ete supprime.' : 'Impossible de recuperer ce document pour le moment. Verifiez votre connexion et reessayez.'); return; }
+    save(row.data);
+  }).catch(function(){
+    if(btn){ btn.disabled = false; btn.textContent = label; }
+    alert('Impossible de recuperer ce document pour le moment. Verifiez votre connexion et reessayez.');
+  });
 }
 
 function deleteDocument(id){
@@ -7349,8 +7365,11 @@ function retryDataLoad(){
 }
 
 function mapDocumentFromDb(r){
+  // Depuis le 12/11/2026, la liste arrive SANS le contenu du fichier (connexion legere) :
+  // hasData dit s'il existe, et le contenu est charge a l'ouverture (downloadDocument).
   return { id:r.id, nom:r.nom, categorie:r.categorie, taille:r.taille, date:r.date_doc, par:r.par_qui,
-    data:r.data, mimeType:r.mime_type };
+    data:r.data || null, hasData: (r.has_data !== undefined && r.has_data !== null) ? !!r.has_data : !!r.data,
+    mimeType:r.mime_type };
 }
 function mapRhPresenceFromDb(r){
   return { id:r.id, nom:r.nom, date:r.date_p, arrivee:r.arrivee, depart:r.depart, statut:r.statut };
