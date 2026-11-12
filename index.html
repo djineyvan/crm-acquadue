@@ -5452,14 +5452,43 @@ function loadMetaStatus(){
     h += '<div style="margin:3px 0">Commercial qui recoit les leads : <b>'+metaEsc(String(d.commercial||''))+'</b></div>';
     h += '<div style="margin:3px 0">Leads recus : <b>'+d.leads.ok+'</b> · en erreur : <b style="color:'+(d.leads.erreur?'var(--red)':'inherit')+'">'+d.leads.erreur+'</b> · en cours : '+d.leads.en_cours+'</div>';
     h += '<div style="margin:3px 0">Dernier lead : <b>'+(d.dernier_lead ? new Date(d.dernier_lead).toLocaleString('fr-FR') : 'aucun pour le moment')+'</b></div>';
-    if(d.leads.erreur && isSuperAdmin()) h += '<div style="margin-top:8px"><button class="btn btn-ghost btn-sm" onclick="retryMetaLeads()">🔁 Relancer les leads en erreur</button></div>';
+    if(isSuperAdmin()) h += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">'+(d.leads.erreur?'<button class="btn btn-ghost btn-sm" onclick="retryMetaLeads()">🔁 Relancer les leads en erreur</button>':'')+'<button class="btn btn-ghost btn-sm" onclick="diagMeta()">🩺 Diagnostiquer la lecture des leads</button></div><div id="meta-diag"></div>';
     if(d.recents && d.recents.length){
       h += '<div style="margin-top:12px;font-weight:600">10 derniers leads</div><div class="table-wrap"><table><thead><tr><th>Nom</th><th>Etat</th><th>Detail</th></tr></thead><tbody>';
       d.recents.forEach(function(r){
-        h += '<tr><td>'+metaEsc(r.nom||'(en attente)')+'</td><td>'+(r.status==='ok'?'✅ recu':(r.status==='erreur'?'❌ erreur':'⏳ '+metaEsc(r.status)))+'</td><td class="td-muted">'+metaEsc(r.error||'')+'</td></tr>';
+        h += '<tr><td>'+metaEsc(r.nom||'(en attente)')+'</td><td>'+(r.status==='ok'?'✅ recu':(r.status==='erreur'?'❌ erreur':(r.status==='test'?'🧪 essai Meta':'⏳ '+metaEsc(r.status))))+'</td><td class="td-muted">'+metaEsc(r.error||'')+'</td></tr>';
       });
       h += '</tbody></table></div>';
     }
+    box.innerHTML = h;
+  }).catch(function(){ box.innerHTML = '<span style="color:var(--red)">Erreur reseau.</span>'; });
+}
+function diagMeta(){
+  const box = el('meta-diag'); if(!box) return;
+  box.innerHTML = '<div class="td-muted" style="margin-top:8px">Diagnostic en cours (interrogation de Meta)...</div>';
+  apiGet('/api/version?meta=diag').then(function(r){
+    const d = r && r.data;
+    if(!r || !r.ok || !d || d.error){ box.innerHTML = '<span style="color:var(--red)">Le diagnostic a echoue.</span>'; return; }
+    const E = d.etapes || {};
+    function l(ok, label, info){ return '<div style="margin:3px 0">'+(ok?'✅':'❌')+' '+label+(info?' <span class="td-muted">— '+metaEsc(info)+'</span>':'')+'</div>'; }
+    let h = '<div style="margin-top:10px;padding:10px;border:1px solid var(--border,#ddd);border-radius:8px"><div style="font-weight:600;margin-bottom:6px">🩺 Resultat du diagnostic</div>';
+    if(E.jeton_page) h += l(E.jeton_page.ok, 'Jeton de Page', E.jeton_page.ok ? (E.jeton_page.page_nom+' (ID '+E.jeton_page.page_id+')') : E.jeton_page.error);
+    if(E.application) h += l(E.application.ok, 'Application Meta', E.application.ok ? (E.application.app_nom+' (ID '+E.application.app_id+')') : E.application.error);
+    if(E.details_jeton){
+      const t = E.details_jeton;
+      if(t.type) h += l(t.valide && t.type==='PAGE', 'Type du jeton : '+t.type+' · expire : '+t.expire);
+      if(t.permissions) h += l(t.permissions.indexOf('leads_retrieval')>-1, 'Permissions du jeton', t.permissions.join(', '));
+      if(t.error) h += l(false, 'Details du jeton', t.error);
+    }
+    if(E.lead_en_erreur){
+      const le = E.lead_en_erreur;
+      h += '<div style="margin:6px 0 3px">Lead analyse : ID '+metaEsc(le.leadgen_id)+' · Page '+metaEsc(le.page_id||'?')+' · Formulaire '+metaEsc(le.form_id||'?')+'</div>';
+      if(le.meme_page_que_le_jeton!==undefined) h += l(le.meme_page_que_le_jeton, 'Le lead vient de la meme Page que le jeton');
+    }
+    if(E.formulaire) h += l(E.formulaire.ok, 'Lecture du formulaire', E.formulaire.ok ? (E.formulaire.nom+' · '+E.formulaire.statut) : E.formulaire.error);
+    if(E.lecture_leads_du_formulaire) h += l(E.lecture_leads_du_formulaire.ok, 'Lecture des prospects du formulaire', E.lecture_leads_du_formulaire.ok ? '' : E.lecture_leads_du_formulaire.error);
+    if(E.lecture_du_lead) h += l(E.lecture_du_lead.ok, 'Lecture du lead', E.lecture_du_lead.ok ? '' : E.lecture_du_lead.error);
+    h += '<div style="margin-top:8px;padding:9px;border-radius:8px;background:var(--gold-light,#fff6e0)"><b>Conclusion :</b> '+metaEsc((d.conclusion||[]).join(' '))+'</div></div>';
     box.innerHTML = h;
   }).catch(function(){ box.innerHTML = '<span style="color:var(--red)">Erreur reseau.</span>'; });
 }
