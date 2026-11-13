@@ -340,6 +340,55 @@ function isPipelineClosed(etape){ return PIPELINE_CLOSED_STAGES.indexOf(etape) >
 // Statuts Clients & Prospects, dans le meme ordre que PIPELINE_STAGES.
 const CLIENT_STATUTS = ["Nouveau prospect","Contacte","Offre envoyee","En negociation","Client actif","Client perdu","Non qualifie"];
 
+// ── RAISON DU "NON QUALIFIE" (13/11/2026, demande explicite) ────────────────
+// Chaque lead classe "Non qualifie" recoit une raison. Elle est enregistree
+// sur la fiche Clients & Prospects (colonne raison_nq), seule source utilisee
+// par le Pipeline et par le bilan Meta par publicite. Quand la fiche quitte
+// "Non qualifie", la raison est effacee (elle ne vaut que pour ce statut).
+const RAISONS_NQ = ["Faux numero","Hors zone","Pas interesse","Simple curieux","Autre"];
+var RAISON_NQ_CB = null;
+function raisonNqOf(cl){ return (cl && cl.statut === 'Non qualifie' && cl.raisonNq) ? cl.raisonNq : ''; }
+function raisonNqBadge(cl){
+  if(!cl || cl.statut !== 'Non qualifie') return '';
+  const r = raisonNqOf(cl);
+  return '<div style="font-size:10px;margin-top:3px;color:var(--muted2)">' + (r ? '⊘ ' + r : '⊘ raison non indiquee') + '</div>';
+}
+// Enregistre la raison sur la fiche client (memoire + base).
+function setClientRaisonNq(cl, raison){
+  if(!cl) return;
+  cl.raisonNq = raison || '';
+  if(typeof dbUpdate === 'function') dbUpdate('clients', cl.id, { raison_nq: cl.raisonNq });
+}
+// Efface la raison si la fiche n'est plus "Non qualifie".
+function clearRaisonNqIfNeeded(cl){
+  if(cl && cl.statut !== 'Non qualifie' && cl.raisonNq) setClientRaisonNq(cl, '');
+}
+// Petite fenetre "Pourquoi ce lead est-il non qualifie ?" (au-dessus de la
+// fiche ouverte). onOk(raison) n'est appele qu'apres validation.
+function askRaisonNq(nom, onOk){
+  RAISON_NQ_CB = onOk;
+  const old = el('modal-raison-nq'); if(old) old.remove();
+  const body = '<div style="font-size:13px;margin-bottom:10px">Pourquoi <strong>' + String(nom||'ce lead').replace(/</g,'&lt;') + '</strong> est-il non qualifie ?</div>' +
+    '<div class="form-group"><label class="form-label">Raison</label><select class="form-select" id="raison-nq-select">' +
+    '<option value="">— Choisir une raison —</option>' +
+    RAISONS_NQ.map(function(r){ return '<option value="' + r + '">' + r + '</option>'; }).join('') +
+    '</select></div>';
+  el('app').insertAdjacentHTML('beforeend', modalShell('modal-raison-nq', '⊘ Classer en "Non qualifie"', body,
+    btnGhost('Annuler', "closeRaisonNq()") + btnRed('✓ Valider', 'confirmRaisonNq()')));
+  const m = el('modal-raison-nq');
+  m.style.zIndex = '10000';
+  m.classList.add('open');
+}
+function closeRaisonNq(){ RAISON_NQ_CB = null; const m = el('modal-raison-nq'); if(m) m.remove(); }
+function confirmRaisonNq(){
+  const s = el('raison-nq-select');
+  const raison = s ? s.value : '';
+  if(!raison) return alert('Choisissez une raison dans la liste.');
+  const cb = RAISON_NQ_CB;
+  closeRaisonNq();
+  if(typeof cb === 'function') cb(raison);
+}
+
 // ── CLIENTS / PROSPECTS ──────────────────────────────────────────────────────
 let CLIENTS = [];
 
@@ -985,7 +1034,20 @@ function buildApp(){
 // Joue un petit "ding" leger a deux notes a l'arrivee d'une nouvelle notification.
 // Genere directement par le navigateur (Web Audio) : aucun fichier son a heberger,
 // fonctionne sur Safari/Chrome (Mac) et iPhone. Silencieux si le navigateur bloque le son.
+// Bouton ON/OFF du son (13/11/2026, demande explicite) : reglage memorise
+// sur l'appareil (Mac, iPhone...), pour chaque personne qui s'y connecte.
+function notifSoundKey(){ return 'crm_son_notif_' + (CU && CU.id ? CU.id : 'x'); }
+function isNotifSoundOn(){
+  try { return localStorage.getItem(notifSoundKey()) !== 'off'; } catch(e){ return true; }
+}
+function toggleNotifSound(){
+  const on = !isNotifSoundOn();
+  try { localStorage.setItem(notifSoundKey(), on ? 'on' : 'off'); } catch(e){}
+  if(on) playNotifSound(); // petit essai pour confirmer que le son est revenu
+  go('notifs');
+}
 function playNotifSound(){
+  if(!isNotifSoundOn()) return;
   try{
     var AC = window.AudioContext || window.webkitAudioContext;
     if(!AC) return;
@@ -1550,9 +1612,6 @@ function renderPipe(c){
     h += '<select class="form-input" style="width:auto;min-width:170px;padding:6px 10px;font-size:12px" onchange="setPipeAgentFilter(this.value)">'+agentOpts+'</select>';
   }
   h += '<button class="btn btn-ghost btn-sm" onclick="openRoiCalc()">🧮 Calculateur ROI</button>';
-  if(isSuperAdmin() && perdusHorsNiamey().length){
-    h += '<button class="btn btn-ghost btn-sm" style="border-color:var(--gold);color:var(--gold)" onclick="migratePerdusHorsNiamey()">↪ Perdus hors Niamey → Non qualifie (' + perdusHorsNiamey().length + ')</button>';
-  }
   h += '<button class="btn btn-red btn-sm" onclick="openModal(\'modal-prospect\')">+ Nouveau prospect</button>';
   h += '</div><div class="pipeline" id="pipe-board"></div>';
   c.innerHTML = h;
@@ -1570,7 +1629,7 @@ function renderPipeBoard(){
     const total = cards.reduce(function(s,x){return s+x.val;},0);
     board += '<div class="pipeline-col"><div class="pipeline-col-header"><span style="color:var(--'+cols[i]+')">'+stage+'</span><span>'+cards.length+'</span></div>';
     board += cards.map(function(card){
-      return '<div class="pipeline-card" onclick="viewPipeCard('+card.id+')"><div class="pipeline-card-name">'+card.nom+(card.locked?' 🔒':'')+'</div><div class="pipeline-card-sub">'+card.type+' • '+card.ville+' • '+card.asg.split(' ')[0]+(card.tel?' • 📞 '+card.tel:'')+'</div><div class="pipeline-card-val">'+fcfa(card.val)+'</div></div>';
+      return '<div class="pipeline-card" onclick="viewPipeCard('+card.id+')"><div class="pipeline-card-name">'+card.nom+(card.locked?' 🔒':'')+'</div><div class="pipeline-card-sub">'+card.type+' • '+card.ville+' • '+card.asg.split(' ')[0]+(card.tel?' • 📞 '+card.tel:'')+'</div><div class="pipeline-card-val">'+fcfa(card.val)+'</div>'+(card.etape==='Non qualifie'?raisonNqBadge(findLinkedClient(card)):'')+'</div>';
     }).join('');
     board += '<div class="td-muted" style="text-align:right;margin-top:4px;padding-top:4px;border-top:1px solid var(--border)">Total: '+fcfa(total)+'</div></div>';
   });
@@ -1594,7 +1653,7 @@ function viewPipeCard(id){
     ['Ville', p.ville],
     ['Telephone', p.tel || '-'],
     ['Valeur estimee', '<strong style="color:var(--red)">' + fcfa(p.val) + '</strong>'],
-    ['Etape du pipeline', statusTag(p.etape)],
+    ['Etape du pipeline', statusTag(p.etape) + (p.etape === 'Non qualifie' ? raisonNqBadge(clLinked || findLinkedClient(p)) : '')],
     ['Commercial assigne', p.asg],
     ['Date estimee de signature', p.dateEstimee || '-'],
     ['Produit lie', (produit ? produit.nom : p.sku || '-') + (p.qte ? ' x' + p.qte : '')],
@@ -1712,9 +1771,16 @@ function markPipelineLost(id, etapeFinale){
 // Demande explicite : colonne "Non qualifie" pour les leads hors cible.
 // Passe par markPipelineLost (appele par son nom global, donc dans sa version
 // enveloppee qui enregistre en base).
+// 13/11/2026 : la confirmation est remplacee par le choix d'une raison.
 function markPipelineUnqualified(id){
-  if(!confirm('Classer ce prospect en "Non qualifie" ?\n(lead hors cible : faux numero, hors zone, pas interesse...)')) return;
-  return window.markPipelineLost(id, 'Non qualifie');
+  const p = PIPELINE.find(function(x){return String(x.id)===String(id);});
+  if(!p) return;
+  if(!isSuperAdmin() && !canModifyProspectInfo()) return window.markPipelineLost(id, 'Non qualifie'); // affiche le message de permission
+  askRaisonNq(p.nom, function(raison){
+    window.markPipelineLost(id, 'Non qualifie');
+    if(p.etape === 'Non qualifie') setClientRaisonNq(findLinkedClient(p), raison);
+    go('pipe');
+  });
 }
 
 // ── CHANGEMENT D'ETAPE DIRECT (13/11/2026, demande explicite) ───────────────
@@ -1753,6 +1819,7 @@ function applyPipelineStage(p, newEtape, motif){
   } else if(typeof ensureClientExists === 'function'){
     ensureClientExists(p.nom, p.sku ? (p.qte + 'x ' + p.sku) : '', statutClient, p.type, p.ville, 'Pipeline', p.tel);
   }
+  clearRaisonNqIfNeeded(cl || findLinkedClient(p));
   if(typeof dbUpdate === 'function') dbUpdate('pipeline', p.id, { etape:p.etape, reservation_faite:p.reservationFaite,
     last_modified_by:p.lastModifiedBy, last_modified_at:p.lastModifiedAt });
   logAction(motif || 'Pipeline — etape modifiee', p.nom + ' : ' + ancienne + ' → ' + newEtape, newEtape === 'Perdu' ? 'red' : (newEtape === 'Gagne' ? 'green' : 'blue'));
@@ -1765,36 +1832,19 @@ function setPipelineStage(id, newEtape){
   const p = PIPELINE.find(function(x){return String(x.id)===String(id);});
   if(!p || PIPELINE_STAGES.indexOf(newEtape) < 0) return;
   if(p.etape === newEtape) return alert('Cette opportunite est deja a l\'etape "' + newEtape + '".');
+  // Vers "Non qualifie" : on demande la raison (elle remplace la confirmation).
+  if(newEtape === 'Non qualifie'){
+    return askRaisonNq(p.nom, function(raison){
+      applyPipelineStage(p, newEtape);
+      setClientRaisonNq(findLinkedClient(p), raison);
+      closeModal('modal-detail');
+      go('pipe');
+    });
+  }
   if(!confirm('Passer "' + p.nom + '" de "' + p.etape + '" a "' + newEtape + '" ?')) return;
   const ok = applyPipelineStage(p, newEtape);
   if(!ok) alert('⚠️ Opportunite passee en "Gagne" mais le stock disponible est insuffisant pour reserver automatiquement. Verifiez le module Stock.');
   closeModal('modal-detail');
-  go('pipe');
-}
-
-// ── MIGRATION PONCTUELLE (13/11/2026, demande explicite) ────────────────────
-// "Deplacer tous les leads en Perdu dont la ville est autre que Niamey vers
-// Non qualifie". Bouton reserve au Super Admin, visible seulement tant qu'il
-// reste des fiches concernees (il disparait tout seul ensuite).
-// Une ville vide n'est PAS consideree comme "autre que Niamey" (on ne sait pas).
-function villeNormalisee(v){
-  return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
-}
-function perdusHorsNiamey(){
-  return PIPELINE.filter(function(p){
-    const v = villeNormalisee(p.ville);
-    return p.etape === 'Perdu' && v && v !== '-' && v !== '—' && v.indexOf('niamey') < 0;
-  });
-}
-function migratePerdusHorsNiamey(){
-  if(!isSuperAdmin()) return alert('Reserve au Super Admin.');
-  const liste = perdusHorsNiamey();
-  if(!liste.length) return alert('Aucun lead "Perdu" hors Niamey a deplacer.');
-  const apercu = liste.slice(0, 25).map(function(p){ return '• ' + p.nom + ' (' + p.ville + ')'; }).join('\n') +
-    (liste.length > 25 ? '\n… et ' + (liste.length - 25) + ' autre(s)' : '');
-  if(!confirm('Deplacer ' + liste.length + ' lead(s) de "Perdu" vers "Non qualifie" ?\n\n' + apercu + '\n\nLes fiches de Niamey et celles sans ville ne bougent pas.')) return;
-  liste.forEach(function(p){ applyPipelineStage(p, 'Non qualifie', 'Perdu hors Niamey → Non qualifie'); });
-  alert('✅ ' + liste.length + ' lead(s) deplace(s) dans "Non qualifie".');
   go('pipe');
 }
 
@@ -1834,7 +1884,11 @@ function deletePipeline(id){
 // ── NOTIFICATIONS ──────────────────────────────────────────────────────────────
 function renderNotifs(c){
   const mine = NOTIFICATIONS.filter(function(n){ return n.target==="all" || n.target===CU.nom; });
-  let h = '<div class="card">';
+  const sonOn = isNotifSoundOn();
+  let h = '<div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:10px">' +
+    '<span class="td-muted">Son des notifications sur cet appareil :</span>' +
+    '<button class="btn btn-sm ' + (sonOn ? 'btn-red' : 'btn-ghost') + '" id="btn-son-notif" onclick="toggleNotifSound()">' + (sonOn ? '🔔 Son active' : '🔕 Son coupe') + '</button></div>';
+  h += '<div class="card">';
   if(mine.length === 0){
     h += '<div class="empty-state"><div class="empty-state-icon">🔔</div>Aucune notification</div>';
   } else {
@@ -2134,7 +2188,7 @@ function renderClients(c){
     return '<thead><tr><th>#</th><th>Client</th><th>Type</th><th>Ville</th><th>Source</th><th>Produit</th><th>Commercial</th><th>Notes</th><th>Statut</th><th>Date</th><th></th></tr></thead><tbody>' +
       d.map(function(cl,i){
         const notesPreview = cl.notes ? ((cl.notes.length > 28 ? cl.notes.slice(0,28)+'…' : cl.notes)) : '<span class=\"td-muted\">-</span>';
-        return '<tr><td class=\"td-muted\" style=\"text-align:center\">'+(i+1)+'</td><td><div style=\"display:flex;align-items:center;gap:7px\"><div class=\"avatar '+avColor(i)+'\">'+ini(cl.nom)+'</div><div><div class=\"td-bold\">'+cl.nom+(cl.locked?' 🔒':'')+'</div><div class=\"td-muted\">'+cl.tel+'</div></div></div></td><td>'+typeTag(cl.type)+'</td><td class=\"td-muted\">'+cl.ville+'</td><td class=\"td-muted\">'+(cl.source||'-')+'</td><td class=\"td-muted\">'+cl.produit+'</td><td class=\"td-muted\">'+cl.asg.split(' ')[0]+'</td><td class=\"td-muted\" title=\"'+(cl.notes?cl.notes.replace(/\"/g,'&quot;'):'')+'\">'+(notesPreview)+'</td><td>'+statusTag(cl.statut)+'</td><td class=\"td-muted\">'+cl.date+'</td><td><button class=\"btn btn-ghost btn-sm\" onclick=\"viewClientDetail('+cl.id+')\">👁 Details</button>'+(isSuperAdmin()?' <button class=\"btn btn-ghost btn-sm\" onclick=\"deleteClient('+cl.id+')\">🗑 Supprimer</button>':'')+'</td></tr>';
+        return '<tr><td class=\"td-muted\" style=\"text-align:center\">'+(i+1)+'</td><td><div style=\"display:flex;align-items:center;gap:7px\"><div class=\"avatar '+avColor(i)+'\">'+ini(cl.nom)+'</div><div><div class=\"td-bold\">'+cl.nom+(cl.locked?' 🔒':'')+'</div><div class=\"td-muted\">'+cl.tel+'</div></div></div></td><td>'+typeTag(cl.type)+'</td><td class=\"td-muted\">'+cl.ville+'</td><td class=\"td-muted\">'+(cl.source||'-')+'</td><td class=\"td-muted\">'+cl.produit+'</td><td class=\"td-muted\">'+cl.asg.split(' ')[0]+'</td><td class=\"td-muted\" title=\"'+(cl.notes?cl.notes.replace(/\"/g,'&quot;'):'')+'\">'+(notesPreview)+'</td><td>'+statusTag(cl.statut)+raisonNqBadge(cl)+'</td><td class=\"td-muted\">'+cl.date+'</td><td><button class=\"btn btn-ghost btn-sm\" onclick=\"viewClientDetail('+cl.id+')\">👁 Details</button>'+(isSuperAdmin()?' <button class=\"btn btn-ghost btn-sm\" onclick=\"deleteClient('+cl.id+')\">🗑 Supprimer</button>':'')+'</td></tr>';
       }).join('') + (d.length === 0 ? '<tr><td colspan=\"11\" class=\"td-muted\" style=\"text-align:center;padding:14px\">'+(GLOBAL_SEARCH || countActiveClientFilters()>0 ?'Aucun resultat avec ces criteres':'Aucun client')+'</td></tr>' : '') + '</tbody>';
   }
   el('tbl-cli').innerHTML = mkTable(data);
@@ -2243,7 +2297,7 @@ function viewClientDetail(id){
     ['Produit d\'interet', cl.produit],
     ['Commercial assigne', cl.asg],
     ['Notes', cl.notes ? cl.notes.replace(/\n/g,'<br/>') : '<span class="td-muted">-</span>'],
-    ['Statut', statusTag(cl.statut)],
+    ['Statut', statusTag(cl.statut) + raisonNqBadge(cl)],
     ['Date de creation', cl.date],
     ['Verrouillage', cl.locked ? lockBadge() : '<span class="td-muted">Modifiable</span>'],
     ['Historique (appels, emails, RDV, notes)', histo]
@@ -2283,7 +2337,9 @@ function viewClientDetail(id){
         {label:'Client actif',selected:cl.statut==='Client actif'},
         {label:'Client perdu',selected:cl.statut==='Client perdu'},
         {label:'Non qualifie',selected:cl.statut==='Non qualifie'}
-      ], 'select']
+      ], 'select'],
+      // Raison : prise en compte seulement si le statut est "Non qualifie".
+      ['Raison (si Non qualifie)', 'raisonNq', [{label:'—', selected:!raisonNqOf(cl)}].concat(RAISONS_NQ.map(function(r){ return {label:r, selected:raisonNqOf(cl)===r}; })), 'select']
     ],
     onSave: function(){ go('clients'); }
   });
@@ -4553,6 +4609,7 @@ function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType,
     if(statutSouhaite) cl.statut = statutSouhaite;
     if(ville) cl.ville = ville;
     if(tel && !cl.tel) cl.tel = tel; // fill in a missing phone number, never overwrite one already on file
+    if(cl.statut !== 'Non qualifie' && cl.raisonNq) setClientRaisonNq(cl, '');
     stampModification(cl);
     if(typeof dbUpdate === 'function'){
       dbUpdate('clients', cl.id, { produit: cl.produit, statut: cl.statut, ville: cl.ville, tel: cl.tel, last_modified_by: cl.lastModifiedBy, last_modified_at: cl.lastModifiedAt });
@@ -5631,13 +5688,23 @@ function loadMetaStatus(){
       d.bilan_publicites.forEach(function(b){
         const taux = b.leads ? Math.round(100*b.clients/b.leads) : 0;
         h += '<tr><td><b>'+metaEsc(b.annonce)+'</b>'+(b.campagne?'<div class="td-muted">'+metaEsc(b.campagne)+'</div>':'')+'</td>'+
-             '<td>'+b.leads+'</td><td>'+b.en_cours+'</td><td style="color:var(--green,#16a34a);font-weight:700">'+b.clients+'</td><td>'+b.perdus+'</td><td>'+(b.non_qualifies||0)+'</td>'+
+             '<td>'+b.leads+'</td><td>'+b.en_cours+'</td><td style="color:var(--green,#16a34a);font-weight:700">'+b.clients+'</td><td>'+b.perdus+'</td><td>'+(b.non_qualifies||0)+nqDetailMeta(b)+'</td>'+
              '<td><b>'+taux+' %</b></td></tr>';
       });
       h += '</tbody></table></div>';
     }
     box.innerHTML = h;
   }).catch(function(){ box.innerHTML = '<span style="color:var(--red)">Erreur reseau.</span>'; });
+}
+// Detail des raisons du "Non qualifie" pour une publicite (13/11/2026).
+function nqDetailMeta(b){
+  const total = b.non_qualifies || 0;
+  if(!total) return '';
+  const parts = [['nq_faux_numero','faux numero'],['nq_hors_zone','hors zone'],['nq_pas_interesse','pas interesse'],['nq_curieux','curieux'],['nq_autre','autre']];
+  let connus = 0;
+  const txt = parts.filter(function(x){ return b[x[0]] > 0; }).map(function(x){ connus += b[x[0]]; return b[x[0]] + ' ' + x[1]; });
+  if(total - connus > 0) txt.push((total - connus) + ' sans raison');
+  return '<div class="td-muted" style="font-size:10px;line-height:1.35;margin-top:2px">' + txt.join('<br/>') + '</div>';
 }
 function diagMeta(){
   const box = el('meta-diag'); if(!box) return;
@@ -6317,7 +6384,13 @@ function syncDetailEditToDb(entity, record, oldNom){
   if(!entity || typeof dbUpdate !== 'function') return;
 
   if(entity === 'clients'){
-    dbUpdate('clients', record.id, { nom:record.nom, type:record.type, tel:record.tel, email:record.email,
+    // Raison du "Non qualifie" : '—' = aucune ; effacee si le statut est autre.
+    if(record.raisonNq === '—' || record.statut !== 'Non qualifie') record.raisonNq = '';
+    record.raisonNq = record.raisonNq || '';
+    if(record.statut === 'Non qualifie' && !record.raisonNq){
+      setTimeout(function(){ askRaisonNq(record.nom, function(r){ setClientRaisonNq(record, r); go('clients'); }); }, 50);
+    }
+    dbUpdate('clients', record.id, { raison_nq:record.raisonNq, nom:record.nom, type:record.type, tel:record.tel, email:record.email,
       ville:record.ville, zone:record.zone, source:record.source, produit:record.produit, asg:record.asg, notes:record.notes,
       statut:record.statut, last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
     syncClientToPipeline(record, oldNom);
@@ -6558,6 +6631,9 @@ function addClient(){
   go('clients');
   // Reset the form immediately so the NEXT client entry starts from a clean slate
   CLIENT_BUILDER_LIGNES = [];
+  if(client.statut === 'Non qualifie'){
+    setTimeout(function(){ askRaisonNq(client.nom, function(r){ setClientRaisonNq(client, r); go('clients'); }); }, 300);
+  }
 }
 
 // Demande explicite : le Super Admin doit pouvoir supprimer N'IMPORTE QUEL
@@ -6769,6 +6845,9 @@ function addProspect(){
   closeModal('modal-prospect');
   updateAllBadges();
   go('pipe');
+  if(etape === 'Non qualifie'){
+    setTimeout(function(){ askRaisonNq(p.nom, function(r){ setClientRaisonNq(findLinkedClient(p), r); go('pipe'); }); }, 300);
+  }
 }
 
 function addPublication(){
@@ -7196,7 +7275,7 @@ function dbLoadAll(entity){
 function mapClientFromDb(r){
   return { id:r.id, nom:r.nom, type:r.type, ville:r.ville, zone:r.zone, tel:r.tel, email:r.email,
     societe:r.societe, source:r.source, statut:r.statut, produit:r.produit, asg:r.asg, notes:r.notes||'',
-    date:r.date_creation, locked:r.locked, historique:r.historique||[],
+    date:r.date_creation, locked:r.locked, historique:r.historique||[], raisonNq:r.raison_nq||'',
     lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapPipelineFromDb(r){
@@ -7590,28 +7669,50 @@ function checkPaiementsEnRetard(){
   });
 }
 
-// Parcourt les taches et cree une alerte pour chaque tache dont la date limite
-// est depassee et qui n'est pas encore terminee. La notification est envoyee a
-// la personne a qui la tache est assignee ; les Admins/Super Admin en sont aussi
-// informes pour garder un oeil global. Le dedupeKey par tache + destinataire
-// evite de repeter l'alerte a chaque chargement.
+// RECAPITULATIF HEBDOMADAIRE DES TACHES EN RETARD (13/11/2026, demande
+// explicite) — remplace les alertes "une notification par tache en retard".
+// Une seule notification par personne et par semaine (semaine du lundi au
+// dimanche), creee a la premiere verification de la semaine :
+//  - chaque personne recoit le recap de SES taches en retard ;
+//  - le Super Admin recoit en plus un recap global, par personne.
+// Chaque navigateur ne cree que les recaps de la personne connectee, et
+// l'anti-doublon se fait sur le debut du texte ("... semaine du JJ/MM/AAAA"),
+// qui survit au rechargement depuis la base.
+function lundiDeLaSemaineISO(d){
+  d = d ? new Date(d) : new Date();
+  const j = (d.getDay() + 6) % 7; // 0 = lundi
+  d.setDate(d.getDate() - j);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function recapHebdoDejaEnvoye(prefixe, cible){
+  return NOTIFICATIONS.some(function(n){ return n.target === cible && String(n.text||'').indexOf(prefixe) === 0; });
+}
+function tachesEnRetard(){
+  const today = todayISO();
+  return TASKS.filter(function(t){ return t.date && t.date < today && t.statut !== 'Termine'; });
+}
 function checkTachesEnRetard(){
   if(!CU) return;
-  var today = todayISO();
-  TASKS.forEach(function(t){
-    var enRetard = t.date && t.date < today && t.statut !== 'Termine';
-    if(!enRetard) return;
-    var qui = t.asg || '';
-    var msg = 'Tache en retard : ' + (t.titre||'(sans titre)') + ' — echeance depassee depuis le ' + formatDateFr(t.date);
-    // Alerte a la personne assignee (si c'est une personne nommee)
-    if(qui && qui !== "Toute l'equipe"){
-      pushNotif('⏰', msg, qui, 'tache-retard-' + t.id + '-' + qui);
+  const semaine = formatDateFr(lundiDeLaSemaineISO());
+  const retard = tachesEnRetard();
+  // 1) Recap personnel
+  const mesTaches = retard.filter(function(t){ return t.asg === CU.nom; });
+  const prefixePerso = 'Recap de la semaine du ' + semaine + ' : ';
+  if(mesTaches.length && !recapHebdoDejaEnvoye(prefixePerso, CU.nom)){
+    const liste = mesTaches.slice(0, 5).map(function(t){ return '« ' + (t.titre||'(sans titre)') + ' » (echeance ' + formatDateFr(t.date) + ')'; }).join(', ') +
+      (mesTaches.length > 5 ? ' et ' + (mesTaches.length - 5) + ' autre(s)' : '');
+    pushNotif('📋', prefixePerso + mesTaches.length + ' tache(s) en retard — ' + liste + '. Voir le module Taches.', CU.nom);
+  }
+  // 2) Recap global pour le Super Admin
+  if(isSuperAdmin()){
+    const prefixeGlobal = 'Recap equipe — semaine du ' + semaine + ' : ';
+    if(retard.length && !recapHebdoDejaEnvoye(prefixeGlobal, CU.nom)){
+      const parPersonne = {};
+      retard.forEach(function(t){ const q = t.asg || 'Non assignee'; parPersonne[q] = (parPersonne[q]||0) + 1; });
+      const detail = Object.keys(parPersonne).sort().map(function(q){ return q + ' ' + parPersonne[q]; }).join(', ');
+      pushNotif('📋', prefixeGlobal + retard.length + ' tache(s) en retard dans l\'equipe (' + detail + '). Voir le module Taches.', CU.nom);
     }
-    // Alerte au responsable global (Super Admin) pour supervision
-    if(CU && isSuperAdmin() && CU.nom !== qui){
-      pushNotif('⏰', msg + ' (assignee a ' + (qui||'personne') + ')', CU.nom, 'tache-retard-' + t.id + '-admin');
-    }
-  });
+  }
 }
 
 // Triggers an automatic backup once per calendar day, the first time a

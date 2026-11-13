@@ -24,6 +24,8 @@ const COLUMN_TYPES = {
     tel: 'TEXT', email: 'TEXT', societe: 'TEXT', source: 'TEXT', statut: "TEXT DEFAULT 'Prospect froid'",
     produit: 'TEXT', asg: 'TEXT', notes: 'TEXT', date_creation: 'TEXT', locked: 'BOOLEAN DEFAULT false',
     historique: "JSONB DEFAULT '[]'", last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP',
+    // raison_nq : raison du statut "Non qualifie" (faux numero, hors zone...)
+    raison_nq: 'TEXT',
     created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   pipeline: {

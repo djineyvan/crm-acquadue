@@ -44,7 +44,7 @@ const ENTITY_MAP = {
 // Whitelist of valid column names per table, to safely build dynamic INSERT/UPDATE
 // without risking SQL injection through arbitrary keys.
 const COLUMNS = {
-  clients: ['id','nom','type','ville','zone','tel','email','societe','source','statut','produit','asg','notes','date_creation','locked','historique','last_modified_by','last_modified_at'],
+  clients: ['id','nom','type','ville','zone','tel','email','societe','source','statut','produit','asg','notes','date_creation','locked','historique','raison_nq','last_modified_by','last_modified_at'],
   pipeline: ['id','nom','type','val','etape','asg','ville','tel','date_estimee','locked','sku','qte','entrepot','reservation_faite','last_modified_by','last_modified_at'],
   tasks: ['id','titre','asg','dept','pri','statut','date_limite','desc_tache','locked','rapport','last_modified_by','last_modified_at'],
   comm_perf: ['id','nom','ville','zone','obj','ventes','nb','tx','date_enregistrement','historique_modifs'],
