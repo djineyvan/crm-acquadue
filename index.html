@@ -2660,6 +2660,7 @@ function renderRapports(c){
   // Doublons et ROI uniquement pour Direction et Commercial
   if(voitTout || dept === 'Commercial'){
     h += '<div class="card" style="margin-bottom:12px"><div class="card-title">🔍 Doublons potentiels — Clients &amp; Prospects + Pipeline</div><div class="td-muted" style="font-size:12px;margin-bottom:6px">Memes noms ou memes numeros de telephone enregistres plus d\'une fois.</div><div id="rpt-doublons"></div></div>';
+    h += '<div class="card" style="margin-bottom:12px"><div class="card-title">🚫 Raisons des non qualifies — par mois (toutes publicites et sources)</div><div class="td-muted" style="font-size:12px;margin-bottom:6px">Fiches actuellement au statut « Non qualifie », classees selon le mois ou le contact est arrive dans le CRM.</div><div id="rpt-nq"></div></div>';
   }
   if(voitTout || dept === 'Commercial'){
     h += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><div class="card-title">ROI — Acqua Due vs Bouteilles Niger</div><div style="display:flex;gap:6px">';
@@ -2719,6 +2720,9 @@ function renderRapports(c){
 
   // --- Doublons ---
   if(el('rpt-doublons')) el('rpt-doublons').innerHTML = duplicateContactsReportHtml();
+
+  // --- Raisons des non qualifies (13/11/2026) ---
+  if(el('rpt-nq')) el('rpt-nq').innerHTML = nonQualifiesParMoisHtml();
 
   // --- ROI ---
   if(el('rpt-roi')){
@@ -2913,6 +2917,15 @@ function exportReportCSV(){
   CLIENTS.forEach(function(cl){
     lines.push([cl.nom, cl.type, cl.ville, cl.statut, cl.produit, cl.asg, cl.date].map(csvEscape).join(','));
   });
+  // Raisons des non qualifies par mois (13/11/2026)
+  const nqm = nonQualifiesParMois();
+  lines.push('');
+  lines.push('--- RAISONS DES NON QUALIFIES (PAR MOIS) ---');
+  lines.push(['Mois'].concat(nqm.colonnes).concat(['Total']).map(csvEscape).join(','));
+  nqm.lignes.forEach(function(l){
+    lines.push([l.label].concat(nqm.colonnes.map(function(r){ return l[r]; })).concat([l.n]).map(csvEscape).join(','));
+  });
+  lines.push(['TOTAL'].concat(nqm.colonnes.map(function(r){ return nqm.total[r]; })).concat([nqm.total.n]).map(csvEscape).join(','));
   // BOM for correct accented-character display when opened in Excel
   downloadTextFile('rapport-acquadue-' + new Date().toISOString().slice(0,10) + '.csv', '\uFEFF' + lines.join('\n'), 'text/csv;charset=utf-8');
 }
@@ -4711,6 +4724,57 @@ function warnIfDuplicateContact(nom, tel){
 // existants (Clients & Prospects + Pipeline) par nom et par telephone, et
 // affiche les groupes qui contiennent plus d'une fiche. Calcul 100% local,
 // aucun appel reseau supplementaire.
+// ── Rapport « Raisons des non qualifies » par mois (13/11/2026) ─────────────
+// Compte les fiches Clients & Prospects au statut « Non qualifie », par mois
+// d'arrivee dans le CRM (date de creation jj/mm/aaaa) et par raison.
+const MOIS_FR = ['Janvier','Fevrier','Mars','Avril','Mai','Juin','Juillet','Aout','Septembre','Octobre','Novembre','Decembre'];
+function nonQualifiesParMois(){
+  const colonnes = RAISONS_NQ.concat(['Sans raison']);
+  const parMois = {};
+  const total = { n:0 }; colonnes.forEach(function(r){ total[r] = 0; });
+  CLIENTS.forEach(function(cl){
+    if(!cl || cl.statut !== 'Non qualifie') return;
+    const parts = String(cl.date||'').split(' ')[0].split('/');
+    let cle = 'inconnue', label = 'Date inconnue';
+    if(parts.length === 3 && /^\d{4}$/.test(parts[2]) && parseInt(parts[1]) >= 1 && parseInt(parts[1]) <= 12){
+      const m = parseInt(parts[1]);
+      cle = parts[2] + '-' + (m < 10 ? '0' : '') + m;
+      label = MOIS_FR[m-1] + ' ' + parts[2];
+    }
+    const raison = RAISONS_NQ.indexOf(cl.raisonNq) >= 0 ? cl.raisonNq : 'Sans raison';
+    if(!parMois[cle]){ parMois[cle] = { cle:cle, label:label, n:0 }; colonnes.forEach(function(r){ parMois[cle][r] = 0; }); }
+    parMois[cle][raison]++; parMois[cle].n++;
+    total[raison]++; total.n++;
+  });
+  // Mois les plus recents en haut, « Date inconnue » en dernier.
+  const lignes = Object.keys(parMois).map(function(k){ return parMois[k]; }).sort(function(a,b){
+    if(a.cle === 'inconnue') return 1; if(b.cle === 'inconnue') return -1;
+    return a.cle < b.cle ? 1 : -1;
+  });
+  return { colonnes:colonnes, lignes:lignes, total:total };
+}
+function nonQualifiesParMoisHtml(){
+  const d = nonQualifiesParMois();
+  if(!d.total.n) return '<div class="td-muted" style="padding:10px">Aucune fiche « Non qualifie » pour le moment.</div>';
+  const cell = function(v){ return '<td style="text-align:center">' + (v ? v : '<span class="td-muted">0</span>') + '</td>'; };
+  let h = '<div style="overflow-x:auto"><table><thead><tr><th>Mois</th>';
+  d.colonnes.forEach(function(r){ h += '<th style="text-align:center">' + r + '</th>'; });
+  h += '<th style="text-align:center">Total</th></tr></thead><tbody>';
+  d.lignes.forEach(function(l){
+    h += '<tr><td><b>' + l.label + '</b></td>';
+    d.colonnes.forEach(function(r){ h += cell(l[r]); });
+    h += '<td style="text-align:center;font-weight:700">' + l.n + '</td></tr>';
+  });
+  h += '<tr style="border-top:2px solid var(--border)"><td><b>TOTAL</b></td>';
+  d.colonnes.forEach(function(r){ h += '<td style="text-align:center;font-weight:700">' + d.total[r] + '</td>'; });
+  h += '<td style="text-align:center;font-weight:800;color:var(--red)">' + d.total.n + '</td></tr>';
+  h += '<tr><td class="td-muted">Part du total</td>';
+  d.colonnes.forEach(function(r){ h += '<td class="td-muted" style="text-align:center">' + Math.round(d.total[r] * 100 / d.total.n) + ' %</td>'; });
+  h += '<td class="td-muted" style="text-align:center">100 %</td></tr>';
+  h += '</tbody></table></div>';
+  return h;
+}
+
 function duplicateContactsReportHtml(){
   const all = CLIENTS.map(function(c){ return { nom:c.nom, tel:c.tel, source:'Client/Prospect', ville:c.ville }; })
     .concat(PIPELINE.map(function(p){ return { nom:p.nom, tel:p.tel, source:'Pipeline', ville:p.ville }; }));
@@ -8328,9 +8392,9 @@ wrapAfter('receptionnerCommande', function(id){
   const cmd = COMMANDES_FOURNISSEUR.find(function(x){return String(x.id)===String(id);});
   if(cmd) dbUpdate('commandes_fournisseur', cmd.id, { statut:cmd.statut, stock_receptionne:cmd.stockReceptionne });
 });
-wrapAfter('deleteCommande', function(id){
-  dbDelete('commandes_fournisseur', id);
-});
+// (13/11/2026) Retire : deleteCommande() enregistre deja la suppression elle-meme.
+// Ce doublon supprimait la commande dans la base MEME quand on cliquait
+// « Annuler » (elle reapparaissait... puis disparaissait au rechargement).
 wrapAfter('addDemandeAchat', function(){
   const d = DEMANDES_ACHAT[0];
   if(d) dbInsert('demandes_achat', { id:d.id, produit:d.produit, qte:d.qte, motif:d.motif, demandeur:d.demandeur, etape:d.etape, date_demande:d.date });

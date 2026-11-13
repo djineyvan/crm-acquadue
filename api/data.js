@@ -171,6 +171,21 @@ module.exports = async function handler(req, res) {
     if (req.method === 'DELETE') {
       const id = req.body.id;
       if (id === undefined || id === null) return res.status(400).json({ error: 'id manquant' });
+      // SECURITE (13/11/2026) : le serveur verifie lui-meme qui peut supprimer.
+      // Avant, seul l'ecran cachait les boutons. Regle : seul le Super Admin
+      // supprime. Deux exceptions, reglables dans Administration -> Permissions :
+      //  - une ligne de stock (fusion de deux lignes) : permission « modifier_stock » ;
+      //  - un mouvement de stock : permission « supprimer_mouvement ».
+      if (me.role !== 'superadmin') {
+        const PERM_SUPPRESSION = { stock: 'modifier_stock', mouvements_stock: 'supprimer_mouvement' };
+        const perm = PERM_SUPPRESSION[entityKey];
+        let autorise = false;
+        if (perm) {
+          const p = await sql.query('SELECT ' + perm + ' AS ok FROM sensitive_perms WHERE role = $1', [me.role]);
+          autorise = !!(p.length && p[0].ok === true);
+        }
+        if (!autorise) return res.status(403).json({ error: 'suppression_reservee_super_admin' });
+      }
       await sql.query('DELETE FROM ' + meta.table + ' WHERE ' + meta.idCol + ' = $1', [id]);
       return res.status(200).json({ success: true });
     }

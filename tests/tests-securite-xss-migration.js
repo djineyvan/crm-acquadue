@@ -1,4 +1,4 @@
-// Tests du 13/11/2026 (3e partie) : audit de securite + mise a jour « Hors zone ».
+// Tests du 13/11/2026 (3e partie) : audit de securite (+ verification du retrait de la mise a jour « Hors zone »).
 //  1. Injection de code dans les pages (XSS) : un lead Meta (formulaire PUBLIC)
 //     ou un texte saisi dans le CRM ne peut plus contenir < > (ni " ` pour Meta).
 //  2. Tentatives d'acces interdits (tables secretes, injections SQL, colonnes inventees).
@@ -134,28 +134,16 @@ global.fetch = async function (url) {
   check('Referrer-Policy present', !!hv('Referrer-Policy'));
   check('cache de index.html toujours revalide (inchange)', vj.headers.some(function (h) { return h.source === '/index.html' && /no-cache/.test(JSON.stringify(h.headers)); }));
 
-  section('5. Mise a jour « Hors zone » (une seule fois)');
+  section('5. Bloc de mise a jour « Hors zone » retire (13/11/2026 : deja fait en production, 353 fiches)');
   const marker = 'Mise a jour : raison « Hors zone » (13/11/2026)';
-  check('deja faite au premier demarrage (base vide) : reperee dans le journal', (await sqlRaw`SELECT COUNT(*)::int AS n FROM audit_log WHERE action = ${marker}`)[0].n === 1);
-  // On simule la base de production : on efface le reperage et on cree des fiches.
-  await sqlRaw`DELETE FROM audit_log WHERE action = ${marker}`;
-  await sqlRaw`INSERT INTO clients (id, nom, statut, raison_nq) VALUES (101, 'NQ sans raison', 'Non qualifie', NULL), (102, 'NQ vide', 'Non qualifie', ''), (103, 'NQ faux numero', 'Non qualifie', 'Faux numero'), (104, 'Contacte', 'Contacte', NULL), (105, 'Perdu', 'Client perdu', NULL), (106, 'NQ espaces', 'Non qualifie', '  ')`;
-  await sqlRaw`INSERT INTO clients (id, nom, ville, statut) VALUES (107, 'Ancien <img src=x onerror=alert(1)>', '<b>Maradi', 'Contacte')`;
-  await sqlRaw`INSERT INTO pipeline (id, nom, etape) VALUES (201, '<script>p</script>', 'Contacte')`;
+  await sqlRaw`INSERT INTO clients (id, nom, statut, raison_nq) VALUES (101, 'NQ sans raison', 'Non qualifie', NULL), (103, 'NQ faux numero', 'Non qualifie', 'Faux numero')`;
+  const avant = (await sqlRaw`SELECT COUNT(*)::int AS n FROM audit_log WHERE action = ${marker}`)[0].n;
   r = await call(H['init-db'], {}, tok);
   const g = async function (id) { return (await sqlRaw`SELECT * FROM clients WHERE id::text = ${String(id)}`)[0]; };
   check('init-db OK', r.statusCode === 200, r.body);
-  check('« Non qualifie » sans raison -> « Hors zone » (3 fiches)', (await g(101)).raison_nq === 'Hors zone' && (await g(102)).raison_nq === 'Hors zone' && (await g(106)).raison_nq === 'Hors zone', r.body.mise_a_jour_13_11);
-  check('une raison deja choisie (Faux numero) est gardee', (await g(103)).raison_nq === 'Faux numero');
-  check('les autres statuts ne recoivent aucune raison', !(await g(104)).raison_nq && !(await g(105)).raison_nq);
-  check('anciens textes dangereux neutralises (clients + pipeline)', !/[<>]/.test((await g(107)).nom + (await g(107)).ville) && !/[<>]/.test((await sqlRaw`SELECT nom FROM pipeline WHERE id = 201`)[0].nom));
-  const j = (await sqlRaw`SELECT * FROM audit_log WHERE action = ${marker}`);
-  check('trace dans le Journal d\'audit, avec le detail des chiffres', j.length === 1 && /4 fiche\(s\)/.test(j[0].detail) === false && /3 fiche\(s\) « Non qualifie » sans raison/.test(j[0].detail) && /1 fiche\(s\) gardent/.test(j[0].detail), j);
-  check('reponse : compteurs', r.body.mise_a_jour_13_11 && r.body.mise_a_jour_13_11.hors_zone === 3 && r.body.mise_a_jour_13_11.raisons_gardees === 1, r.body.mise_a_jour_13_11);
-  // Une fiche classee ensuite sans raison n'est plus touchee (la mise a jour ne se refait pas).
-  await sqlRaw`UPDATE clients SET statut = 'Non qualifie' WHERE id = 104`;
-  r = await call(H['init-db'], {}, tok);
-  check('2e connexion : la mise a jour ne se refait PAS', !(await g(104)).raison_nq && r.body.mise_a_jour_13_11 === null && (await sqlRaw`SELECT COUNT(*)::int AS n FROM audit_log WHERE action = ${marker}`)[0].n === 1, r.body.mise_a_jour_13_11);
+  check('init-db ne touche plus les raisons (une fiche sans raison le reste)', !(await g(101)).raison_nq && (await g(103)).raison_nq === 'Faux numero');
+  check('aucune nouvelle ligne « Hors zone » dans le journal', avant === 0 && (await sqlRaw`SELECT COUNT(*)::int AS n FROM audit_log WHERE action = ${marker}`)[0].n === 0);
+  check('le code de la mise a jour a bien disparu de init-db.js', !/Hors zone/.test(fs.readFileSync(REPO + '/api/init-db.js', 'utf8')) && r.body.mise_a_jour_13_11 === undefined);
   r = await call(H['init-db'], {});
   check('init-db sans connexion -> 401 (la mise a jour ne peut pas etre declenchee par un inconnu)', r.statusCode === 401);
 
