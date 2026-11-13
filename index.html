@@ -1550,6 +1550,9 @@ function renderPipe(c){
     h += '<select class="form-input" style="width:auto;min-width:170px;padding:6px 10px;font-size:12px" onchange="setPipeAgentFilter(this.value)">'+agentOpts+'</select>';
   }
   h += '<button class="btn btn-ghost btn-sm" onclick="openRoiCalc()">🧮 Calculateur ROI</button>';
+  if(isSuperAdmin() && perdusHorsNiamey().length){
+    h += '<button class="btn btn-ghost btn-sm" style="border-color:var(--gold);color:var(--gold)" onclick="migratePerdusHorsNiamey()">↪ Perdus hors Niamey → Non qualifie (' + perdusHorsNiamey().length + ')</button>';
+  }
   h += '<button class="btn btn-red btn-sm" onclick="openModal(\'modal-prospect\')">+ Nouveau prospect</button>';
   h += '</div><div class="pipeline" id="pipe-board"></div>';
   c.innerHTML = h;
@@ -1609,6 +1612,15 @@ function viewPipeCard(id){
   let pipeActions = '';
   if((isSuperAdmin() || canModifyProspectInfo()) && !isPipelineClosed(p.etape)){
     pipeActions += '<button class="btn btn-red btn-sm" onclick="advancePipelineStage(' + p.id + ')">Faire avancer a l\'etape suivante →</button> <button class="btn btn-ghost btn-sm" onclick="markPipelineLost(' + p.id + ')">✗ Marquer perdu</button> <button class="btn btn-ghost btn-sm" onclick="markPipelineUnqualified(' + p.id + ')">⊘ Non qualifie</button> ';
+  }
+  // Changement d'etape DIRECT (demande explicite) : choisir n'importe quelle
+  // etape sans passer par toutes les etapes intermediaires, y compris pour
+  // rouvrir une fiche Perdu / Non qualifie / Gagne.
+  if(isSuperAdmin() || canModifyProspectInfo()){
+    pipeActions += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:2px 0 8px">' +
+      '<select class="form-input" id="pipe-etape-direct" style="width:auto;min-width:170px;padding:6px 10px;font-size:12px">' +
+      PIPELINE_STAGES.map(function(st){ return '<option value="'+st+'"'+(st===p.etape?' selected':'')+'>'+st+(st===p.etape?' (actuelle)':'')+'</option>'; }).join('') +
+      '</select><button class="btn btn-red btn-sm" onclick="setPipelineStage(' + p.id + ', document.getElementById(\'pipe-etape-direct\').value)">✓ Changer d\'etape</button></div>';
   }
   // Suppression definitive — reservee au Super Admin, disponible quelle que
   // soit l'etape (y compris Gagne/Perdu, pour pouvoir nettoyer les fiches
@@ -1703,6 +1715,87 @@ function markPipelineLost(id, etapeFinale){
 function markPipelineUnqualified(id){
   if(!confirm('Classer ce prospect en "Non qualifie" ?\n(lead hors cible : faux numero, hors zone, pas interesse...)')) return;
   return window.markPipelineLost(id, 'Non qualifie');
+}
+
+// ── CHANGEMENT D'ETAPE DIRECT (13/11/2026, demande explicite) ───────────────
+// Coeur commun : applique la nouvelle etape a une opportunite et a tout ce
+// qui en depend, SANS ecran ni confirmation (utilise aussi par la migration).
+//  - quitte "Gagne" : le stock reserve est libere (et enregistre en base) ;
+//  - arrive en "Gagne" : le stock est reserve s'il y a un produit lie ;
+//  - la fiche Clients & Prospects liee recoit le statut correspondant
+//    (son produit d'interet n'est PAS ecrase) ;
+//  - l'opportunite est enregistree en base, l'action va au journal.
+// Renvoie false si la reservation de stock a echoue (stock insuffisant).
+function applyPipelineStage(p, newEtape, motif){
+  const ancienne = p.etape;
+  let stockOk = true;
+  if(p.reservationFaite && newEtape !== 'Gagne'){
+    const row = (typeof getStockRow === 'function') ? getStockRow(p.sku, p.entrepot) : null;
+    if(row){ row.reserve = Math.max(0, (row.reserve||0) - (p.qte||0)); if(typeof syncStockRow==='function') syncStockRow(row); }
+    p.reservationFaite = false;
+    logAction('Reservation liberee', p.nom + ' — sortie de "Gagne", stock libere', 'gold');
+  }
+  p.etape = newEtape;
+  stampModification(p);
+  if(newEtape === 'Gagne' && p.sku && !p.reservationFaite){
+    stockOk = triggerPipelineWon(p) !== false;
+    const row = (typeof getStockRow === 'function') ? getStockRow(p.sku, p.entrepot) : null;
+    if(row && typeof syncStockRow==='function') syncStockRow(row);
+  }
+  const statutClient = pipelineEtapeToClientStatut(newEtape);
+  const cl = (typeof findLinkedClient === 'function') ? findLinkedClient(p) : null;
+  if(cl){
+    if(cl.statut !== statutClient){
+      cl.statut = statutClient;
+      stampModification(cl);
+      if(typeof dbUpdate === 'function') dbUpdate('clients', cl.id, { statut:cl.statut, last_modified_by:cl.lastModifiedBy, last_modified_at:cl.lastModifiedAt });
+    }
+  } else if(typeof ensureClientExists === 'function'){
+    ensureClientExists(p.nom, p.sku ? (p.qte + 'x ' + p.sku) : '', statutClient, p.type, p.ville, 'Pipeline', p.tel);
+  }
+  if(typeof dbUpdate === 'function') dbUpdate('pipeline', p.id, { etape:p.etape, reservation_faite:p.reservationFaite,
+    last_modified_by:p.lastModifiedBy, last_modified_at:p.lastModifiedAt });
+  logAction(motif || 'Pipeline — etape modifiee', p.nom + ' : ' + ancienne + ' → ' + newEtape, newEtape === 'Perdu' ? 'red' : (newEtape === 'Gagne' ? 'green' : 'blue'));
+  return stockOk;
+}
+
+// Bouton "✓ Changer d'etape" de la fiche d'une opportunite.
+function setPipelineStage(id, newEtape){
+  if(!isSuperAdmin() && !canModifyProspectInfo()) return alert("Vous n'avez pas la permission de changer l'etape d'une opportunite. Demandez au Super Admin d'activer 'Modifier informations prospect' pour votre role.");
+  const p = PIPELINE.find(function(x){return String(x.id)===String(id);});
+  if(!p || PIPELINE_STAGES.indexOf(newEtape) < 0) return;
+  if(p.etape === newEtape) return alert('Cette opportunite est deja a l\'etape "' + newEtape + '".');
+  if(!confirm('Passer "' + p.nom + '" de "' + p.etape + '" a "' + newEtape + '" ?')) return;
+  const ok = applyPipelineStage(p, newEtape);
+  if(!ok) alert('⚠️ Opportunite passee en "Gagne" mais le stock disponible est insuffisant pour reserver automatiquement. Verifiez le module Stock.');
+  closeModal('modal-detail');
+  go('pipe');
+}
+
+// ── MIGRATION PONCTUELLE (13/11/2026, demande explicite) ────────────────────
+// "Deplacer tous les leads en Perdu dont la ville est autre que Niamey vers
+// Non qualifie". Bouton reserve au Super Admin, visible seulement tant qu'il
+// reste des fiches concernees (il disparait tout seul ensuite).
+// Une ville vide n'est PAS consideree comme "autre que Niamey" (on ne sait pas).
+function villeNormalisee(v){
+  return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
+}
+function perdusHorsNiamey(){
+  return PIPELINE.filter(function(p){
+    const v = villeNormalisee(p.ville);
+    return p.etape === 'Perdu' && v && v !== '-' && v !== '—' && v.indexOf('niamey') < 0;
+  });
+}
+function migratePerdusHorsNiamey(){
+  if(!isSuperAdmin()) return alert('Reserve au Super Admin.');
+  const liste = perdusHorsNiamey();
+  if(!liste.length) return alert('Aucun lead "Perdu" hors Niamey a deplacer.');
+  const apercu = liste.slice(0, 25).map(function(p){ return '• ' + p.nom + ' (' + p.ville + ')'; }).join('\n') +
+    (liste.length > 25 ? '\n… et ' + (liste.length - 25) + ' autre(s)' : '');
+  if(!confirm('Deplacer ' + liste.length + ' lead(s) de "Perdu" vers "Non qualifie" ?\n\n' + apercu + '\n\nLes fiches de Niamey et celles sans ville ne bougent pas.')) return;
+  liste.forEach(function(p){ applyPipelineStage(p, 'Non qualifie', 'Perdu hors Niamey → Non qualifie'); });
+  alert('✅ ' + liste.length + ' lead(s) deplace(s) dans "Non qualifie".');
+  go('pipe');
 }
 
 // Demande explicite : jusqu'ici, aucune action de suppression n'existait pour
