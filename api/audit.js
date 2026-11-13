@@ -9,7 +9,7 @@
 // POST: insert a new audit log entry (called by logAction() on every write action)
 
 const { getSql } = require('../lib/db');
-const { requireAuth } = require('../lib/auth');
+const { requireAuth, neutraliserTexte } = require('../lib/auth');
 
 module.exports = async function handler(req, res) {
   // Securite : plus d'en-tete CORS ouvert (Access-Control-Allow-Origin: *).
@@ -171,7 +171,8 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { user_nom, dept, action, detail, color, ini, col, ip } = req.body || {};
+      // SECURITE (13/11/2026) : textes neutralises (< >) avant enregistrement.
+      const { user_nom, dept, action, detail, color, ini, col, ip } = neutraliserTexte(req.body || {});
       await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)
                  VALUES (${user_nom}, ${dept}, ${action}, ${detail}, ${color}, ${ini}, ${col}, ${ip || 'web'})`;
       return res.status(201).json({ success: true });

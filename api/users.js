@@ -13,7 +13,7 @@
 
 const crypto = require('crypto');
 const { getSql } = require('../lib/db');
-const { requireAuth, hashPassword, verifyPassword, publicUser, validatePasswordRules, isWeakDefaultPassword } = require('../lib/auth');
+const { requireAuth, hashPassword, verifyPassword, publicUser, validatePasswordRules, isWeakDefaultPassword, neutraliserTexte } = require('../lib/auth');
 
 const VALID_ROLES = ['collaborateur', 'responsable', 'admin', 'superadmin'];
 
@@ -60,7 +60,10 @@ module.exports = async function handler(req, res) {
       const me = await requireAuth(req, res, sql, ['superadmin', 'admin', 'responsable']);
       if (!me) return;
 
-      const { nom, email, pass, role, departement, ini, col, ville } = req.body || {};
+      const b0 = req.body || {};
+      // SECURITE (13/11/2026) : textes affiches neutralises (< >) ; le mot de passe n'est pas touche.
+      const { nom, email, role, departement, ini, col, ville } = neutraliserTexte(b0);
+      const pass = b0.pass;
       if (!nom || !email || !pass) return res.status(400).json({ error: 'Champs manquants' });
 
       const newRole = role || 'collaborateur';
@@ -165,7 +168,7 @@ module.exports = async function handler(req, res) {
 
       if (action === 'update_profile') {
         if (!isSA) return deny(res);
-        const { role, departement, ville } = req.body;
+        const { role, departement, ville } = neutraliserTexte(req.body);
         if (VALID_ROLES.indexOf(role) < 0) return res.status(400).json({ error: 'Role invalide' });
         await sql`UPDATE users SET role = ${role}, departement = ${departement}, ville = ${ville} WHERE id = ${id}`;
         await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)

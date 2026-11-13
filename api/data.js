@@ -11,7 +11,7 @@
 // DELETE /api/data   { entity, id }             -> delete one row by id
 
 const { getSql } = require('../lib/db');
-const { requireAuth } = require('../lib/auth');
+const { requireAuth, neutraliserTexte } = require('../lib/auth');
 
 // Maps entity name -> { table, idColumn, columns (camelCase -> snake_case) }
 const ENTITY_MAP = {
@@ -116,7 +116,8 @@ module.exports = async function handler(req, res) {
 
       const placeholders = cols.map(function(_, i){ return '$' + (i+1); }).join(',');
       const values = cols.map(function(c){
-        const v = row[c];
+        // SECURITE (13/11/2026) : textes neutralises (< >), sauf le contenu d'un fichier.
+        const v = (entityKey === 'documents' && c === 'data') ? row[c] : neutraliserTexte(row[c]);
         return (typeof v === 'object' && v !== null) ? JSON.stringify(v) : v;
       });
       const queryWithConflict = 'INSERT INTO ' + meta.table + ' (' + cols.join(',') + ') VALUES (' + placeholders + ') ' +
@@ -157,7 +158,7 @@ module.exports = async function handler(req, res) {
 
       const setClause = cols.map(function(c, i){ return c + ' = $' + (i+1); }).join(', ');
       const values = cols.map(function(c){
-        const v = patch[c];
+        const v = (entityKey === 'documents' && c === 'data') ? patch[c] : neutraliserTexte(patch[c]);
         return (typeof v === 'object' && v !== null) ? JSON.stringify(v) : v;
       });
       values.push(id);

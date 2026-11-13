@@ -401,9 +401,38 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    // ── Mise a jour ponctuelle du 13/11/2026 (demande explicite d'Yvan) ─────
+    // Faite UNE SEULE FOIS (reperee par sa ligne dans le journal d'audit) :
+    //  1. les fiches « Non qualifie » SANS raison recoivent la raison « Hors zone »
+    //     (les fiches dont une raison a deja ete choisie la gardent) ;
+    //  2. securite : les signes < et > deja presents dans les textes des
+    //     prospects sont neutralises (meme traitement que pour les nouveaux textes).
+    const MIGRATION_NQ = 'Mise a jour : raison « Hors zone » (13/11/2026)';
+    let migrationNq = null;
+    const dejaFaite = await sql`SELECT 1 FROM audit_log WHERE action = ${MIGRATION_NQ} LIMIT 1`;
+    if (!dejaFaite.length) {
+      const misAJour = await sql`UPDATE clients SET raison_nq = 'Hors zone', last_modified_by = 'Mise a jour du 13/11/2026', last_modified_at = NOW()
+                                 WHERE statut = 'Non qualifie' AND (raison_nq IS NULL OR TRIM(raison_nq) = '') RETURNING id`;
+      const gardees = await sql`SELECT COUNT(*)::int AS n FROM clients WHERE statut = 'Non qualifie' AND raison_nq IS NOT NULL AND raison_nq <> 'Hors zone' AND TRIM(raison_nq) <> ''`;
+      let textesNeutralises = 0;
+      const champs = { clients: ['nom', 'ville', 'zone', 'tel', 'email', 'societe', 'produit', 'notes', 'asg'], pipeline: ['nom', 'ville', 'tel', 'asg'] };
+      for (const t of Object.keys(champs)) {
+        for (const col of champs[t]) {
+          const r = await sql.query('UPDATE ' + t + ' SET ' + col + " = replace(replace(" + col + ", '<', '‹'), '>', '›') WHERE " + col + " ~ '[<>]' RETURNING 1");
+          textesNeutralises += r.length;
+        }
+      }
+      migrationNq = { hors_zone: misAJour.length, raisons_gardees: gardees[0].n, textes_neutralises: textesNeutralises };
+      await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)
+                VALUES ('Systeme', 'Direction', ${MIGRATION_NQ},
+                ${misAJour.length + ' fiche(s) « Non qualifie » sans raison mise(s) en « Hors zone » ; ' + gardees[0].n + ' fiche(s) gardent la raison deja choisie ; ' + textesNeutralises + ' texte(s) securise(s).'},
+                'dot-gold', 'SY', 'av-blue', 'serveur')`;
+    }
+
     return res.status(200).json({
       success: true,
       seeded: seeded,
+      mise_a_jour_13_11: migrationNq,
       mots_de_passe_chiffres: migratedPasswords,
       tables_checked: Object.keys(COLUMN_TYPES).length,
       healing_issues: healed,
