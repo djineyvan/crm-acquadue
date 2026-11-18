@@ -66,7 +66,8 @@ async function login(email, password) {
 
 // Pas d'envoi d'email reel : on simule la reponse du service d'envoi.
 process.env.RESEND_API_KEY = 'test';
-global.fetch = async function () { return { ok: true, json: async function () { return { id: 'fake' }; } }; };
+const ENVOIS = [];
+global.fetch = async function (url, opt) { if (opt && opt.body) { try { ENVOIS.push(JSON.parse(opt.body)); } catch (e) {} } return { ok: true, json: async function () { return { id: 'fake' }; } }; };
 
 (async function main() {
 
@@ -285,8 +286,20 @@ global.fetch = async function () { return { ok: true, json: async function () { 
   section('9. Mot de passe oublie (code par email)');
   const mLogin = await login('marie@acquadue.ne', 'Welcome@2026');
   const mOldToken = mLogin.body.token;
+  // 18/11/2026 : l'adresse de recuperation vient du reglage RECOVERY_EMAIL (plus ecrite dans le code).
+  delete process.env.RECOVERY_EMAIL;
+  r = await call(H['forgot-password'], { method: 'POST', body: { action: 'request', email: 'marie@acquadue.ne' } });
+  check('sans reglage RECOVERY_EMAIL : refus clair, aucun email envoye', r.statusCode === 500 && /non configuree/.test(r.body.error) && ENVOIS.length === 0, r.body);
+  await sqlRaw`UPDATE users SET reset_code = NULL, reset_code_expires = NULL WHERE email = 'marie@acquadue.ne'`;
+  process.env.RECOVERY_EMAIL = 'recuperation@test.ne';
   r = await call(H['forgot-password'], { method: 'POST', body: { action: 'request', email: 'marie@acquadue.ne' } });
   check('demande de code acceptee', r.statusCode === 200, r.body);
+  check('code envoye a l\'adresse du reglage RECOVERY_EMAIL', ENVOIS.length === 1 && ENVOIS[0].to[0] === 'recuperation@test.ne', ENVOIS);
+  check('la reponse ne revele aucune adresse email', !/@/.test(JSON.stringify(r.body)), r.body);
+  const jr = await sqlRaw`SELECT detail FROM audit_log WHERE action = 'Code de reinitialisation envoye' ORDER BY id DESC LIMIT 1`;
+  check('le Journal ne contient pas l\'adresse de recuperation', jr.length === 1 && !/@/.test(jr[0].detail), jr);
+  const src = require('fs').readFileSync(REPO + '/index.html', 'utf8') + require('fs').readFileSync(REPO + '/api/forgot-password.js', 'utf8');
+  check('aucune adresse de recuperation ecrite dans la page ni dans le code', !/yahoo\./i.test(src) && /envoye a votre adresse de recuperation\./.test(src));
   r = await call(H['forgot-password'], { method: 'POST', body: { action: 'request', email: 'marie@acquadue.ne' } });
   check('2e demande immediate bloquee (anti-spam) -> 429', r.statusCode === 429 && r.body.error === 'trop_rapide');
   let code = (await sqlRaw`SELECT reset_code FROM users WHERE email = 'marie@acquadue.ne'`)[0].reset_code;

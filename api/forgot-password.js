@@ -32,6 +32,11 @@ module.exports = async function handler(req, res) {
     if (action === 'request') {
       const { email } = req.body;
       if (!email) return res.status(400).json({ error: 'Email requis' });
+      // SECURITE (18/11/2026) : l'adresse de recuperation n'est plus ecrite
+      // dans le code (le depot est public) ni affichee sur la page. Elle est
+      // lue dans le reglage Vercel RECOVERY_EMAIL.
+      const RECOVERY_EMAIL = (process.env.RECOVERY_EMAIL || '').trim();
+      if (!RECOVERY_EMAIL) return res.status(500).json({ error: 'Adresse de recuperation non configuree. Contactez le Super Admin.' });
 
       const rows = await sql`SELECT * FROM users WHERE email = ${email}`;
       if (rows.length === 0) return res.status(404).json({ error: 'not_found' });
@@ -78,7 +83,7 @@ module.exports = async function handler(req, res) {
         headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           from: 'CRM Lorenzetti <onboarding@resend.dev>',
-          to: ['djineyvan@yahoo.fr'],
+          to: [RECOVERY_EMAIL],
           subject: 'Code de reinitialisation - ' + user.nom,
           html: html
         })
@@ -87,7 +92,7 @@ module.exports = async function handler(req, res) {
       if (!emailResp.ok) return res.status(500).json({ error: emailData.message || 'Erreur envoi email' });
 
       await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)
-                 VALUES (${user.nom}, ${user.departement}, 'Code de reinitialisation envoye', 'Email envoye a djineyvan@yahoo.fr', 'dot-gold', ${user.ini}, ${user.col}, 'web')`;
+                 VALUES (${user.nom}, ${user.departement}, 'Code de reinitialisation envoye', 'Code envoye a l''adresse de recuperation', 'dot-gold', ${user.ini}, ${user.col}, 'web')`;
 
       return res.status(200).json({ success: true });
     }
@@ -124,7 +129,7 @@ module.exports = async function handler(req, res) {
       // Par prudence, toutes les sessions ouvertes de ce compte sont fermees
       await sql`DELETE FROM sessions WHERE user_id = ${user.id}`;
       await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)
-                 VALUES (${user.nom}, ${user.departement}, 'Mot de passe reinitialise via email', 'Recuperation par code envoye a djineyvan@yahoo.fr', 'dot-green', ${user.ini}, ${user.col}, 'web')`;
+                 VALUES (${user.nom}, ${user.departement}, 'Mot de passe reinitialise via email', 'Recuperation par code envoye a l''adresse de recuperation', 'dot-green', ${user.ini}, ${user.col}, 'web')`;
 
       return res.status(200).json({ success: true });
     }
