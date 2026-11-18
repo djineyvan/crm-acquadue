@@ -88,7 +88,7 @@ ok(SYNC.length === n0 + 1, '... « OK » enregistre');
 
 console.log('— 5. Branchements dans la page');
 ok(/rowKeys: \{ 'Nom du prospect':'nom', 'Ville':'ville', 'Telephone':'tel', 'Valeur estimee':'val',\s*'Date estimee de signature':'dateEstimee', 'Notes':'notes' \}/.test(src), 'Pipeline : nom, ville, telephone, valeur, date estimee, notes');
-ok(/rowKeys: \{ 'Nom':'nom', 'Type':'type', 'Ville \/ Zone':\['ville','zone'\]/.test(src) && /'Statut':\['statut','raisonNq'\]/.test(src), 'Clients & Prospects : toutes les cases modifiables');
+ok(/rowKeys: \{ 'Nom':'nom', 'Type':'type', 'Ville \/ Zone':\['ville','zone'\]/.test(src) && /'Statut':\['statut','raisonNq','raisonPerte'\]/.test(src), 'Clients & Prospects : toutes les cases modifiables');
 ok(/entity: 'tasks',[\s\S]{0,80}rowKeys:/.test(src) && /entity: 'produits',\s*rowKeys:/.test(src) && /entity: 'stock',\s*rowKeys:/.test(src), 'Taches, Produits et Stock aussi');
 ok(/'date'\],/.test(grab('function viewPipeCard(id){', 'function deletePipeline')) || /\? 'date' : 'text'\]/.test(src), 'date estimee de signature : calendrier');
 ok(/if\(cl\.asg\) noms\.push\(cl\.asg\);/.test(src), 'commercial assigne : le nom actuel reste dans la liste (pas efface a l\'enregistrement)');

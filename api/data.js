@@ -44,7 +44,7 @@ const ENTITY_MAP = {
 // Whitelist of valid column names per table, to safely build dynamic INSERT/UPDATE
 // without risking SQL injection through arbitrary keys.
 const COLUMNS = {
-  clients: ['id','nom','type','ville','zone','tel','email','societe','source','statut','produit','asg','notes','origine_lead','lead_via','lead_recu_le','lead_campagne','lead_ensemble','lead_annonce','lead_annonce_id','lead_formulaire','lead_formulaire_id','date_creation','locked','historique','raison_nq','last_modified_by','last_modified_at'],
+  clients: ['id','nom','type','ville','zone','tel','email','societe','source','statut','produit','asg','notes','origine_lead','lead_via','lead_recu_le','lead_campagne','lead_ensemble','lead_annonce','lead_annonce_id','lead_formulaire','lead_formulaire_id','date_creation','locked','historique','raison_nq','raison_perte','last_modified_by','last_modified_at'],
   pipeline: ['id','nom','type','val','etape','asg','ville','tel','date_estimee','locked','sku','qte','entrepot','reservation_faite','last_modified_by','last_modified_at',
              'quartier','pub','appele','rappel_soir','relance_j2','resultat_appel','date_livraison','montant'],
   tasks: ['id','titre','asg','dept','pri','statut','date_limite','desc_tache','locked','rapport','last_modified_by','last_modified_at'],
@@ -93,6 +93,7 @@ async function queryAvecSuivi(sql, entityKey, query, values) {
     }
     if (entityKey === 'clients' && e && e.code === '42703') {
       await sql.query('ALTER TABLE clients ADD COLUMN IF NOT EXISTS origine_lead TEXT');
+      await sql.query('ALTER TABLE clients ADD COLUMN IF NOT EXISTS raison_perte TEXT');
       for (const c of ['lead_via','lead_recu_le','lead_campagne','lead_ensemble','lead_annonce','lead_annonce_id','lead_formulaire','lead_formulaire_id']) {
         await sql.query('ALTER TABLE clients ADD COLUMN IF NOT EXISTS ' + c + ' TEXT');
       }

@@ -7,4 +7,4 @@ Préparation (une fois) : `npm install @electric-sql/pglite` dans ce dossier, et
 - Tests serveur (`tests-*.js`) : `node tests/<fichier>.js` (vraie base PostgreSQL de test en mémoire, aucune donnée réelle).
 - Tests écran (`test-*.js`) : `node tests/<fichier>.js /tmp/crm-acquadue/index.html`.
 
-Dernier passage complet : 18/11/2026 (4e partie) — 667/667 réussis (22 fichiers).
+Dernier passage complet : 18/11/2026 (5e partie) — 691/691 réussis (23 fichiers).

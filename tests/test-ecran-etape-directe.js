@@ -91,10 +91,10 @@ reset(); setPipelineStage(1, 'Gagne');
 ok(P(1).etape === 'Gagne' && wonCalls === 0, 'lead sans produit lie : « Gagne » sans fausse reservation de stock');
 
 // 4. Garde-fous
-reset(); confirmAnswer = false; setPipelineStage(1, 'Perdu'); confirmAnswer = true;
+reset(); confirmAnswer = false; setPipelineStage(1, 'Contacte'); confirmAnswer = true;
 ok(P(1).etape === 'Nouveau prospect' && dbUpdates.length === 0, '« Annuler » dans la confirmation : rien ne change');
 reset(); setPipelineStage(1, 'Nouveau prospect');
-ok(dbUpdates.length === 0 && /deja/.test(alerts[0] || ''), 'meme etape : message, rien ne change');
+ok(dbUpdates.length === 0 && alerts.length === 0, 'meme etape (liste deroulante) : rien ne change, pas de message');
 reset(); setPipelineStage(1, 'Etape inventee');
 ok(P(1).etape === 'Nouveau prospect' && dbUpdates.length === 0, 'etape inconnue refusee');
 reset(); superAdmin = false; prospectPerm = false; setPipelineStage(1, 'Contacte');
@@ -102,7 +102,7 @@ ok(P(1).etape === 'Nouveau prospect' && /permission/.test(alerts[0] || ''), 'san
 prospectPerm = true; reset(); setPipelineStage(1, 'Contacte');
 ok(P(1).etape === 'Contacte', 'avec « Modifier informations prospect » : autorise');
 superAdmin = true; prospectPerm = false;
-reset(); PIPELINE.push({ id: 11, nom: 'Sans fiche', etape: 'Contacte', ville: 'Say', tel: '9' }); setPipelineStage(11, 'Perdu');
+reset(); PIPELINE.push({ id: 11, nom: 'Sans fiche', etape: 'Contacte', ville: 'Say', tel: '9' }); setPipelineStage(11, 'Perdu'); choisir('Pas pret');
 ok(created.some(function (c) { return c[0] === 'Sans fiche' && c[2] === 'Client perdu'; }), 'pas de fiche client liee : elle est creee');
 
 // 5. Migration « Perdus hors Niamey » : utilisee puis RETIREE (9ea29cb).
@@ -111,6 +111,6 @@ ok(typeof perdusHorsNiamey === 'undefined' && typeof migratePerdusHorsNiamey ===
 ok(src.indexOf('Perdus hors Niamey') < 0, 'bouton « ↪ Perdus hors Niamey » retire du Pipeline');
 
 // 6. Presence dans la page
-ok(/id="pipe-etape-direct"/.test(src) && /setPipelineStage\(/.test(src), 'fiche d\'une opportunite : liste « Changer d\'etape »');
+ok(/id="pipe-etape-direct"/.test(src) && /onchange="setPipelineStage\(/.test(src), 'fiche d\'une opportunite : liste des etapes (appliquee des le choix)');
 
 console.log('\n' + pass + ' reussis, ' + fail + ' en echec'); process.exit(fail ? 1 : 0);

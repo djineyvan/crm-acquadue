@@ -27,6 +27,8 @@ const COLUMN_TYPES = {
     historique: "JSONB DEFAULT '[]'", last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP',
     // raison_nq : raison du statut "Non qualifie" (faux numero, hors zone...)
     raison_nq: 'TEXT',
+    // raison_perte : pourquoi l'opportunite est « Perdu » (18/11/2026)
+    raison_perte: 'TEXT',
     // origine_lead : provenance du lead (pub Meta, formulaire...), separee des notes (18/11/2026)
     origine_lead: 'TEXT',
     // Informations du lead Meta, une par colonne (18/11/2026) — remplies par lib/meta.js
