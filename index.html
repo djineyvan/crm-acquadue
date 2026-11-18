@@ -1346,12 +1346,55 @@ function visibleClientsPourFacturation(){
   if(isAdmin() || CU.role === 'responsable') return CLIENTS;
   return CLIENTS.filter(function(c){ return c.asg === CU.nom; });
 }
+// ── RECHERCHE DE CLIENT (Devis & Facturation, 18/11/2026) ───────────────────
+// Une case de recherche au-dessus de la liste des clients : en tapant une
+// partie du nom (ou du telephone), la liste ne garde que les clients qui
+// correspondent. S'il n'en reste qu'un, il est choisi tout seul.
+function texteSansAccent(t){ return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
+function clientsPourListe(recherche){
+  const tous = visibleClientsPourFacturation().slice().sort(function(a,b){ return a.nom.localeCompare(b.nom, 'fr', {sensitivity:'base'}); });
+  const r = texteSansAccent(recherche).trim();
+  if(!r) return tous;
+  const chiffres = r.replace(/[^0-9]/g,'');
+  return tous.filter(function(c){
+    if(texteSansAccent(c.nom).indexOf(r) >= 0) return true;
+    return chiffres.length >= 3 && String(c.tel||'').replace(/[^0-9]/g,'').indexOf(chiffres) >= 0;
+  });
+}
+function clientOptionsHtml(liste){
+  const esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); };
+  return '<option value="">— Nouveau client —</option>' + liste.map(function(c){
+    return '<option value="' + esc(c.nom) + '">' + esc(c.nom) + (c.tel ? ' — ' + esc(c.tel) : '') + '</option>';
+  }).join('');
+}
+function filtrerClientSelect(selectId, textId, recherche){
+  const sel = el(selectId);
+  if(!sel) return;
+  const avant = sel.value;
+  const liste = clientsPourListe(recherche);
+  sel.innerHTML = clientOptionsHtml(liste);
+  const info = el(selectId + '-info');
+  if(String(recherche||'').trim()){
+    if(liste.length === 1){ sel.value = liste[0].nom; }
+    else if(liste.some(function(c){ return c.nom === avant; })){ sel.value = avant; }
+    else { sel.value = ''; }
+    if(info) info.textContent = liste.length ? liste.length + ' client(s) trouve(s)' + (liste.length === 1 ? ' — selectionne' : ' — choisissez dans la liste') : 'Aucun client trouve : il sera cree comme nouveau client';
+  } else {
+    sel.value = avant;
+    if(info) info.textContent = '';
+  }
+  toggleNewClientField(selectId, textId);
+  // Aucun client trouve : on propose le texte tape comme nom du nouveau client.
+  const txt = el(textId);
+  if(txt && !sel.value && String(recherche||'').trim() && !liste.length) txt.value = String(recherche).trim();
+}
+
 function fieldClientPicker(selectId, textId){
-  const opts = visibleClientsPourFacturation().slice().sort(function(a,b){ return a.nom.localeCompare(b.nom, 'fr', {sensitivity:'base'}); }).map(function(c){ return c.nom; });
   return '<div class="form-group"><label class="form-label">Client</label>' +
+    '<input class="form-input" id="'+selectId+'-search" placeholder="🔍 Rechercher un client (nom ou telephone)…" autocomplete="off" style="margin-bottom:6px" oninput="filtrerClientSelect(\''+selectId+'\',\''+textId+'\', this.value)">' +
+    '<div id="'+selectId+'-info" class="td-muted" style="font-size:11px;margin:-2px 0 6px"></div>' +
     '<select class="form-select" id="'+selectId+'" onchange="toggleNewClientField(\''+selectId+'\',\''+textId+'\')" style="margin-bottom:6px">' +
-    '<option value="">— Nouveau client —</option>' +
-    opts.map(function(o){ return '<option>'+o+'</option>'; }).join('') +
+    clientOptionsHtml(clientsPourListe('')) +
     '</select>' +
     '<input class="form-input" id="'+textId+'" placeholder="Nom du nouveau client"/>' +
     '</div>';
@@ -1366,8 +1409,9 @@ function fillClientSelect(id){
   // Builder lui-meme) ecrasait la liste deja filtree par la liste complete,
   // non filtree, de tous les clients. C'est ce qui causait "la liste
   // deroulante affiche toujours tous les contacts".
-  const clientsVisibles = visibleClientsPourFacturation().slice().sort(function(a,b){ return a.nom.localeCompare(b.nom, 'fr', {sensitivity:'base'}); });
-  sel.innerHTML = '<option value="">— Nouveau client —</option>' + clientsVisibles.map(function(c){ return "<option>" + c.nom + "</option>"; }).join("");
+  // La recherche en cours (case au-dessus de la liste) reste appliquee.
+  const champ = el(id + '-search');
+  sel.innerHTML = clientOptionsHtml(clientsPourListe(champ ? champ.value : ''));
   if(current) sel.value = current;
 }
 
@@ -5429,6 +5473,7 @@ function openDevisBuilder(devisId){
   const existing = devisId ? DEVIS.find(function(x){return x.id===devisId;}) : null;
   DEVIS_BUILDER_LIGNES = existing ? JSON.parse(JSON.stringify(existing.lignes)) : [];
 
+  if(el('db-client-select-search')){ el('db-client-select-search').value = ''; if(el('db-client-select-info')) el('db-client-select-info').textContent = ''; }
   openModal('modal-devis-builder'); // refreshes db-client-select options first
 
   const matchingClient = existing ? CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === existing.client.trim().toLowerCase(); }) : null;
@@ -5577,6 +5622,7 @@ function openFactureBuilder(factureId, fromDevisId){
   const sourceDevis = fromDevisId ? DEVIS.find(function(x){return x.id===fromDevisId;}) : null;
   const clientName = existingFact ? existingFact.client : (sourceDevis ? sourceDevis.client : '');
 
+  if(el('fb-client-select-search')){ el('fb-client-select-search').value = ''; if(el('fb-client-select-info')) el('fb-client-select-info').textContent = ''; }
   openModal('modal-facture-builder'); // refreshes fb-client-select options first
 
   const matchingClient = clientName ? CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === clientName.trim().toLowerCase(); }) : null;
