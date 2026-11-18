@@ -20,13 +20,13 @@ ok(/td-muted/.test(origineLeadHtml('')), 'vide : tiret gris');
 
 console.log('— 3. Branchements dans la page');
 const detail = grab('function viewClientDetail(id){', 'function syncDetailEditToDb');
-ok(/\['Origine du lead', origineLeadHtml\(cl\.origineLead\)\]/.test(detail), 'fiche client : ligne « Origine du lead »');
-ok(/\['Origine du lead', 'origineLead', cl\.origineLead \|\| '', 'textarea'\]/.test(detail), 'fiche client : origine modifiable (✏️ Modifier)');
-ok(detail.indexOf("['Origine du lead', origineLeadHtml") < detail.indexOf("['Notes', cl.notes"), 'origine affichee avant les notes');
+ok(/concat\(leadMetaRows\(cl\)\)/.test(detail) && /\['Contenu du formulaire', origineLeadHtml\(cl\.origineLead\)\]/.test(src), 'fiche client : ligne « Contenu du formulaire » (remplace « Origine du lead »)');
+ok(/\['Contenu du formulaire', 'origineLead', cl\.origineLead \|\| '', 'textarea'\]/.test(detail), 'fiche client : contenu modifiable');
+ok(detail.indexOf("leadMetaRows(cl)") < detail.indexOf("['Notes', cl.notes"), 'contenu affiche avant les notes');
 ok(/origine_lead:record\.origineLead\|\|''/.test(src), 'modification enregistree en base (origine_lead)');
-ok(/\['Origine du lead', origineLeadHtml\(clLinked \? clLinked\.origineLead : ''\)\]/.test(src), 'fiche Pipeline : origine reprise de la fiche client');
-ok(/'notes','origineLead'\]\); \}\);/.test(src), 'la barre de recherche cherche aussi dans l\'origine');
-ok(/\(cl\.notes\|\|''\) \+ '\\n' \+ \(cl\.origineLead\|\|''\)/.test(src) && /Notes ou origine \(contient\)/.test(src), 'filtre « Notes ou origine » : cherche dans les deux');
+ok(/\['Contenu du formulaire', origineLeadHtml\(clLinked \? clLinked\.origineLead : ''\)\]/.test(src) && /\['Pub Meta',/.test(src), 'fiche Pipeline : contenu du formulaire et pub Meta repris de la fiche client');
+ok(/'notes','origineLead','leadCampagne','leadEnsemble','leadAnnonce'\]\); \}\);/.test(src), 'la barre de recherche cherche aussi dans le formulaire, la campagne et l\'annonce');
+ok(/\(cl\.notes\|\|''\) \+ '\\n' \+ \(cl\.origineLead\|\|''\)/.test(src) && /Notes ou formulaire \(contient\)/.test(src), 'filtre « Notes ou formulaire » : cherche dans les deux');
 
 console.log('\n' + pass + ' reussis, ' + fail + ' en echec');
 process.exit(fail ? 1 : 0);

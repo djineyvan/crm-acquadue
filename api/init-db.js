@@ -15,7 +15,7 @@
 
 const { getSql } = require('../lib/db');
 const { requireAuth, hashPassword, isHashed, isWeakDefaultPassword } = require('../lib/auth');
-const { separerOrigine } = require('../lib/meta');
+const { separerOrigine, lireOrigineMeta, roleChamp, cleanPhone } = require('../lib/meta');
 
 // Single source of truth: table -> { column: postgresType }
 // Keep this in sync with /api/data.js's COLUMNS whitelist (same column names).
@@ -29,6 +29,9 @@ const COLUMN_TYPES = {
     raison_nq: 'TEXT',
     // origine_lead : provenance du lead (pub Meta, formulaire...), separee des notes (18/11/2026)
     origine_lead: 'TEXT',
+    // Informations du lead Meta, une par colonne (18/11/2026) — remplies par lib/meta.js
+    lead_via: 'TEXT', lead_recu_le: 'TEXT', lead_campagne: 'TEXT', lead_ensemble: 'TEXT',
+    lead_annonce: 'TEXT', lead_annonce_id: 'TEXT', lead_formulaire: 'TEXT', lead_formulaire_id: 'TEXT',
     created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   pipeline: {
@@ -369,6 +372,85 @@ module.exports = async function handler(req, res) {
       healed.push('origine_lead_migration -> ' + e.message);
     }
 
+    // ── UNE SEULE FOIS (18/11/2026) : remplir les colonnes des leads Meta ──
+    // Demande d'Yvan : chaque information du lead dans sa colonne (via,
+    // date de reception, campagne, ensemble, annonce + ID, formulaire + ID).
+    // Sources : la table meta_leads (remplie depuis le 12/11) puis l'ancien
+    // texte « Origine du lead ». Seules les cases VIDES sont remplies ; le
+    // texte ne garde que le contenu du formulaire. Telephone / ville / email
+    // vides : repris des reponses du formulaire s'ils y sont. Copie de
+    // secours : table sauvegarde_infos_leads. Repere : ligne « Infos des
+    // leads Meta remplies » du Journal. A RETIRER une fois le resultat verifie.
+    let infosLeads = null;
+    try {
+      const deja = await sql`SELECT 1 FROM audit_log WHERE action = 'Infos des leads Meta remplies' LIMIT 1`;
+      if (!deja.length) {
+        await sql`CREATE TABLE IF NOT EXISTS sauvegarde_infos_leads (id BIGINT, origine_lead TEXT, tel TEXT, ville TEXT, zone TEXT, email TEXT, sauve_le TIMESTAMP DEFAULT NOW())`;
+        // meta_leads n'existe que si un lead Meta est deja arrive : on ne la cree pas ici.
+        const ml = {};
+        const aMetaLeads = (await sql`SELECT to_regclass('public.meta_leads') AS t`)[0].t;
+        if (aMetaLeads) {
+          for (const c of ['campagne', 'ensemble', 'annonce', 'formulaire', 'plateforme']) {
+            await sql.query('ALTER TABLE meta_leads ADD COLUMN IF NOT EXISTS ' + c + ' TEXT');
+          }
+          (await sql`SELECT client_id, created_at, campagne, ensemble, annonce, ad_id, formulaire, form_id, plateforme
+                     FROM meta_leads WHERE status = 'ok' AND client_id IS NOT NULL ORDER BY created_at ASC`)
+            .forEach(function (r) { if (!ml[r.client_id]) ml[r.client_id] = r; });
+        }
+        const cibles = await sql`SELECT * FROM clients WHERE source = 'Meta Ads' OR origine_lead ILIKE '%Lead recu via Meta%'`;
+        const idsMeta = Object.keys(ml);
+        if (idsMeta.length) {
+          const deja = {}; cibles.forEach(function (c) { deja[c.id] = true; });
+          const autres = await sql.query("SELECT * FROM clients WHERE id::text = ANY(string_to_array($1, ','))", [idsMeta.join(',')]);
+          autres.forEach(function (c) { if (!deja[c.id]) cibles.push(c); });
+        }
+        let n = 0, coords = 0;
+        for (const c of cibles) {
+          const m = ml[c.id] || {};
+          const t = lireOrigineMeta(c.origine_lead || '');
+          let recu = '';
+          if (m.created_at) { const d = new Date(m.created_at); if (!isNaN(d.getTime())) recu = d.toISOString(); }
+          if (!recu && t.recuLe) recu = t.recuLe;
+          if (!recu && Number(c.id) > 1500000000000) recu = new Date(Number(c.id)).toISOString();
+          const val = {
+            lead_via: m.plateforme ? 'Meta (' + m.plateforme + ')' : (t.via || 'Meta'),
+            lead_recu_le: recu,
+            lead_campagne: m.campagne || t.campagne, lead_ensemble: m.ensemble || t.ensemble,
+            lead_annonce: m.annonce || t.annonce, lead_annonce_id: m.ad_id || t.annonceId,
+            lead_formulaire: m.formulaire || t.formulaire, lead_formulaire_id: m.form_id || t.formulaireId
+          };
+          // Coordonnees vides : reprises des reponses du formulaire.
+          const coord = { tel: c.tel || '', ville: c.ville || '', zone: c.zone || '', email: c.email || '' };
+          t.contenu.split('\n').forEach(function (l) {
+            const i = l.indexOf(' : '); if (i < 0) return;
+            const role = roleChamp(l.slice(0, i)); const v = l.slice(i + 3).trim(); if (!v) return;
+            if (role === 'tel' && !coord.tel) { coord.tel = cleanPhone(v); coords++; }
+            else if (role === 'ville' && !coord.ville) { coord.ville = v; coords++; }
+            else if (role === 'quartier' && (!coord.zone || coord.zone === coord.ville)) { coord.zone = v; coords++; }
+            else if (role === 'email' && !coord.email) { coord.email = v; coords++; }
+          });
+          await sql`INSERT INTO sauvegarde_infos_leads (id, origine_lead, tel, ville, zone, email) VALUES (${c.id}, ${c.origine_lead}, ${c.tel}, ${c.ville}, ${c.zone}, ${c.email})`;
+          await sql`UPDATE clients SET
+              lead_via = COALESCE(NULLIF(lead_via,''), ${val.lead_via || ''}), lead_recu_le = COALESCE(NULLIF(lead_recu_le,''), ${val.lead_recu_le || ''}),
+              lead_campagne = COALESCE(NULLIF(lead_campagne,''), ${val.lead_campagne || ''}), lead_ensemble = COALESCE(NULLIF(lead_ensemble,''), ${val.lead_ensemble || ''}),
+              lead_annonce = COALESCE(NULLIF(lead_annonce,''), ${val.lead_annonce || ''}), lead_annonce_id = COALESCE(NULLIF(lead_annonce_id,''), ${val.lead_annonce_id || ''}),
+              lead_formulaire = COALESCE(NULLIF(lead_formulaire,''), ${val.lead_formulaire || ''}), lead_formulaire_id = COALESCE(NULLIF(lead_formulaire_id,''), ${val.lead_formulaire_id || ''}),
+              origine_lead = ${t.contenu}, tel = ${coord.tel}, ville = ${coord.ville}, zone = ${coord.zone}, email = ${coord.email}
+            WHERE id = ${c.id}`;
+          n++;
+        }
+        const sansPub = await sql`SELECT COUNT(*) AS n FROM clients WHERE source = 'Meta Ads' AND COALESCE(lead_campagne,'') = '' AND COALESCE(lead_annonce,'') = '' AND COALESCE(lead_annonce_id,'') = ''`;
+        const detail = n + ' fiche(s) Meta : colonnes du lead remplies (via, date, campagne, ensemble, annonce, formulaire). ' +
+          coords + ' coordonnee(s) (telephone, ville, quartier, email) reprise(s) des reponses du formulaire. ' +
+          Number(sansPub[0].n) + ' fiche(s) Meta sans aucune information de pub connue (leads anciens). Copie de secours : table sauvegarde_infos_leads.';
+        await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)
+                  VALUES ('Systeme', 'Direction', 'Infos des leads Meta remplies', ${detail}, 'dot-blue', 'S', 'av-blue', 'init-db')`;
+        infosLeads = { fiches: n, coordonnees: coords, sans_pub: Number(sansPub[0].n) };
+      }
+    } catch (e) {
+      healed.push('infos_leads_migration -> ' + e.message);
+    }
+
     // ── Seed ONLY the super admin account if table is empty (idempotent) ──
     const existingUsers = await sql`SELECT COUNT(*) as count FROM users`;
     let seeded = false;
@@ -448,6 +530,7 @@ module.exports = async function handler(req, res) {
       seeded: seeded,
       mots_de_passe_chiffres: migratedPasswords,
       origine_deplacee: origineDeplacee,
+      infos_leads: infosLeads,
       tables_checked: Object.keys(COLUMN_TYPES).length,
       healing_issues: healed,
       message: 'Base de donnees initialisee et reparee avec succes (schema complet verifie pour chaque table)'

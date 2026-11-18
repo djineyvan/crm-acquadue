@@ -144,7 +144,7 @@ async function postParsed(rawText, sig) {
   check('source Meta Ads, statut Nouveau prospect', cl[0].source === 'Meta Ads' && cl[0].statut === 'Nouveau prospect');
   check('telephone nettoye (+22790112233), ville Maradi', cl[0].tel === '+22790112233' && cl[0].ville === 'Maradi', cl[0]);
   check('assigne a Harouna', cl[0].asg === 'Harouna');
-  check('origine du lead : reponse du formulaire + ID annonce', /Purificateur maison/.test(cl[0].origine_lead) && /AD9/.test(cl[0].origine_lead), cl[0].origine_lead);
+  check('contenu du formulaire : reponses ; ID annonce dans sa colonne', /Purificateur maison/.test(cl[0].origine_lead) && /Phone number : \+22790112233/.test(cl[0].origine_lead) && cl[0].lead_annonce_id === 'AD9', cl[0]);
   check('notes laissees vides', cl[0].notes === '', cl[0].notes);
   check('fiche pipeline creee', (await sqlRaw`SELECT * FROM pipeline WHERE nom='Aminata Diallo' AND etape='Nouveau prospect' AND asg='Harouna'`).length === 1);
   const nt = await sqlRaw`SELECT * FROM notifications`;

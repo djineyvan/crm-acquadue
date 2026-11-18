@@ -70,11 +70,12 @@ global.fetch = async function (url) {
   check('lead accepte', r.statusCode === 200 && r.body.ok !== false, r.body);
   let cl = (await sqlRaw`SELECT * FROM clients WHERE nom='Awa Noms'`)[0];
   check('fiche creee', !!cl);
-  check('origine du lead : campagne', /Campagne : Purificateur Novembre/.test(cl.origine_lead), cl.origine_lead);
-  check('origine du lead : ensemble de publicites', /Ensemble de publicites : Niamey 25-45 ans/.test(cl.origine_lead), cl.origine_lead);
-  check('origine du lead : annonce avec son ID', /Annonce : Video famille 30s \(ID AD1\)/.test(cl.origine_lead), cl.origine_lead);
-  check('origine du lead : formulaire avec son nom', /Formulaire : Formulaire devis purificateur \(ID F7\)/.test(cl.origine_lead), cl.origine_lead);
-  check('origine du lead : plateforme Instagram', /via Meta \(Instagram\)/.test(cl.origine_lead), cl.origine_lead);
+  check('colonne campagne', cl.lead_campagne === 'Purificateur Novembre', cl.lead_campagne);
+  check('colonne ensemble de publicites', cl.lead_ensemble === 'Niamey 25-45 ans', cl.lead_ensemble);
+  check('colonnes annonce + ID', cl.lead_annonce === 'Video famille 30s' && cl.lead_annonce_id === 'AD1', [cl.lead_annonce, cl.lead_annonce_id]);
+  check('colonnes formulaire + ID', cl.lead_formulaire === 'Formulaire devis purificateur' && cl.lead_formulaire_id === 'F7', [cl.lead_formulaire, cl.lead_formulaire_id]);
+  check('colonne « lead recu via » : Meta (Instagram), date de reception remplie', cl.lead_via === 'Meta (Instagram)' && /^\d{4}-\d{2}-\d{2}T/.test(cl.lead_recu_le || ''), [cl.lead_via, cl.lead_recu_le]);
+  check('contenu du formulaire : les reponses, sans en-tete', /Full name : Awa Noms/.test(cl.origine_lead) && !/Campagne :|Lead recu via/.test(cl.origine_lead), cl.origine_lead);
   check('notes laissees vides (origine dans sa propre case)', cl.notes === '', cl.notes);
   let ml = (await sqlRaw`SELECT * FROM meta_leads WHERE leadgen_id='A1'`)[0];
   check('meta_leads : noms enregistres', ml.campagne === 'Purificateur Novembre' && ml.annonce === 'Video famille 30s' && ml.ensemble === 'Niamey 25-45 ans' && ml.formulaire === 'Formulaire devis purificateur' && ml.plateforme === 'Instagram', ml);
@@ -87,7 +88,7 @@ global.fetch = async function (url) {
   r = await post(payload('A2', 'AD2'));
   cl = (await sqlRaw`SELECT * FROM clients WHERE nom='Bio Annonce'`)[0];
   check('fiche creee', !!cl, r.body);
-  check("noms lus sur l'annonce", /Campagne : Notoriete Maradi/.test(cl.origine_lead) && /Annonce : Carrousel produits \(ID AD2\)/.test(cl.origine_lead) && /Ensemble de publicites : Maradi/.test(cl.origine_lead), cl.origine_lead);
+  check("noms lus sur l'annonce", cl.lead_campagne === 'Notoriete Maradi' && cl.lead_annonce === 'Carrousel produits' && cl.lead_annonce_id === 'AD2' && cl.lead_ensemble === 'Maradi', cl);
 
   section('3. Meta refuse tous les bonus : le lead est quand meme cree');
   mode = 'refus';
@@ -95,8 +96,8 @@ global.fetch = async function (url) {
   cl = (await sqlRaw`SELECT * FROM clients WHERE nom='Cisse Refus'`)[0];
   ml = (await sqlRaw`SELECT * FROM meta_leads WHERE leadgen_id='A3'`)[0];
   check('lead cree normalement (statut ok)', !!cl && ml.status === 'ok', ml);
-  check('les identifiants restent dans l\'origine du lead', /Annonce : \(ID\) AD3/.test(cl.origine_lead) && /Formulaire : \(ID\) F7/.test(cl.origine_lead), cl.origine_lead);
-  check('aucun nom invente', !/Campagne :/.test(cl.origine_lead) && ml.campagne === null && ml.annonce === null, ml);
+  check('les identifiants sont quand meme enregistres', cl.lead_annonce_id === 'AD3' && cl.lead_formulaire_id === 'F7', cl);
+  check('aucun nom invente', cl.lead_campagne === '' && cl.lead_annonce === '' && ml.campagne === null && ml.annonce === null, ml);
 
   section('4. Meta ne repond pas aux bonus : pas de blocage');
   mode = 'lent';

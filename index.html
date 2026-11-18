@@ -1856,7 +1856,10 @@ function viewPipeCard(id){
     ['Produit lie', (produit ? produit.nom : p.sku || '-') + (p.qte ? ' x' + p.qte : '')],
     ['Entrepot concerne', p.entrepot || '-'],
     ['Stock reserve pour cette vente', p.reservationFaite ? '<span style="color:var(--gold);font-weight:700">✓ Reserve (' + p.qte + ' unite(s))</span>' : '<span class="td-muted">Pas encore reserve</span>'],
-    ['Origine du lead', origineLeadHtml(clLinked ? clLinked.origineLead : '')],
+    ['Pub Meta', (clLinked && estLeadMeta(clLinked))
+      ? [clLinked.leadCampagne, clLinked.leadEnsemble, clLinked.leadAnnonce].filter(Boolean).map(leadEsc).join(' › ') + (clLinked.leadAnnonceId ? ' <span class="td-muted">(ID ' + leadEsc(clLinked.leadAnnonceId) + ')</span>' : '') || '<span class="td-muted">-</span>'
+      : '<span class="td-muted">-</span>'],
+    ['Contenu du formulaire', origineLeadHtml(clLinked ? clLinked.origineLead : '')],
     ['Notes', p.notes ? p.notes.replace(/\n/g,'<br/>') : '<span class="td-muted">-</span>'],
     ['Statut de verrouillage', p.locked ? lockBadge() : '<span class="td-muted">Modifiable</span>']
   ];
@@ -2393,7 +2396,7 @@ function renderClients(c){
   h += '<div id="tl-c" style="display:none"><div class="card"><div class="table-wrap"><table id="tbl-b2b"></table></div></div></div>';
   c.innerHTML = h;
 
-  const data = CLIENTS.filter(visibleClientFilter).filter(matchesClientFilters).filter(function(x){ return searchMatch(x, ['nom','tel','ville','zone','produit','asg','statut','source','notes','origineLead']); });
+  const data = CLIENTS.filter(visibleClientFilter).filter(matchesClientFilters).filter(function(x){ return searchMatch(x, ['nom','tel','ville','zone','produit','asg','statut','source','notes','origineLead','leadCampagne','leadEnsemble','leadAnnonce']); });
   function mkTable(d){
     return '<thead><tr><th>#</th><th>Client</th><th>Type</th><th>Ville</th><th>Source</th><th>Produit</th><th>Commercial</th><th>Notes</th><th>Statut</th><th>Date</th><th></th></tr></thead><tbody>' +
       d.map(function(cl,i){
@@ -2483,7 +2486,7 @@ function clientFiltersPanelHtml(){
   h += '<div class="form-row">' + selectField('cf-statut','Statut', CLIENT_FILTERS.statut, statuts) + selectField('cf-asg','Commercial', CLIENT_FILTERS.asg, commerciaux) + '</div>';
   h += '<div class="form-row">' +
     '<div class="form-group"><label class="form-label">Produit (contient)</label><input class="form-input" id="cf-produit" value="' + CLIENT_FILTERS.produit.replace(/"/g,'&quot;') + '" oninput="applyClientFilters()" placeholder="Ex: bougie"/></div>' +
-    '<div class="form-group"><label class="form-label">Notes ou origine (contient)</label><input class="form-input" id="cf-notes" value="' + CLIENT_FILTERS.notes.replace(/"/g,'&quot;') + '" oninput="applyClientFilters()" placeholder="Ex: rappeler"/></div>' +
+    '<div class="form-group"><label class="form-label">Notes ou formulaire (contient)</label><input class="form-input" id="cf-notes" value="' + CLIENT_FILTERS.notes.replace(/"/g,'&quot;') + '" oninput="applyClientFilters()" placeholder="Ex: rappeler"/></div>' +
     '</div>';
   h += '<div class="form-row">' +
     '<div class="form-group"><label class="form-label">Date de creation — du</label><input class="form-input" type="date" id="cf-date-from" value="' + CLIENT_FILTERS.dateFrom + '" onchange="applyClientFilters()"/></div>' +
@@ -2499,6 +2502,39 @@ function origineLeadHtml(txt){
   if(!txt) return '<span class="td-muted">-</span>';
   return String(txt).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }).replace(/\n/g,'<br/>');
 }
+// Informations du lead Meta, une ligne chacune (18/11/2026). Remplies par le
+// serveur des l'arrivee du lead ; affichees en lecture seule.
+function leadEsc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function leadDateTexte(cl){
+  const v = cl && cl.leadRecuLe;
+  if(v && /^\d{4}-\d{2}-\d{2}$/.test(v)){ const p = v.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
+  if(v){
+    const d = new Date(v);
+    if(!isNaN(d.getTime())) return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear() +
+      ' a ' + String(d.getHours()).padStart(2,'0') + 'h' + String(d.getMinutes()).padStart(2,'0');
+  }
+  // Pas de date Meta : heure de creation de la fiche (son identifiant).
+  return (typeof pipeDateRecuTexte === 'function') ? pipeDateRecuTexte(cl, true) : '-';
+}
+function leadNomEtId(nom, id){
+  if(!nom && !id) return '<span class="td-muted">-</span>';
+  return (nom ? leadEsc(nom) : '') + (id ? ' <span class="td-muted">(ID ' + leadEsc(id) + ')</span>' : '');
+}
+function estLeadMeta(cl){ return !!(cl && (cl.source === 'Meta Ads' || cl.leadVia || cl.leadCampagne || cl.leadAnnonceId)); }
+function leadMetaRows(cl){
+  const vide = '<span class="td-muted">-</span>';
+  const rows = [];
+  if(estLeadMeta(cl)) rows.push(['Lead recu via', cl.leadVia ? leadEsc(cl.leadVia) : 'Meta']);
+  rows.push(['Date de reception du lead', '📥 ' + leadDateTexte(cl)]);
+  if(estLeadMeta(cl)){
+    rows.push(['Nom de la campagne', cl.leadCampagne ? leadEsc(cl.leadCampagne) : vide]);
+    rows.push(['Ensemble de publicites', cl.leadEnsemble ? leadEsc(cl.leadEnsemble) : vide]);
+    rows.push(['Publicite (annonce) et ID', leadNomEtId(cl.leadAnnonce, cl.leadAnnonceId)]);
+    rows.push(['Formulaire (ID)', leadNomEtId(cl.leadFormulaire, cl.leadFormulaireId)]);
+  }
+  rows.push(['Contenu du formulaire', origineLeadHtml(cl.origineLead)]);
+  return rows;
+}
 function viewClientDetail(id){
   const cl = CLIENTS.find(function(x){return String(x.id)===String(id);});
   if(!cl) return;
@@ -2510,8 +2546,8 @@ function viewClientDetail(id){
     ['Telephone', cl.tel || '-'],
     ['Email', cl.email || '-'],
     ['Societe', cl.societe || '-'],
-    ['Source du prospect', cl.source || '-'],
-    ['Origine du lead', origineLeadHtml(cl.origineLead)],
+    ['Source du prospect', cl.source || '-']
+  ].concat(leadMetaRows(cl)).concat([
     ['Produit d\'interet', cl.produit],
     ['Commercial assigne', cl.asg],
     ['Notes', cl.notes ? cl.notes.replace(/\n/g,'<br/>') : '<span class="td-muted">-</span>'],
@@ -2519,7 +2555,7 @@ function viewClientDetail(id){
     ['Date de creation', cl.date],
     ['Verrouillage', cl.locked ? lockBadge() : '<span class="td-muted">Modifiable</span>'],
     ['Historique (appels, emails, RDV, notes)', histo]
-  ];
+  ]);
   if(cl.lastModifiedBy) rows.push(['Derniere modification', modStampHtml(cl)]);
 
   openDetailModal('Detail Client — ' + cl.nom, rows, {
@@ -2528,7 +2564,7 @@ function viewClientDetail(id){
     dept: 'Commercial',
     owner: cl.asg,
     rowKeys: { 'Nom':'nom', 'Type':'type', 'Ville / Zone':['ville','zone'], 'Telephone':'tel', 'Email':'email',
-               'Source du prospect':'source', 'Origine du lead':'origineLead', 'Produit d\'interet':'produit',
+               'Source du prospect':'source', 'Contenu du formulaire':'origineLead', 'Produit d\'interet':'produit',
                'Commercial assigne':'asg', 'Notes':'notes', 'Statut':['statut','raisonNq'] },
     fields: [
       ['Nom', 'nom', cl.nom],
@@ -2558,7 +2594,7 @@ function viewClientDetail(id){
         if(CU && CU.nom && noms.indexOf(CU.nom) < 0) noms.push(CU.nom);
         return noms.map(function(n){ return {label:n, selected:n===cl.asg}; });
       })(), 'select'],
-      ['Origine du lead', 'origineLead', cl.origineLead || '', 'textarea'],
+      ['Contenu du formulaire', 'origineLead', cl.origineLead || '', 'textarea'],
       ['Notes', 'notes', cl.notes || '', 'textarea'],
       ['Statut', 'statut', [
         {label:'Nouveau prospect',selected:cl.statut==='Nouveau prospect'},
@@ -7671,6 +7707,8 @@ function mapClientFromDb(r){
     societe:r.societe, source:r.source, statut:r.statut, produit:r.produit, asg:r.asg, notes:r.notes||'',
     date:r.date_creation, locked:r.locked, historique:r.historique||[], raisonNq:r.raison_nq||'',
     origineLead:r.origine_lead||'',
+    leadVia:r.lead_via||'', leadRecuLe:r.lead_recu_le||'', leadCampagne:r.lead_campagne||'', leadEnsemble:r.lead_ensemble||'',
+    leadAnnonce:r.lead_annonce||'', leadAnnonceId:r.lead_annonce_id||'', leadFormulaire:r.lead_formulaire||'', leadFormulaireId:r.lead_formulaire_id||'',
     lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapPipelineFromDb(r){
