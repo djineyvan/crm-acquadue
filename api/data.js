@@ -45,7 +45,8 @@ const ENTITY_MAP = {
 // without risking SQL injection through arbitrary keys.
 const COLUMNS = {
   clients: ['id','nom','type','ville','zone','tel','email','societe','source','statut','produit','asg','notes','date_creation','locked','historique','raison_nq','last_modified_by','last_modified_at'],
-  pipeline: ['id','nom','type','val','etape','asg','ville','tel','date_estimee','locked','sku','qte','entrepot','reservation_faite','last_modified_by','last_modified_at'],
+  pipeline: ['id','nom','type','val','etape','asg','ville','tel','date_estimee','locked','sku','qte','entrepot','reservation_faite','last_modified_by','last_modified_at',
+             'quartier','pub','appele','rappel_soir','relance_j2','resultat_appel','date_livraison','montant'],
   tasks: ['id','titre','asg','dept','pri','statut','date_limite','desc_tache','locked','rapport','last_modified_by','last_modified_at'],
   comm_perf: ['id','nom','ville','zone','obj','ventes','nb','tx','date_enregistrement','historique_modifs'],
   campagnes: ['id','nom','canal','budget','statut','leads','cout_lead','debut','fin','resp','locked','last_modified_by','last_modified_at'],
@@ -69,6 +70,30 @@ const COLUMNS = {
   roi_concurrents: ['id','format','volume_litres','prix'],
   promo_packs: ['id','nom','lignes','prix_pack','actif','last_modified_by','last_modified_at'],
 };
+
+// Suivi d'appel du Pipeline (18/11/2026) : colonnes ajoutees normalement par
+// /api/init-db apres la connexion. Si une ecriture arrive avant (colonne
+// absente, code Postgres 42703), on les ajoute ici puis on reessaie une fois.
+const PIPELINE_SUIVI_COLS = {
+  quartier: 'TEXT', pub: 'TEXT', appele: 'BOOLEAN DEFAULT false', rappel_soir: 'BOOLEAN DEFAULT false',
+  relance_j2: 'BOOLEAN DEFAULT false', resultat_appel: 'TEXT', date_livraison: 'TEXT', montant: 'INT'
+};
+async function ensurePipelineSuiviCols(sql) {
+  for (const c of Object.keys(PIPELINE_SUIVI_COLS)) {
+    await sql.query('ALTER TABLE pipeline ADD COLUMN IF NOT EXISTS ' + c + ' ' + PIPELINE_SUIVI_COLS[c]);
+  }
+}
+async function queryAvecSuivi(sql, entityKey, query, values) {
+  try {
+    return await sql.query(query, values);
+  } catch (e) {
+    if (entityKey === 'pipeline' && e && e.code === '42703') {
+      await ensurePipelineSuiviCols(sql);
+      return await sql.query(query, values);
+    }
+    throw e;
+  }
+}
 
 module.exports = async function handler(req, res) {
   // Securite : plus d'en-tete CORS ouvert (Access-Control-Allow-Origin: *).
@@ -124,7 +149,7 @@ module.exports = async function handler(req, res) {
                     'ON CONFLICT (' + meta.idCol + ') DO NOTHING RETURNING *';
       let result;
       try {
-        result = await sql.query(queryWithConflict, values);
+        result = await queryAvecSuivi(sql, entityKey, queryWithConflict, values);
       } catch (conflictErr) {
         // Postgres 42P10: no unique/exclusion constraint matching ON CONFLICT.
         // This happens on tables created by an older schema version that never
@@ -163,7 +188,7 @@ module.exports = async function handler(req, res) {
       });
       values.push(id);
       const query = 'UPDATE ' + meta.table + ' SET ' + setClause + ' WHERE ' + meta.idCol + ' = $' + (values.length) + ' RETURNING *';
-      const result = await sql.query(query, values);
+      const result = await queryAvecSuivi(sql, entityKey, query, values);
       if (result.length === 0) return res.status(404).json({ error: 'Enregistrement introuvable' });
       return res.status(200).json({ success: true, row: result[0] });
     }

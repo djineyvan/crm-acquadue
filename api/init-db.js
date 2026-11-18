@@ -33,6 +33,9 @@ const COLUMN_TYPES = {
     etape: "TEXT DEFAULT 'Nouveau prospect'", asg: 'TEXT', ville: 'TEXT', tel: 'TEXT', date_estimee: 'TEXT',
     locked: 'BOOLEAN DEFAULT false', sku: 'TEXT', qte: 'INT DEFAULT 1', entrepot: 'TEXT',
     reservation_faite: 'BOOLEAN DEFAULT false', last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP',
+    // Suivi d'appel (18/11/2026) : repris de la feuille « Suivi des contacts ».
+    quartier: 'TEXT', pub: 'TEXT', appele: 'BOOLEAN DEFAULT false', rappel_soir: 'BOOLEAN DEFAULT false',
+    relance_j2: 'BOOLEAN DEFAULT false', resultat_appel: 'TEXT', date_livraison: 'TEXT', montant: 'INT',
     created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   tasks: {

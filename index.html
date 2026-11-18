@@ -337,6 +337,59 @@ let AUDIT = [];
 const PIPELINE_STAGES = ["Nouveau prospect","Contacte","Offre envoyee","En negociation","Gagne","Perdu","Non qualifie"];
 const PIPELINE_CLOSED_STAGES = ["Gagne","Perdu","Non qualifie"];
 function isPipelineClosed(etape){ return PIPELINE_CLOSED_STAGES.indexOf(etape) >= 0; }
+
+// ── SUIVI D'APPEL + DATE DE RECEPTION (18/11/2026) ──────────────────────────
+// Repris de la feuille « Suivi des contacts Acqua Due » (demande explicite) :
+// chaque contact du Pipeline a maintenant son suivi d'appel (cases Appele /
+// Rappel soir / Relance J+2, resultat de l'appel, quartier, pub, livraison,
+// montant, date de changement du filtre = livraison + 90 jours).
+const PIPE_RESULTATS_APPEL = ['Pas de reponse','Vocal envoye','Interesse','Livraison prevue','Pas interesse','Hors Niamey'];
+const PIPE_PUBS = ['V1','V2','V3','Autre'];
+const PIPE_FILTRE_JOURS = 90;
+function pipeEsc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function pipeIsoLocal(d){
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+// Date de reception du contact dans le CRM. L'identifiant de chaque fiche est
+// l'heure exacte de sa creation (Date.now(), y compris pour les leads Meta) :
+// c'est la source la plus fiable. A defaut, on prend created_at de la base.
+function pipeDateRecu(p){
+  if(!p) return null;
+  const n = Number(p.id);
+  if(n > 1500000000000 && n < Date.now() + 86400000) return new Date(n);
+  if(p.createdAt){ const d = new Date(p.createdAt); if(!isNaN(d.getTime())) return d; }
+  return null;
+}
+function pipeDateRecuISO(p){ const d = pipeDateRecu(p); return d ? pipeIsoLocal(d) : ''; }
+function pipeDateRecuTexte(p, avecHeure){
+  const d = pipeDateRecu(p);
+  if(!d) return '-';
+  const j = String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
+  return avecHeure ? j + ' a ' + String(d.getHours()).padStart(2,'0') + 'h' + String(d.getMinutes()).padStart(2,'0') : j;
+}
+// « Changer le filtre le » = date de livraison + 90 jours (comme dans la feuille).
+function pipeChangerFiltreISO(p){
+  if(!p || !/^\d{4}-\d{2}-\d{2}$/.test(p.dateLivraison || '')) return '';
+  const pr = p.dateLivraison.split('-');
+  const d = new Date(parseInt(pr[0]), parseInt(pr[1]) - 1, parseInt(pr[2]));
+  d.setDate(d.getDate() + PIPE_FILTRE_JOURS);
+  return pipeIsoLocal(d);
+}
+// Nombre de jours avant le changement de filtre (negatif = en retard), ou null.
+function pipeJoursAvantFiltre(p){
+  const iso = pipeChangerFiltreISO(p);
+  if(!iso) return null;
+  const pr = iso.split('-');
+  const cible = new Date(parseInt(pr[0]), parseInt(pr[1]) - 1, parseInt(pr[2]));
+  const t = new Date(); const auj = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+  return Math.round((cible - auj) / 86400000);
+}
+// Qui peut remplir le suivi : le commercial de la fiche, le Super Admin, ou
+// un role ayant la permission « Modifier informations prospect ».
+function peutSuivrePipe(p){
+  if(!CU || !p) return false;
+  return isSuperAdmin() || p.asg === CU.nom || (typeof canModifyProspectInfo === 'function' && canModifyProspectInfo());
+}
 // Statuts Clients & Prospects, dans le meme ordre que PIPELINE_STAGES.
 const CLIENT_STATUTS = ["Nouveau prospect","Contacte","Offre envoyee","En negociation","Client actif","Client perdu","Non qualifie"];
 
@@ -1594,6 +1647,44 @@ function setPipeAgentFilter(value){
   PIPE_AGENT_FILTER = value;
   renderPipeBoard();
 }
+// Filtre par periode de reception (18/11/2026) : deux calendriers « du » / « au »
+// (format AAAA-MM-JJ des champs date) + raccourcis. Vide = pas de filtre.
+let PIPE_DATE_DU = '';
+let PIPE_DATE_AU = '';
+let PIPE_PERIODE_RAPIDE = ''; // raccourci choisi (pour le garder affiche apres un rafraichissement)
+function pipeDansPeriode(p){
+  if(!PIPE_DATE_DU && !PIPE_DATE_AU) return true;
+  const iso = pipeDateRecuISO(p);
+  if(!iso) return false;
+  if(PIPE_DATE_DU && iso < PIPE_DATE_DU) return false;
+  if(PIPE_DATE_AU && iso > PIPE_DATE_AU) return false;
+  return true;
+}
+function setPipePeriode(du, au){
+  PIPE_DATE_DU = /^\d{4}-\d{2}-\d{2}$/.test(du || '') ? du : '';
+  PIPE_DATE_AU = /^\d{4}-\d{2}-\d{2}$/.test(au || '') ? au : '';
+  // Si les deux dates sont inversees, on les remet dans l'ordre.
+  if(PIPE_DATE_DU && PIPE_DATE_AU && PIPE_DATE_DU > PIPE_DATE_AU){ const t = PIPE_DATE_DU; PIPE_DATE_DU = PIPE_DATE_AU; PIPE_DATE_AU = t; }
+  const a = el('pipe-date-du'), b = el('pipe-date-au'), r = el('pipe-periode-rapide');
+  if(a) a.value = PIPE_DATE_DU;
+  if(b) b.value = PIPE_DATE_AU;
+  if(!PIPE_DATE_DU && !PIPE_DATE_AU) PIPE_PERIODE_RAPIDE = '';
+  if(r) r.value = PIPE_PERIODE_RAPIDE;
+  renderPipeBoard();
+}
+function setPipePeriodeRapide(choix){
+  PIPE_PERIODE_RAPIDE = choix || '';
+  const t = new Date();
+  const auj = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+  const decal = function(n){ const d = new Date(auj); d.setDate(d.getDate() + n); return pipeIsoLocal(d); };
+  if(choix === 'auj') return setPipePeriode(decal(0), decal(0));
+  if(choix === 'hier') return setPipePeriode(decal(-1), decal(-1));
+  if(choix === '7j') return setPipePeriode(decal(-6), decal(0));
+  if(choix === '30j') return setPipePeriode(decal(-29), decal(0));
+  if(choix === 'mois') return setPipePeriode(pipeIsoLocal(new Date(auj.getFullYear(), auj.getMonth(), 1)), decal(0));
+  if(choix === 'moisprec') return setPipePeriode(pipeIsoLocal(new Date(auj.getFullYear(), auj.getMonth()-1, 1)), pipeIsoLocal(new Date(auj.getFullYear(), auj.getMonth(), 0)));
+  return setPipePeriode('', '');
+}
 function renderPipe(c){
   let h = '<div style="margin-bottom:11px;display:flex;gap:8px;align-items:center">';
   h += '<div class="tabs">' +
@@ -1613,15 +1704,37 @@ function renderPipe(c){
   }
   h += '<button class="btn btn-ghost btn-sm" onclick="openRoiCalc()">🧮 Calculateur ROI</button>';
   h += '<button class="btn btn-red btn-sm" onclick="openModal(\'modal-prospect\')">+ Nouveau prospect</button>';
-  h += '</div><div class="pipeline" id="pipe-board"></div>';
+  h += '</div>';
+  // Filtre par periode de reception (calendriers).
+  const champDate = 'class="form-input" style="width:auto;padding:5px 8px;font-size:12px"';
+  h += '<div style="margin-bottom:11px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px">' +
+    '<span style="font-weight:600">📅 Recus</span>' +
+    '<select id="pipe-periode-rapide" class="form-input" style="width:auto;padding:5px 8px;font-size:12px" onchange="setPipePeriodeRapide(this.value)">' +
+      [['','Toute periode'],['auj','Aujourd\'hui'],['hier','Hier'],['7j','7 derniers jours'],['30j','30 derniers jours'],['mois','Ce mois-ci'],['moisprec','Le mois dernier']]
+        .map(function(o){ return '<option value="'+o[0]+'"'+(PIPE_PERIODE_RAPIDE===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('') +
+      ((PIPE_DATE_DU || PIPE_DATE_AU) && !PIPE_PERIODE_RAPIDE ? '<option value="" selected disabled>Dates choisies</option>' : '') +
+    '</select>' +
+    '<span>du</span><input type="date" id="pipe-date-du" ' + champDate + ' value="' + PIPE_DATE_DU + '" onchange="PIPE_PERIODE_RAPIDE=\'\';setPipePeriode(this.value, PIPE_DATE_AU)">' +
+    '<span>au</span><input type="date" id="pipe-date-au" ' + champDate + ' value="' + PIPE_DATE_AU + '" onchange="PIPE_PERIODE_RAPIDE=\'\';setPipePeriode(PIPE_DATE_DU, this.value)">' +
+    '<button class="btn btn-ghost btn-sm" onclick="setPipePeriode(\'\',\'\')">✕ Effacer</button>' +
+    '<span id="pipe-periode-info" class="td-muted"></span>' +
+    '</div>';
+  h += '<div class="pipeline" id="pipe-board"></div>';
   c.innerHTML = h;
   renderPipeBoard();
 }
 
 function renderPipeBoard(){
-  const data = PIPELINE.filter(visiblePipeFilter).filter(function(x){ return searchMatch(x, ['nom','ville','tel','asg','sku','type']); })
+  const data = PIPELINE.filter(visiblePipeFilter).filter(function(x){ return searchMatch(x, ['nom','ville','tel','asg','sku','type','quartier']); })
     .filter(function(x){ return PIPE_TYPE_FILTER === 'Tous' || x.type === PIPE_TYPE_FILTER; })
-    .filter(function(x){ return !isResponsableOrAbove() || PIPE_AGENT_FILTER === 'Tous' || x.asg === PIPE_AGENT_FILTER; });
+    .filter(function(x){ return !isResponsableOrAbove() || PIPE_AGENT_FILTER === 'Tous' || x.asg === PIPE_AGENT_FILTER; })
+    .filter(pipeDansPeriode);
+  const info = el('pipe-periode-info');
+  if(info){
+    info.textContent = (PIPE_DATE_DU || PIPE_DATE_AU)
+      ? data.length + ' contact(s) recu(s) ' + (PIPE_DATE_DU === PIPE_DATE_AU ? 'le ' + formatDateFr(PIPE_DATE_DU) : (PIPE_DATE_DU ? 'du ' + formatDateFr(PIPE_DATE_DU) + ' ' : '') + (PIPE_DATE_AU ? 'au ' + formatDateFr(PIPE_DATE_AU) : 'a aujourd\'hui'))
+      : '';
+  }
   const cols = ["muted2","blue","gold","purple","green","red","muted"];
   let board = '';
   PIPELINE_STAGES.forEach(function(stage, i){
@@ -1629,11 +1742,94 @@ function renderPipeBoard(){
     const total = cards.reduce(function(s,x){return s+x.val;},0);
     board += '<div class="pipeline-col"><div class="pipeline-col-header"><span style="color:var(--'+cols[i]+')">'+stage+'</span><span>'+cards.length+'</span></div>';
     board += cards.map(function(card){
-      return '<div class="pipeline-card" onclick="viewPipeCard('+card.id+')"><div class="pipeline-card-name">'+card.nom+(card.locked?' 🔒':'')+'</div><div class="pipeline-card-sub">'+card.type+' • '+card.ville+' • '+card.asg.split(' ')[0]+(card.tel?' • 📞 '+card.tel:'')+'</div><div class="pipeline-card-val">'+fcfa(card.val)+'</div>'+(card.etape==='Non qualifie'?raisonNqBadge(findLinkedClient(card)):'')+'</div>';
+      return '<div class="pipeline-card" onclick="viewPipeCard('+card.id+')"><div class="pipeline-card-name">'+card.nom+(card.locked?' 🔒':'')+'</div><div class="pipeline-card-sub">'+card.type+' • '+card.ville+' • '+card.asg.split(' ')[0]+(card.tel?' • 📞 '+card.tel:'')+'</div>'+pipeCardSuiviHtml(card)+'<div class="pipeline-card-val">'+fcfa(card.val)+'</div>'+(card.etape==='Non qualifie'?raisonNqBadge(findLinkedClient(card)):'')+'</div>';
     }).join('');
     board += '<div class="td-muted" style="text-align:right;margin-top:4px;padding-top:4px;border-top:1px solid var(--border)">Total: '+fcfa(total)+'</div></div>';
   });
   el('pipe-board').innerHTML = board;
+}
+
+// Petites lignes ajoutees sur chaque carte du Pipeline : date de reception,
+// cases d'appel cochees, resultat de l'appel, livraison et changement de filtre.
+function pipeCardSuiviHtml(p){
+  let h = '<div class="pipeline-card-sub">📥 Recu le ' + pipeDateRecuTexte(p) + (p.quartier ? ' • ' + pipeEsc(p.quartier) : '') + (p.pub ? ' • Pub ' + pipeEsc(p.pub) : '') + '</div>';
+  const cases = [];
+  if(p.appele) cases.push('☎️ Appele');
+  if(p.rappelSoir) cases.push('🌙 Rappel soir');
+  if(p.relanceJ2) cases.push('🔁 J+2');
+  if(cases.length || p.resultatAppel){
+    h += '<div class="pipeline-card-sub">' + cases.join(' ') + (p.resultatAppel ? (cases.length ? ' • ' : '') + '<strong>' + pipeEsc(p.resultatAppel) + '</strong>' : '') + '</div>';
+  }
+  if(p.dateLivraison){
+    const j = pipeJoursAvantFiltre(p);
+    const filtre = j === null ? '' : (j < 0 ? ' • <span style="color:var(--red);font-weight:700">🔧 filtre en retard</span>'
+      : (j <= 7 ? ' • <span style="color:var(--gold);font-weight:700">🔧 filtre le ' + formatDateFr(pipeChangerFiltreISO(p)) + '</span>' : ''));
+    h += '<div class="pipeline-card-sub">🚚 Livre le ' + formatDateFr(p.dateLivraison) + (p.montant ? ' • ' + fcfa(p.montant) : '') + filtre + '</div>';
+  }
+  return h;
+}
+
+// Bloc « Suivi d'appel » dans la fiche detaillee. Chaque changement est
+// enregistre tout de suite (pas besoin de bouton « Enregistrer »).
+function pipeSuiviBlocHtml(p){
+  const filtreIso = pipeChangerFiltreISO(p);
+  const filtreTxt = filtreIso ? formatDateFr(filtreIso) : '<span class="td-muted">(apres la date de livraison)</span>';
+  if(!peutSuivrePipe(p)){
+    const oui = function(b){ return b ? '✅ Oui' : '<span class="td-muted">Non</span>'; };
+    return '<table style="width:100%;font-size:12px">' +
+      '<tr><td>Quartier / Commune</td><td>' + (pipeEsc(p.quartier) || '-') + '</td></tr>' +
+      '<tr><td>Pub</td><td>' + (pipeEsc(p.pub) || '-') + '</td></tr>' +
+      '<tr><td>Appele</td><td>' + oui(p.appele) + '</td></tr>' +
+      '<tr><td>Rappel soir</td><td>' + oui(p.rappelSoir) + '</td></tr>' +
+      '<tr><td>Relance J+2</td><td>' + oui(p.relanceJ2) + '</td></tr>' +
+      '<tr><td>Resultat de l\'appel</td><td>' + (pipeEsc(p.resultatAppel) || '-') + '</td></tr>' +
+      '<tr><td>Date de livraison</td><td>' + formatDateFr(p.dateLivraison) + '</td></tr>' +
+      '<tr><td>Montant (FCFA)</td><td>' + (p.montant ? fcfa(p.montant) : '-') + '</td></tr>' +
+      '<tr><td>Changer le filtre le</td><td>' + filtreTxt + '</td></tr></table>';
+  }
+  const id = p.id;
+  const inp = 'class="form-input" style="padding:5px 8px;font-size:12px"';
+  const opts = function(liste, val){ return '<option value="">—</option>' + liste.map(function(o){ return '<option value="'+o+'"'+(o===val?' selected':'')+'>'+o+'</option>'; }).join(''); };
+  const cb = function(champ, label, val){ return '<label style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;cursor:pointer"><input type="checkbox"'+(val?' checked':'')+' onchange="savePipeSuivi('+id+',\''+champ+'\',this.checked)" style="width:17px;height:17px"> '+label+'</label>'; };
+  return '<div style="display:grid;grid-template-columns:130px 1fr;gap:7px 10px;align-items:center;font-size:12px">' +
+    '<span>Appels</span><div>' + cb('appele','☎️ Appele',p.appele) + cb('rappelSoir','🌙 Rappel soir',p.rappelSoir) + cb('relanceJ2','🔁 Relance J+2',p.relanceJ2) + '</div>' +
+    '<span>Resultat de l\'appel</span><select ' + inp + ' onchange="savePipeSuivi('+id+',\'resultatAppel\',this.value)">' + opts(PIPE_RESULTATS_APPEL, p.resultatAppel) + '</select>' +
+    '<span>Quartier / Commune</span><input type="text" ' + inp + ' value="' + pipeEsc(p.quartier) + '" placeholder="Ex : Plateau, Koira Kano…" onchange="savePipeSuivi('+id+',\'quartier\',this.value)">' +
+    '<span>Pub</span><select ' + inp + ' onchange="savePipeSuivi('+id+',\'pub\',this.value)">' + opts(PIPE_PUBS, p.pub) + '</select>' +
+    '<span>Date de livraison</span><input type="date" ' + inp + ' value="' + pipeEsc(p.dateLivraison) + '" onchange="savePipeSuivi('+id+',\'dateLivraison\',this.value)">' +
+    '<span>Montant (FCFA)</span><input type="number" min="0" step="500" ' + inp + ' value="' + (p.montant || '') + '" placeholder="Ex : 30000" onchange="savePipeSuivi('+id+',\'montant\',this.value)">' +
+    '<span>Changer le filtre le</span><strong id="pipe-suivi-filtre">' + filtreTxt + '</strong>' +
+    '</div><div id="pipe-suivi-ok" class="td-muted" style="font-size:11px;margin-top:6px;min-height:14px">Chaque changement est enregistre tout de suite.</div>';
+}
+
+const PIPE_SUIVI_COLS = { quartier:'quartier', pub:'pub', appele:'appele', rappelSoir:'rappel_soir', relanceJ2:'relance_j2',
+  resultatAppel:'resultat_appel', dateLivraison:'date_livraison', montant:'montant' };
+const PIPE_SUIVI_LABELS = { quartier:'Quartier', pub:'Pub', appele:'Appele', rappelSoir:'Rappel soir', relanceJ2:'Relance J+2',
+  resultatAppel:'Resultat de l\'appel', dateLivraison:'Date de livraison', montant:'Montant' };
+function savePipeSuivi(id, champ, valeur){
+  const p = PIPELINE.find(function(x){ return String(x.id) === String(id); });
+  if(!p || !PIPE_SUIVI_COLS[champ]) return;
+  if(!peutSuivrePipe(p)){ alert('Seul le commercial de cette fiche (ou le Super Admin) peut remplir le suivi.'); return; }
+  let v = valeur;
+  if(champ === 'appele' || champ === 'rappelSoir' || champ === 'relanceJ2') v = !!valeur;
+  else if(champ === 'montant'){ const n = parseInt(String(valeur).replace(/[^0-9]/g,''), 10); v = isNaN(n) ? null : n; }
+  else if(champ === 'dateLivraison'){ v = /^\d{4}-\d{2}-\d{2}$/.test(valeur || '') ? valeur : ''; }
+  else if(champ === 'resultatAppel'){ v = PIPE_RESULTATS_APPEL.indexOf(valeur) >= 0 ? valeur : ''; }
+  else if(champ === 'pub'){ v = PIPE_PUBS.indexOf(valeur) >= 0 ? valeur : ''; }
+  else v = String(valeur || '').trim().slice(0, 120);
+  if(p[champ] === v) return;
+  p[champ] = v;
+  stampModification(p);
+  const patch = { last_modified_by:p.lastModifiedBy, last_modified_at:p.lastModifiedAt };
+  patch[PIPE_SUIVI_COLS[champ]] = v;
+  if(typeof dbUpdate === 'function') dbUpdate('pipeline', p.id, patch);
+  const affiche = v === true ? 'Oui' : (v === false ? 'Non' : (champ === 'dateLivraison' ? formatDateFr(v) : (v === null || v === '' ? '(vide)' : v)));
+  logAction('Pipeline — suivi d\'appel', p.nom + ' : ' + PIPE_SUIVI_LABELS[champ] + ' → ' + affiche, 'blue');
+  const f = el('pipe-suivi-filtre');
+  if(f){ const iso = pipeChangerFiltreISO(p); f.innerHTML = iso ? formatDateFr(iso) : '<span class="td-muted">(apres la date de livraison)</span>'; }
+  const ok = el('pipe-suivi-ok');
+  if(ok){ ok.innerHTML = '<span style="color:var(--green);font-weight:600">✓ ' + PIPE_SUIVI_LABELS[champ] + ' enregistre</span>'; }
+  if(el('pipe-board')) renderPipeBoard();
 }
 
 function viewPipeCard(id){
@@ -1652,6 +1848,7 @@ function viewPipeCard(id){
     ['Type', typeTag(p.type)],
     ['Ville', p.ville],
     ['Telephone', p.tel || '-'],
+    ['Date de reception', '📥 ' + pipeDateRecuTexte(p, true)],
     ['Valeur estimee', '<strong style="color:var(--red)">' + fcfa(p.val) + '</strong>'],
     ['Etape du pipeline', statusTag(p.etape) + (p.etape === 'Non qualifie' ? raisonNqBadge(clLinked || findLinkedClient(p)) : '')],
     ['Commercial assigne', p.asg],
@@ -1709,6 +1906,13 @@ function viewPipeCard(id){
     ],
     onSave: function(){ go('pipe'); }
   });
+  // Bloc « Suivi d'appel » sur toute la largeur, juste sous les informations
+  // du contact (il disparait en mode « Modifier », qui remplace le contenu).
+  const tableFiche = el('detail-body') && el('detail-body').querySelector('table');
+  if(tableFiche){
+    tableFiche.insertAdjacentHTML('afterend', '<div id="pipe-suivi-bloc" style="margin-top:14px;padding:12px;border:1px solid var(--border);border-radius:var(--r2);background:var(--card2)">' +
+      '<div style="font-weight:700;font-size:13px;margin-bottom:10px">📞 Suivi d\'appel</div>' + pipeSuiviBlocHtml(p) + '</div>');
+  }
 }
 
 function advancePipelineStage(id){
@@ -7345,7 +7549,11 @@ function mapClientFromDb(r){
 function mapPipelineFromDb(r){
   return { id:r.id, nom:r.nom, type:r.type, val:r.val, etape:r.etape, asg:r.asg, ville:r.ville, tel:r.tel||'',
     dateEstimee:r.date_estimee, locked:r.locked, sku:r.sku, qte:r.qte, entrepot:r.entrepot,
-    reservationFaite:r.reservation_faite, lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
+    reservationFaite:r.reservation_faite, lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at,
+    createdAt:r.created_at||null,
+    quartier:r.quartier||'', pub:r.pub||'', appele:r.appele===true, rappelSoir:r.rappel_soir===true,
+    relanceJ2:r.relance_j2===true, resultatAppel:r.resultat_appel||'', dateLivraison:r.date_livraison||'',
+    montant:(r.montant===null||r.montant===undefined||r.montant==='') ? null : Number(r.montant) };
 }
 function mapTaskFromDb(r){
   // Un RDV ou une installation est stocke dans la meme table que les taches.

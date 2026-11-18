@@ -24,6 +24,7 @@ function modalShell(id, t, b, f) { return '<div id="' + id + '">' + t + b + f + 
 function btnGhost(l, o) { return '<button onclick="' + o + '">' + l + '</button>'; } function btnRed(l, o) { return btnGhost(l, o); }
 function choisir(r) { DOM['raison-nq-select'].value = r; confirmRaisonNq(); }
 function fcfa(v) { return v + ' F'; } function searchMatch() { return true; } function visiblePipeFilter() { return true; }
+var PIPE_DATE_DU = '', PIPE_DATE_AU = ''; function pipeDansPeriode() { return true; } // filtre de periode (18/11/2026) : teste a part
 function isResponsableOrAbove() { return false; } let PIPE_TYPE_FILTER = 'Tous', PIPE_AGENT_FILTER = 'Tous';
 function tag(t, c) { return '<span class="' + c + '">' + t + '</span>'; }
 let STOCK = [], PIPELINE = [], CLIENTS = [];
