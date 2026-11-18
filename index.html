@@ -1852,7 +1852,7 @@ function viewPipeCard(id){
     ['Valeur estimee', '<strong style="color:var(--red)">' + fcfa(p.val) + '</strong>'],
     ['Etape du pipeline', statusTag(p.etape) + (p.etape === 'Non qualifie' ? raisonNqBadge(clLinked || findLinkedClient(p)) : '')],
     ['Commercial assigne', p.asg],
-    ['Date estimee de signature', p.dateEstimee || '-'],
+    ['Date estimee de signature', /^\d{4}-\d{2}-\d{2}$/.test(p.dateEstimee||'') ? formatDateFr(p.dateEstimee) : (p.dateEstimee || '-')],
     ['Produit lie', (produit ? produit.nom : p.sku || '-') + (p.qte ? ' x' + p.qte : '')],
     ['Entrepot concerne', p.entrepot || '-'],
     ['Stock reserve pour cette vente', p.reservationFaite ? '<span style="color:var(--gold);font-weight:700">✓ Reserve (' + p.qte + ' unite(s))</span>' : '<span class="td-muted">Pas encore reserve</span>'],
@@ -1897,12 +1897,17 @@ function viewPipeCard(id){
     entity: 'pipeline',
     dept: 'Commercial',
     owner: p.asg,
+    rowKeys: { 'Nom du prospect':'nom', 'Ville':'ville', 'Telephone':'tel', 'Valeur estimee':'val',
+               'Date estimee de signature':'dateEstimee', 'Notes':'notes' },
     fields: [
       ['Nom', 'nom', p.nom],
       ['Telephone', 'tel', p.tel || ''],
       ['Valeur (FCFA)', 'val', p.val],
       ['Ville', 'ville', p.ville],
-      ['Date estimee', 'dateEstimee', p.dateEstimee || ''],
+      // Calendrier si la date est vide ou au format AAAA-MM-JJ ; sinon (ancienne
+      // saisie libre) on garde une case texte pour ne pas l'effacer.
+      ['Date estimee', 'dateEstimee', (p.dateEstimee === '—' ? '' : (p.dateEstimee || '')),
+        (!p.dateEstimee || p.dateEstimee === '—' || /^\d{4}-\d{2}-\d{2}$/.test(p.dateEstimee)) ? 'date' : 'text'],
       ['Notes', 'notes', p.notes || '', 'textarea']
     ],
     onSave: function(){ go('pipe'); }
@@ -2522,6 +2527,9 @@ function viewClientDetail(id){
     entity: 'clients',
     dept: 'Commercial',
     owner: cl.asg,
+    rowKeys: { 'Nom':'nom', 'Type':'type', 'Ville / Zone':['ville','zone'], 'Telephone':'tel', 'Email':'email',
+               'Source du prospect':'source', 'Origine du lead':'origineLead', 'Produit d\'interet':'produit',
+               'Commercial assigne':'asg', 'Notes':'notes', 'Statut':['statut','raisonNq'] },
     fields: [
       ['Nom', 'nom', cl.nom],
       ['Type', 'type', [{label:'B2C',selected:cl.type==='B2C'},{label:'B2B',selected:cl.type==='B2B'}], 'select'],
@@ -2540,7 +2548,16 @@ function viewClientDetail(id){
         {label:'Devis/Facturation',selected:cl.source==='Devis/Facturation'}
       ], 'select'],
       ['Produit', 'produit', cl.produit],
-      ['Commercial assigne', 'asg', USERS.filter(function(u){return u.departement==='Commercial';}).map(function(u){ return {label:u.nom, selected:u.nom===cl.asg}; }), 'select'],
+      // Liste : equipe Commerciale + Super Admin + le commercial actuel de la fiche
+      // (toujours present, sinon l'enregistrement effacerait le nom assigne).
+      ['Commercial assigne', 'asg', (function(){
+        const noms = [];
+        if(cl.asg) noms.push(cl.asg);
+        USERS.filter(function(u){ return u.departement === 'Commercial' || u.role === 'superadmin'; })
+          .forEach(function(u){ if(u.nom && noms.indexOf(u.nom) < 0) noms.push(u.nom); });
+        if(CU && CU.nom && noms.indexOf(CU.nom) < 0) noms.push(CU.nom);
+        return noms.map(function(n){ return {label:n, selected:n===cl.asg}; });
+      })(), 'select'],
       ['Origine du lead', 'origineLead', cl.origineLead || '', 'textarea'],
       ['Notes', 'notes', cl.notes || '', 'textarea'],
       ['Statut', 'statut', [
@@ -2726,6 +2743,7 @@ function viewTaskDetail(id){
     entity: 'tasks',
     dept: t.dept,
     owner: t.asg,
+    rowKeys: { 'Titre':'titre', 'Priorite':'pri', 'Date limite':'date', 'Date':'date', 'Description':'desc', 'Statut':'statut' },
     fields: [
       ['Titre', 'titre', t.titre],
       ['Priorite', 'pri', [
@@ -3964,6 +3982,11 @@ function viewProductDetail(sku){
   openDetailModal('Detail Produit — ' + p.nom, rows, {
     record: p,
     entity: 'produits',
+    rowKeys: { 'Nom du produit':'nom', 'Categorie':'categorie', 'Marque':'marque', 'Description':'desc',
+               'Prix d\'achat':'prix_achat', 'Prix de vente':'prix_vente', 'Prix revendeur':'prix_revendeur', 'TVA':'tva',
+               'Poids / Dimensions':['poids','dimensions'], 'Code-barres':'codebarre',
+               'Cout d\'installation (Calculateur ROI)':'roiInstallation', 'Volume par bougie (Calculateur ROI)':'roiVolumeBougieL',
+               'Cout remplacement bougie (Calculateur ROI)':'roiCoutBougie', 'Remplacer au plus tard tous les (Calculateur ROI)':'roiFrequenceBougieMois' },
     fields: [
       ['Reference (SKU)', 'sku_ref', p.sku, 'readonly'],
       ['Nom', 'nom', p.nom],
@@ -4393,6 +4416,7 @@ function viewStockDetail(sku, entrepot){
   openDetailModal('Detail Stock — ' + (p?p.nom:sku) + ' @ ' + entrepot, rows, {
     record: s,
     entity: 'stock',
+    rowKeys: { 'Entrepot':'entrepot', 'Stock Reel (physique present)':'qte', 'Stock Reserve (devis/ventes en attente)':'reserve', 'Seuil critique':'seuil' },
     fields: [
       ['Produit', 'sku_display', (p?p.nom:sku) + ' (' + sku + ')', 'readonly'],
       ['Entrepot', 'entrepot', ENTREPOTS.map(function(e){ return { label: e.nom, selected: e.nom === s.entrepot }; }), 'select'],
@@ -6521,35 +6545,104 @@ function detailRowEditable(label, fieldKey, value, type){
 
 // Open a read-only detail view. `rows` is an array of [label, value] pairs.
 // `editConfig` (optional) = { record, fields: [[label,key,currentValue,type]], onSave: fn, skipFields: [keys not to write back] }
+// Modification directe (18/11/2026, demande d'Yvan) : quand la personne a le
+// droit de modifier, les cases de la fiche sont modifiables DES L'OUVERTURE,
+// a leur place (plus besoin de cliquer sur « Modifier »), et le bouton du bas
+// devient « 💾 Enregistrer ». editConfig.rowKeys relie une ligne affichee
+// (son libelle) au(x) champ(s) modifiable(s) : { 'Telephone':'tel',
+// 'Ville / Zone':['ville','zone'] }. Les champs qui ne correspondent a aucune
+// ligne sont ajoutes apres la derniere ligne modifiable.
+function detailInputHtml(f){
+  const type = f[3] || 'text';
+  const inputId = 'detail-edit-' + f[1];
+  const surChange = ' oninput="markDetailDirty()" onchange="markDetailDirty()"';
+  if(type === 'select' && Array.isArray(f[2])){
+    return '<select class="form-select" id="' + inputId + '"' + surChange + '>' + f[2].map(function(o){ return '<option' + (o.selected?' selected':'') + '>' + o.label + '</option>'; }).join('') + '</select>';
+  }
+  if(type === 'date'){
+    return '<input type="date" class="form-input" id="' + inputId + '"' + surChange + ' value="' + (/^\d{4}-\d{2}-\d{2}$/.test(f[2]||'') ? f[2] : '') + '"/>';
+  }
+  if(type === 'textarea'){
+    return '<textarea class="form-textarea" id="' + inputId + '"' + surChange + ' style="min-height:70px">' + String(f[2]==null?'':f[2]).replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</textarea>';
+  }
+  return '<input class="form-input" id="' + inputId + '"' + surChange + ' value="' + String(f[2]==null?'':f[2]).replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"/>';
+}
+function detailTableHtml(rows, editConfig, inline){
+  if(!inline || !editConfig || !editConfig.fields){
+    return '<table style="width:100%;border-collapse:collapse">' + rows.map(function(r){ return detailRow(r[0], r[1]); }).join('') + '</table>';
+  }
+  const fields = editConfig.fields.filter(function(f){ return (f[3] || 'text') !== 'readonly'; });
+  const parCle = {}; fields.forEach(function(f){ parCle[f[1]] = f; });
+  const rowKeys = editConfig.rowKeys || {};
+  const utilises = {};
+  const lignes = [];
+  let derniereModifiable = -1;
+  rows.forEach(function(r){
+    let cles = rowKeys[r[0]];
+    if(cles && !Array.isArray(cles)) cles = [cles];
+    cles = (cles || []).filter(function(k){ return parCle[k]; });
+    if(!cles.length){ lignes.push(detailRow(r[0], r[1])); return; }
+    const contenu = cles.map(function(k){
+      utilises[k] = true;
+      const f = parCle[k];
+      return (cles.length > 1 ? '<div style="font-size:10px;color:var(--muted2);margin:2px 0">' + f[0] + '</div>' : '') + detailInputHtml(f);
+    }).join('<div style="height:6px"></div>');
+    lignes.push(detailRow(r[0], contenu));
+    derniereModifiable = lignes.length - 1;
+  });
+  // Champs modifiables sans ligne correspondante : ajoutes apres la derniere ligne modifiable.
+  const restants = fields.filter(function(f){ return !utilises[f[1]]; }).map(function(f){ return detailRow(f[0], detailInputHtml(f)); });
+  lignes.splice(derniereModifiable + 1, 0, ...restants);
+  return '<table style="width:100%;border-collapse:collapse">' + lignes.join('') + '</table>' +
+    '<div class="td-muted" style="font-size:11px;margin-top:8px">✏️ Modifiez directement les cases, puis cliquez sur « 💾 Enregistrer ».</div>';
+}
+function markDetailDirty(){
+  if(!DETAIL_CTX || DETAIL_CTX.dirty) return;
+  DETAIL_CTX.dirty = true;
+  const b = el('detail-save-btn');
+  if(b) b.innerHTML = '💾 Enregistrer les modifications';
+}
+// « Fermer » avec des changements non enregistres : on propose de les garder.
+function closeDetailModal(){
+  if(DETAIL_CTX && DETAIL_CTX.inline && DETAIL_CTX.dirty){
+    if(confirm('Vous avez fait des modifications. Voulez-vous les enregistrer ?\n\nOK = Enregistrer   ·   Annuler = Fermer sans enregistrer')){
+      saveDetailEdit();
+      return;
+    }
+  }
+  closeModal('modal-detail');
+  DETAIL_CTX = null;
+}
+function detailFooterHtml(allowed){
+  return allowed
+    ? btnGhost('Fermer', 'closeDetailModal()') + '<button class="btn btn-red" id="detail-save-btn" onclick="saveDetailEdit()">💾 Enregistrer</button>'
+    : btnGhost('Fermer', "closeModal('modal-detail')");
+}
+
 function openDetailModal(title, rows, editConfig){
-  let body = '<table style="width:100%;border-collapse:collapse">' + rows.map(function(r){ return detailRow(r[0], r[1]); }).join('') + '</table>';
+  let allowed = false;
+  if(editConfig && editConfig.record){
+    const dept = editConfig.dept || null;
+    const owner = editConfig.owner || null;
+    if(editConfig.entity === 'clients'){
+      // Seul le proprietaire de la fiche (ou le Super Admin) peut la modifier,
+      // quelle que soit la permission sensible modifier_client/modifier_prospect.
+      allowed = isSuperAdmin() || editConfig.owner === CU.nom;
+    } else if(editConfig.entity === 'pipeline'){
+      // Meme regle pour le Pipeline : seul le commercial qui a enregistre
+      // la fiche peut la modifier.
+      allowed = isSuperAdmin() || editConfig.owner === CU.nom;
+    } else {
+      allowed = isSuperAdmin() || (dept !== null && owner !== null && canEditRecord(editConfig.record, dept, owner));
+    }
+  }
+  let body = detailTableHtml(rows, editConfig, allowed);
 
   if(editConfig && editConfig.record){
     body += '<div id="detail-stamp" style="margin-top:10px">' + modStampHtml(editConfig.record) + '</div>';
   }
 
-  let footer = btnGhost('Fermer', "closeModal('modal-detail')");
-  if(editConfig && editConfig.record){
-    const dept = editConfig.dept || null;
-    const owner = editConfig.owner || null;
-    let allowed;
-    if(editConfig.entity === 'clients'){
-      // Seul le proprietaire de la fiche (ou le Super Admin) peut la modifier,
-      // quelle que soit la permission sensible modifier_client/modifier_prospect.
-      var isOwnerCl = editConfig.owner === CU.nom;
-      allowed = isSuperAdmin() || isOwnerCl;
-    } else if(editConfig.entity === 'pipeline'){
-      // Meme regle pour le Pipeline : seul le commercial qui a enregistre
-      // la fiche peut la modifier.
-      var isOwnerPipe = editConfig.owner === CU.nom;
-      allowed = isSuperAdmin() || isOwnerPipe;
-    } else {
-      allowed = isSuperAdmin() || (dept !== null && owner !== null && canEditRecord(editConfig.record, dept, owner));
-    }
-    if(allowed){
-      footer = btnGhost('Fermer', "closeModal('modal-detail')") + btnRed('✏️ Modifier', 'switchToEditMode()');
-    }
-  }
+  const footer = detailFooterHtml(allowed);
 
   const existing = el('modal-detail');
   if(existing) existing.remove();
@@ -6561,10 +6654,14 @@ function openDetailModal(title, rows, editConfig){
     title: title, record: editConfig.record, fields: editConfig.fields,
     onSave: editConfig.onSave, skipFields: editConfig.skipFields || [],
     entity: editConfig.entity || null, idField: editConfig.idField || 'id',
-    dept: editConfig.dept || null, owner: editConfig.owner || null, editing: false
+    dept: editConfig.dept || null, owner: editConfig.owner || null, editing: allowed,
+    inline: allowed, dirty: false, rows: rows, editConfig: editConfig
   } : null;
 
   openModal('modal-detail');
+  // La croix ✕ en haut passe aussi par la verification « modifications non enregistrees ».
+  const croix = el('modal-detail') && el('modal-detail').querySelector('.modal-close');
+  if(croix) croix.setAttribute('onclick', 'closeDetailModal()');
 
   // Live re-check for Clients & Prospects AND Pipeline (both depend on
   // modifier_prospect/modifier_client): the initial "allowed" above used
@@ -6585,7 +6682,7 @@ function openDetailModal(title, rows, editConfig){
 // mid-edit (don't yank the "Enregistrer" button out from under them while
 // they're typing).
 function refreshDetailModalFooter(record){
-  if(!DETAIL_CTX || DETAIL_CTX.record !== record || DETAIL_CTX.editing) return;
+  if(!DETAIL_CTX || DETAIL_CTX.record !== record || DETAIL_CTX.dirty) return;
   const modal = el('modal-detail');
   if(!modal || !modal.classList.contains('open')) return;
   let allowed;
@@ -6598,9 +6695,19 @@ function refreshDetailModalFooter(record){
   }
   const footerEl = modal.querySelector('.modal-footer');
   if(!footerEl) return;
-  footerEl.innerHTML = allowed
-    ? btnGhost('Fermer', "closeModal('modal-detail')") + btnRed('✏️ Modifier', 'switchToEditMode()')
-    : btnGhost('Fermer', "closeModal('modal-detail')");
+  if(allowed === !!DETAIL_CTX.inline) return; // rien ne change
+  // Le droit a change depuis l'ouverture : on remet le tableau dans le bon
+  // mode (cases modifiables ou lecture seule), sans toucher au reste de la
+  // fiche (bloc « Suivi d'appel », boutons d'action).
+  DETAIL_CTX.inline = allowed; DETAIL_CTX.editing = allowed;
+  const corps = el('detail-body');
+  const table = corps && corps.querySelector('table');
+  if(table){
+    const suivant = table.nextElementSibling;
+    if(suivant && /Modifiez directement les cases/.test(suivant.textContent)) suivant.remove();
+    table.outerHTML = detailTableHtml(DETAIL_CTX.rows, DETAIL_CTX.editConfig, allowed);
+  }
+  footerEl.innerHTML = detailFooterHtml(allowed);
 }
 
 function switchToEditMode(){
@@ -6651,8 +6758,17 @@ function saveDetailEdit(){
   syncDetailEditToDb(DETAIL_CTX.entity, record, oldNom);
 
   logAction('Modification', DETAIL_CTX.title + ' modifie par ' + CU.nom, 'gold');
-  closeModal('modal-detail');
   DETAIL_CTX = null;
+  // Le bouton affiche « ✓ Enregistre » un court instant, puis la fiche se ferme.
+  const b = el('detail-save-btn');
+  if(b){
+    b.innerHTML = '✓ Enregistre';
+    b.disabled = true;
+    b.style.background = 'var(--green)'; b.style.borderColor = 'var(--green)';
+    setTimeout(function(){ closeModal('modal-detail'); }, 700);
+  } else {
+    closeModal('modal-detail');
+  }
 }
 
 // Maps the in-memory (camelCase) record back to DB (snake_case) columns per entity,
