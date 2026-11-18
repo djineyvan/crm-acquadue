@@ -15,6 +15,7 @@
 
 const { getSql } = require('../lib/db');
 const { requireAuth, hashPassword, isHashed, isWeakDefaultPassword } = require('../lib/auth');
+const { separerOrigine } = require('../lib/meta');
 
 // Single source of truth: table -> { column: postgresType }
 // Keep this in sync with /api/data.js's COLUMNS whitelist (same column names).
@@ -26,6 +27,8 @@ const COLUMN_TYPES = {
     historique: "JSONB DEFAULT '[]'", last_modified_by: 'TEXT', last_modified_at: 'TIMESTAMP',
     // raison_nq : raison du statut "Non qualifie" (faux numero, hors zone...)
     raison_nq: 'TEXT',
+    // origine_lead : provenance du lead (pub Meta, formulaire...), separee des notes (18/11/2026)
+    origine_lead: 'TEXT',
     created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   pipeline: {
@@ -330,6 +333,42 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    // ── UNE SEULE FOIS (18/11/2026) : l'origine des leads quitte les notes ──
+    // Demande d'Yvan : la provenance Meta ecrite dans « Notes » va dans la
+    // nouvelle case « Origine du lead ». Ce que l'equipe a ecrit reste dans
+    // « Notes ». Une copie des anciennes notes est gardee dans la table
+    // sauvegarde_notes_origine (au cas ou). Fait une seule fois, repere par
+    // la ligne « Origine des leads deplacee » du Journal d'audit.
+    // A RETIRER a la session suivante, une fois le resultat verifie.
+    let origineDeplacee = null;
+    try {
+      const deja = await sql`SELECT 1 FROM audit_log WHERE action = 'Origine des leads deplacee' LIMIT 1`;
+      if (!deja.length) {
+        await sql`CREATE TABLE IF NOT EXISTS sauvegarde_notes_origine (id BIGINT, notes TEXT, origine_lead TEXT, sauve_le TIMESTAMP DEFAULT NOW())`;
+        const cibles = await sql`SELECT id, notes, origine_lead FROM clients
+          WHERE notes ILIKE '%Lead recu via Meta%' OR notes LIKE '%[Nouveau formulaire Meta]%'`;
+        let n = 0;
+        for (const c of cibles) {
+          const s = separerOrigine(c.notes);
+          if (!s.origine) continue;
+          await sql`INSERT INTO sauvegarde_notes_origine (id, notes, origine_lead) VALUES (${c.id}, ${c.notes}, ${c.origine_lead})`;
+          const origine = c.origine_lead ? (c.origine_lead + '\n\n' + s.origine) : s.origine;
+          await sql`UPDATE clients SET origine_lead = ${origine}, notes = ${s.notes} WHERE id = ${c.id}`;
+          n++;
+        }
+        const avecNotes = await sql`SELECT COUNT(*) AS n FROM clients WHERE id IN (SELECT id FROM sauvegarde_notes_origine) AND COALESCE(notes,'') <> ''`;
+        const aVerifier = await sql`SELECT COUNT(*) AS n FROM clients WHERE notes ~* '(meta|facebook|instagram|campagne|formulaire|annonce)'`;
+        const detail = n + ' fiche(s) : origine deplacee dans « Origine du lead ». ' +
+          Number(avecNotes[0].n) + ' gardent aussi des notes ecrites par l\'equipe. ' +
+          Number(aVerifier[0].n) + ' autre(s) fiche(s) parlent encore de Meta/Facebook/campagne dans leurs notes (a verifier). Copie des anciennes notes : table sauvegarde_notes_origine.';
+        await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)
+                  VALUES ('Systeme', 'Direction', 'Origine des leads deplacee', ${detail}, 'dot-blue', 'S', 'av-blue', 'init-db')`;
+        origineDeplacee = { fiches: n, avec_notes_equipe: Number(avecNotes[0].n), a_verifier: Number(aVerifier[0].n) };
+      }
+    } catch (e) {
+      healed.push('origine_lead_migration -> ' + e.message);
+    }
+
     // ── Seed ONLY the super admin account if table is empty (idempotent) ──
     const existingUsers = await sql`SELECT COUNT(*) as count FROM users`;
     let seeded = false;
@@ -408,6 +447,7 @@ module.exports = async function handler(req, res) {
       success: true,
       seeded: seeded,
       mots_de_passe_chiffres: migratedPasswords,
+      origine_deplacee: origineDeplacee,
       tables_checked: Object.keys(COLUMN_TYPES).length,
       healing_issues: healed,
       message: 'Base de donnees initialisee et reparee avec succes (schema complet verifie pour chaque table)'

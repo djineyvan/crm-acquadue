@@ -72,7 +72,7 @@ global.fetch = async function (url) {
   check('fiche creee', !!cl);
   check('nom : plus aucun signe < > " ` (code inoffensif)', cl && !DANGER.test(cl.nom) && /img src=x onerror=/.test(cl.nom), cl && cl.nom);
   check('ville, email, societe : neutralises', cl && !DANGER.test(cl.ville) && !DANGER.test(cl.email) && !DANGER.test(cl.societe), cl && [cl.ville, cl.email, cl.societe]);
-  check('notes (reponses + noms de pub/formulaire) : neutralisees', cl && !DANGER.test(cl.notes), cl && cl.notes);
+  check('origine du lead (reponses + noms de pub/formulaire) : neutralisee', cl && !DANGER.test(cl.origine_lead || '') && !DANGER.test(cl.notes || ''), cl && cl.origine_lead);
   const pl = (await sqlRaw`SELECT * FROM pipeline WHERE tel = '+22791112233'`)[0];
   check('fiche Pipeline : neutralisee', pl && !DANGER.test(pl.nom) && !DANGER.test(pl.ville), pl);
   const nt = (await sqlRaw`SELECT texte FROM notifications ORDER BY id DESC LIMIT 1`)[0];

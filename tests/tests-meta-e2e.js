@@ -144,7 +144,8 @@ async function postParsed(rawText, sig) {
   check('source Meta Ads, statut Nouveau prospect', cl[0].source === 'Meta Ads' && cl[0].statut === 'Nouveau prospect');
   check('telephone nettoye (+22790112233), ville Maradi', cl[0].tel === '+22790112233' && cl[0].ville === 'Maradi', cl[0]);
   check('assigne a Harouna', cl[0].asg === 'Harouna');
-  check('notes contiennent la reponse du formulaire + ID annonce', /Purificateur maison/.test(cl[0].notes) && /AD9/.test(cl[0].notes), cl[0].notes);
+  check('origine du lead : reponse du formulaire + ID annonce', /Purificateur maison/.test(cl[0].origine_lead) && /AD9/.test(cl[0].origine_lead), cl[0].origine_lead);
+  check('notes laissees vides', cl[0].notes === '', cl[0].notes);
   check('fiche pipeline creee', (await sqlRaw`SELECT * FROM pipeline WHERE nom='Aminata Diallo' AND etape='Nouveau prospect' AND asg='Harouna'`).length === 1);
   const nt = await sqlRaw`SELECT * FROM notifications`;
   check('notification pour Harouna', nt.length === 1 && nt[0].cible === 'Harouna' && /Aminata/.test(nt[0].texte), nt);
@@ -161,7 +162,7 @@ async function postParsed(rawText, sig) {
   r = await post(raw, sign(raw));
   cl = await sqlRaw`SELECT * FROM clients`;
   check('meme telephone (autre format) -> pas de nouvelle fiche', r.statusCode === 200 && cl.length === 1, cl.length);
-  check('note ajoutee a la fiche existante', /Nouveau formulaire Meta/.test(cl[0].notes));
+  check('nouveau formulaire ajoute a l\'origine de la fiche existante (notes toujours vides)', /Nouveau formulaire Meta/.test(cl[0].origine_lead) && cl[0].notes === '', cl[0]);
   check('pas de 2e fiche pipeline', (await sqlRaw`SELECT 1 FROM pipeline`).length === 1);
 
   section('Entreprise (B2B) + lot de plusieurs leads');

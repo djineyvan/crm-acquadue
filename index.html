@@ -1856,6 +1856,7 @@ function viewPipeCard(id){
     ['Produit lie', (produit ? produit.nom : p.sku || '-') + (p.qte ? ' x' + p.qte : '')],
     ['Entrepot concerne', p.entrepot || '-'],
     ['Stock reserve pour cette vente', p.reservationFaite ? '<span style="color:var(--gold);font-weight:700">✓ Reserve (' + p.qte + ' unite(s))</span>' : '<span class="td-muted">Pas encore reserve</span>'],
+    ['Origine du lead', origineLeadHtml(clLinked ? clLinked.origineLead : '')],
     ['Notes', p.notes ? p.notes.replace(/\n/g,'<br/>') : '<span class="td-muted">-</span>'],
     ['Statut de verrouillage', p.locked ? lockBadge() : '<span class="td-muted">Modifiable</span>']
   ];
@@ -2387,7 +2388,7 @@ function renderClients(c){
   h += '<div id="tl-c" style="display:none"><div class="card"><div class="table-wrap"><table id="tbl-b2b"></table></div></div></div>';
   c.innerHTML = h;
 
-  const data = CLIENTS.filter(visibleClientFilter).filter(matchesClientFilters).filter(function(x){ return searchMatch(x, ['nom','tel','ville','zone','produit','asg','statut','source','notes']); });
+  const data = CLIENTS.filter(visibleClientFilter).filter(matchesClientFilters).filter(function(x){ return searchMatch(x, ['nom','tel','ville','zone','produit','asg','statut','source','notes','origineLead']); });
   function mkTable(d){
     return '<thead><tr><th>#</th><th>Client</th><th>Type</th><th>Ville</th><th>Source</th><th>Produit</th><th>Commercial</th><th>Notes</th><th>Statut</th><th>Date</th><th></th></tr></thead><tbody>' +
       d.map(function(cl,i){
@@ -2446,7 +2447,8 @@ function matchesClientFilters(cl){
   if(CLIENT_FILTERS.statut && cl.statut !== CLIENT_FILTERS.statut) return false;
   if(CLIENT_FILTERS.asg && cl.asg !== CLIENT_FILTERS.asg) return false;
   if(CLIENT_FILTERS.produit && (cl.produit||'').toLowerCase().indexOf(CLIENT_FILTERS.produit) < 0) return false;
-  if(CLIENT_FILTERS.notes && (cl.notes||'').toLowerCase().indexOf(CLIENT_FILTERS.notes) < 0) return false;
+  // Cherche dans les notes ET dans l'origine du lead (ex : nom d'une campagne Meta).
+  if(CLIENT_FILTERS.notes && ((cl.notes||'') + '\n' + (cl.origineLead||'')).toLowerCase().indexOf(CLIENT_FILTERS.notes) < 0) return false;
   if(CLIENT_FILTERS.dateFrom || CLIENT_FILTERS.dateTo){
     const iso = frDateToIso(cl.date);
     if(iso){
@@ -2476,7 +2478,7 @@ function clientFiltersPanelHtml(){
   h += '<div class="form-row">' + selectField('cf-statut','Statut', CLIENT_FILTERS.statut, statuts) + selectField('cf-asg','Commercial', CLIENT_FILTERS.asg, commerciaux) + '</div>';
   h += '<div class="form-row">' +
     '<div class="form-group"><label class="form-label">Produit (contient)</label><input class="form-input" id="cf-produit" value="' + CLIENT_FILTERS.produit.replace(/"/g,'&quot;') + '" oninput="applyClientFilters()" placeholder="Ex: bougie"/></div>' +
-    '<div class="form-group"><label class="form-label">Notes (contient)</label><input class="form-input" id="cf-notes" value="' + CLIENT_FILTERS.notes.replace(/"/g,'&quot;') + '" oninput="applyClientFilters()" placeholder="Ex: rappeler"/></div>' +
+    '<div class="form-group"><label class="form-label">Notes ou origine (contient)</label><input class="form-input" id="cf-notes" value="' + CLIENT_FILTERS.notes.replace(/"/g,'&quot;') + '" oninput="applyClientFilters()" placeholder="Ex: rappeler"/></div>' +
     '</div>';
   h += '<div class="form-row">' +
     '<div class="form-group"><label class="form-label">Date de creation — du</label><input class="form-input" type="date" id="cf-date-from" value="' + CLIENT_FILTERS.dateFrom + '" onchange="applyClientFilters()"/></div>' +
@@ -2486,6 +2488,12 @@ function clientFiltersPanelHtml(){
   return h;
 }
 
+// Origine du lead (18/11/2026) : provenance (pub Meta, formulaire, reponses),
+// separee des notes de l'equipe. Affichee telle quelle, sans HTML.
+function origineLeadHtml(txt){
+  if(!txt) return '<span class="td-muted">-</span>';
+  return String(txt).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }).replace(/\n/g,'<br/>');
+}
 function viewClientDetail(id){
   const cl = CLIENTS.find(function(x){return String(x.id)===String(id);});
   if(!cl) return;
@@ -2498,6 +2506,7 @@ function viewClientDetail(id){
     ['Email', cl.email || '-'],
     ['Societe', cl.societe || '-'],
     ['Source du prospect', cl.source || '-'],
+    ['Origine du lead', origineLeadHtml(cl.origineLead)],
     ['Produit d\'interet', cl.produit],
     ['Commercial assigne', cl.asg],
     ['Notes', cl.notes ? cl.notes.replace(/\n/g,'<br/>') : '<span class="td-muted">-</span>'],
@@ -2532,6 +2541,7 @@ function viewClientDetail(id){
       ], 'select'],
       ['Produit', 'produit', cl.produit],
       ['Commercial assigne', 'asg', USERS.filter(function(u){return u.departement==='Commercial';}).map(function(u){ return {label:u.nom, selected:u.nom===cl.asg}; }), 'select'],
+      ['Origine du lead', 'origineLead', cl.origineLead || '', 'textarea'],
       ['Notes', 'notes', cl.notes || '', 'textarea'],
       ['Statut', 'statut', [
         {label:'Nouveau prospect',selected:cl.statut==='Nouveau prospect'},
@@ -6660,7 +6670,7 @@ function syncDetailEditToDb(entity, record, oldNom){
     }
     dbUpdate('clients', record.id, { raison_nq:record.raisonNq, nom:record.nom, type:record.type, tel:record.tel, email:record.email,
       ville:record.ville, zone:record.zone, source:record.source, produit:record.produit, asg:record.asg, notes:record.notes,
-      statut:record.statut, last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
+      origine_lead:record.origineLead||'', statut:record.statut, last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
     syncClientToPipeline(record, oldNom);
   } else if(entity === 'pipeline'){
     dbUpdate('pipeline', record.id, { nom:record.nom, val:record.val, ville:record.ville, tel:record.tel, date_estimee:record.dateEstimee,
@@ -7544,6 +7554,7 @@ function mapClientFromDb(r){
   return { id:r.id, nom:r.nom, type:r.type, ville:r.ville, zone:r.zone, tel:r.tel, email:r.email,
     societe:r.societe, source:r.source, statut:r.statut, produit:r.produit, asg:r.asg, notes:r.notes||'',
     date:r.date_creation, locked:r.locked, historique:r.historique||[], raisonNq:r.raison_nq||'',
+    origineLead:r.origine_lead||'',
     lastModifiedBy:r.last_modified_by, lastModifiedAt:r.last_modified_at };
 }
 function mapPipelineFromDb(r){

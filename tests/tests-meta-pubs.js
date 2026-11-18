@@ -70,11 +70,12 @@ global.fetch = async function (url) {
   check('lead accepte', r.statusCode === 200 && r.body.ok !== false, r.body);
   let cl = (await sqlRaw`SELECT * FROM clients WHERE nom='Awa Noms'`)[0];
   check('fiche creee', !!cl);
-  check('note : campagne', /Campagne : Purificateur Novembre/.test(cl.notes), cl.notes);
-  check('note : ensemble de publicites', /Ensemble de publicites : Niamey 25-45 ans/.test(cl.notes), cl.notes);
-  check('note : annonce avec son ID', /Annonce : Video famille 30s \(ID AD1\)/.test(cl.notes), cl.notes);
-  check('note : formulaire avec son nom', /Formulaire : Formulaire devis purificateur \(ID F7\)/.test(cl.notes), cl.notes);
-  check('note : plateforme Instagram', /via Meta \(Instagram\)/.test(cl.notes), cl.notes);
+  check('origine du lead : campagne', /Campagne : Purificateur Novembre/.test(cl.origine_lead), cl.origine_lead);
+  check('origine du lead : ensemble de publicites', /Ensemble de publicites : Niamey 25-45 ans/.test(cl.origine_lead), cl.origine_lead);
+  check('origine du lead : annonce avec son ID', /Annonce : Video famille 30s \(ID AD1\)/.test(cl.origine_lead), cl.origine_lead);
+  check('origine du lead : formulaire avec son nom', /Formulaire : Formulaire devis purificateur \(ID F7\)/.test(cl.origine_lead), cl.origine_lead);
+  check('origine du lead : plateforme Instagram', /via Meta \(Instagram\)/.test(cl.origine_lead), cl.origine_lead);
+  check('notes laissees vides (origine dans sa propre case)', cl.notes === '', cl.notes);
   let ml = (await sqlRaw`SELECT * FROM meta_leads WHERE leadgen_id='A1'`)[0];
   check('meta_leads : noms enregistres', ml.campagne === 'Purificateur Novembre' && ml.annonce === 'Video famille 30s' && ml.ensemble === 'Niamey 25-45 ans' && ml.formulaire === 'Formulaire devis purificateur' && ml.plateforme === 'Instagram', ml);
   const nt = (await sqlRaw`SELECT texte FROM notifications ORDER BY id DESC LIMIT 1`)[0];
@@ -86,7 +87,7 @@ global.fetch = async function (url) {
   r = await post(payload('A2', 'AD2'));
   cl = (await sqlRaw`SELECT * FROM clients WHERE nom='Bio Annonce'`)[0];
   check('fiche creee', !!cl, r.body);
-  check("noms lus sur l'annonce", /Campagne : Notoriete Maradi/.test(cl.notes) && /Annonce : Carrousel produits \(ID AD2\)/.test(cl.notes) && /Ensemble de publicites : Maradi/.test(cl.notes), cl.notes);
+  check("noms lus sur l'annonce", /Campagne : Notoriete Maradi/.test(cl.origine_lead) && /Annonce : Carrousel produits \(ID AD2\)/.test(cl.origine_lead) && /Ensemble de publicites : Maradi/.test(cl.origine_lead), cl.origine_lead);
 
   section('3. Meta refuse tous les bonus : le lead est quand meme cree');
   mode = 'refus';
@@ -94,8 +95,8 @@ global.fetch = async function (url) {
   cl = (await sqlRaw`SELECT * FROM clients WHERE nom='Cisse Refus'`)[0];
   ml = (await sqlRaw`SELECT * FROM meta_leads WHERE leadgen_id='A3'`)[0];
   check('lead cree normalement (statut ok)', !!cl && ml.status === 'ok', ml);
-  check('les identifiants restent dans la note', /Annonce : \(ID\) AD3/.test(cl.notes) && /Formulaire : \(ID\) F7/.test(cl.notes), cl.notes);
-  check('aucun nom invente', !/Campagne :/.test(cl.notes) && ml.campagne === null && ml.annonce === null, ml);
+  check('les identifiants restent dans l\'origine du lead', /Annonce : \(ID\) AD3/.test(cl.origine_lead) && /Formulaire : \(ID\) F7/.test(cl.origine_lead), cl.origine_lead);
+  check('aucun nom invente', !/Campagne :/.test(cl.origine_lead) && ml.campagne === null && ml.annonce === null, ml);
 
   section('4. Meta ne repond pas aux bonus : pas de blocage');
   mode = 'lent';
