@@ -215,6 +215,7 @@ module.exports = async function handler(req, res) {
     // demarrage (aucune table ou aucun compte), l'initialisation reste libre,
     // sinon personne ne pourrait jamais creer le premier compte.
     let hasUsers = false;
+    let moi = null;
     try {
       const c = await sql`SELECT COUNT(*) AS count FROM users`;
       hasUsers = parseInt(c[0].count) > 0;
@@ -222,6 +223,7 @@ module.exports = async function handler(req, res) {
     if (hasUsers) {
       const me = await requireAuth(req, res, sql);
       if (!me) return;
+      moi = me;
     }
 
     // ── Step 1: CREATE TABLE IF NOT EXISTS for every table, with its primary key ──
@@ -344,6 +346,32 @@ module.exports = async function handler(req, res) {
     // retirees apres verification du Journal d'audit : 53 et 56 fiches, 0 a
     // verifier. Les copies de secours restent dans les tables
     // sauvegarde_notes_origine et sauvegarde_infos_leads.
+    //
+    // OPERATION UNIQUE (19/11/2026, demandee par Yvan) : suppression definitive
+    // de ces deux copies de secours. Lancee seulement a la connexion du Super
+    // Admin, et seulement si les tables existent encore (rien a faire ensuite).
+    // A RETIRER du code des que le Journal d'audit confirme la suppression.
+    if (moi && moi.role === 'superadmin') {
+      try {
+        const restantes = await sql`SELECT table_name FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name IN ('sauvegarde_notes_origine','sauvegarde_infos_leads')`;
+        if (restantes.length > 0) {
+          const details = [];
+          for (const r of restantes) {
+            const n = await sql.query('SELECT COUNT(*) AS n FROM ' + r.table_name);
+            details.push(r.table_name + ' (' + n[0].n + ' lignes)');
+            await sql.query('DROP TABLE IF EXISTS ' + r.table_name);
+          }
+          await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)
+            VALUES (${moi.nom}, 'Direction', 'Copies de secours supprimées',
+            ${'Suppression definitive demandee par Yvan : ' + details.join(', ')},
+            'dot-gold', ${moi.ini || ''}, ${moi.col || ''}, 'web')`;
+          healed.push('copies_de_secours supprimees : ' + details.join(', '));
+        }
+      } catch (e) {
+        healed.push('suppression_copies_de_secours -> ' + e.message);
+      }
+    }
 
     // ── PUB V1 / V2 / V3 DES LEADS META (19/11/2026) ──────────────────────
     // La case « Pub » du suivi d'appel est remplie d'apres le nom de l'annonce
