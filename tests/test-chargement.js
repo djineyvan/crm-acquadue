@@ -2,18 +2,19 @@
 const fs=require('fs');
 const src=fs.readFileSync(process.argv[2],'utf8');
 function grab(start,end){ const i=src.indexOf(start), j=src.indexOf(end,i); if(i<0||j<0) throw new Error('introuvable '+start); return src.slice(i,j); }
-const code = grab('function loadAllDataFromDb(){','function mapDocumentFromDb(r){')
+const code = grab('function loadAllDataFromDb(opts){','function mapDocumentFromDb(r){')
   + grab('function checkAppVersion(autoReload){',"window.addEventListener('pageshow'");
 // --- faux environnement ---
 let banner=null, reloads=0, applied=0, lastData=null, renders=0;
 const document={ body:{appendChild(b){banner=b;}}, getElementById(id){ return id==='load-error-banner'?banner:null; },
   createElement(){ return {style:{}, remove(){ banner=null; }}; }, querySelector(){ return modalOpen?{}:null; },
   addEventListener(){} };
-let modalOpen=false, PENDING_WRITES=0, CU={nom:'Yvan'}, CURRENT_VIEW='dash', BOOT_VERSION=null;
+let modalOpen=false, PENDING_WRITES=0, WRITE_GEN=0, lent=null, CU={nom:'Yvan'}, CURRENT_VIEW='dash', BOOT_VERSION=null;
 const location={ reload(){ reloads++; } };
 let mode='ok', serverVersion='v1';
 function apiGet(url){
   if(mode==='down') return Promise.reject(new Error('reseau'));
+  if(mode==='lent') return new Promise(function(r){ lent=function(){ r({ok:true,data:{data:{clients:[{id:2}]}}}); }; });
   if(url==='/api/bulk-load'){
     if(mode==='bulk413'||mode==='legacyPartial') return Promise.resolve({ok:false,status:413,data:{}});
     return Promise.resolve({ok:true,data:{data:{clients:[{id:1}]}}});
@@ -61,5 +62,16 @@ let pass=0, fail=0; function ok(c,m){ if(c){pass++;console.log('✅ '+m);} else 
   ok(reloads===1 && updBanner,'enregistrement en cours : pas de rechargement');
   PENDING_WRITES=0; updBanner=false; checkAppVersion(false); await new Promise(r=>setTimeout(r,5));
   ok(reloads===1 && updBanner,'controle normal (chaque minute) : bandeau seulement, pas de rechargement force');
+  // 9. (19/11/2026) actualisation automatique perimee : ignoree
+  mode='ok'; applied=0; await loadAllDataFromDb({auto:true, gen:WRITE_GEN});
+  ok(applied===1,'actualisation automatique normale : donnees appliquees');
+  mode='lent'; applied=0; let pr=loadAllDataFromDb({auto:true, gen:WRITE_GEN}); WRITE_GEN++; lent(); await pr;
+  ok(applied===0,'enregistrement lance pendant l\'actualisation : l\'ancienne version n\'efface pas le changement');
+  applied=0; pr=loadAllDataFromDb({auto:true, gen:WRITE_GEN}); modalOpen=true; lent(); await pr; modalOpen=false;
+  ok(applied===0,'fiche ouverte pendant l\'actualisation : donnees de l\'ecran gardees (la fiche ouverte reste liee)');
+  applied=0; pr=loadAllDataFromDb({auto:true, gen:WRITE_GEN}); PENDING_WRITES=1; lent(); await pr; PENDING_WRITES=0;
+  ok(applied===0,'enregistrement encore en cours : actualisation ignoree');
+  applied=0; pr=loadAllDataFromDb(); WRITE_GEN++; lent(); await pr;
+  ok(applied===1,'chargement apres connexion (pas automatique) : toujours applique');
   console.log(`\n${pass} reussis, ${fail} en echec`); process.exit(fail?1:0);
 })();

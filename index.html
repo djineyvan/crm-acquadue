@@ -724,7 +724,9 @@ function autoRefreshTick(){
   // Ne pas interrompre une saisie dans un formulaire inline (RH, etc.)
   if(document.querySelector('#presence-form-wrap > *')) return;
   if(document.querySelector('#conge-form-wrap > *')) return;
-  loadAllDataFromDb().then(function(){
+  // (19/11/2026) Pas d'actualisation pendant un enregistrement en cours.
+  try { if(PENDING_WRITES > 0) return; } catch(e){}
+  loadAllDataFromDb({ auto: true, gen: WRITE_GEN }).then(function(){
     updateAllBadges();
     if(typeof checkTachesEnRetard === 'function') checkTachesEnRetard(); // alerte si une tache vient de depasser son echeance
     // Le journal est alimente en temps reel par logAction et ne doit pas etre
@@ -2095,7 +2097,7 @@ function viewPipeCard(id){
       ['Nom', 'nom', p.nom],
       // B2C (particulier) ou B2B (entreprise) — 19/11/2026, repercute sur la fiche client.
       ['Type', 'type', [{label:'B2C', selected:String(p.type||'B2C').indexOf('B2B') !== 0}, {label:'B2B', selected:String(p.type||'').indexOf('B2B') === 0}], 'select']].concat((isSuperAdmin() || canModifyProspectInfo()) ? [
-      ['Etape du pipeline', 'etape', PIPELINE_STAGES.map(function(st){ return { label: st + (st===p.etape ? ' (actuelle)' : ''), value: st, selected: st===p.etape }; }), 'select']] : []).concat([
+      ['Etape du pipeline', 'etape', PIPELINE_STAGES.map(function(st){ return { label: st + (st===p.etape ? ' (actuelle)' : ''), value: st, selected: st===p.etape }; }), 'select', 'pipeEtapeChoisie(this)']] : []).concat([
       ['Produit lie', 'sku', pipeProduitOptions(p.sku), 'select'],
       ['Quantite', 'qte', p.qte || 1],
       ['Entrepot', 'entrepot', [{label:'—', value:'', selected:!p.entrepot}].concat(ENTREPOTS.map(function(e){ return {label:e.nom, value:e.nom, selected:e.nom===p.entrepot}; }))
@@ -2326,6 +2328,71 @@ function setPipelineProduit(p, sku, qte, entrepot, oldNom){
   logAction('Pipeline — produit modifie', p.nom + ' : ' + (sku ? qte + ' x ' + nomPr : 'aucun produit'), 'blue');
   return true;
 }
+// (19/11/2026, demande d'Yvan) Des qu'on choisit « Perdu » ou « Non qualifie »
+// dans la liste de la fiche, la fenetre des raisons s'ouvre TOUT DE SUITE.
+// La raison est gardee dans la fiche ouverte (ctx.raisonChoisie) et affichee
+// sous la liste ; elle n'est enregistree qu'avec « 💾 Enregistrer ».
+// « Annuler » dans la fenetre : la liste revient a l'etape d'avant.
+function pipeRaisonChoisieHtml(etape, raison){
+  return '<div id="pipe-raison-choisie" style="font-size:11px;margin-top:5px;color:var(--muted2)">' +
+    (etape === 'Perdu' ? '✗' : '⊘') + ' Raison : <strong>' + pipeEsc(raison) + '</strong> · ' +
+    '<a href="javascript:void(0)" onclick="pipeEtapeChoisie(el(\'detail-edit-etape\'), true)">changer</a></div>';
+}
+function pipeEtapeChoisie(sel, changer){
+  const ctx = DETAIL_CTX;
+  if(!sel || !ctx || ctx.entity !== 'pipeline') return;
+  const p = ctx.record;
+  const etape = sel.value;
+  const precedente = ctx.etapeAffichee !== undefined ? ctx.etapeAffichee : p.etape;
+  const zone = el('pipe-raison-choisie'); if(zone) zone.remove();
+  if(!changer) ctx.raisonChoisie = null;
+  if(etape === p.etape || (etape !== 'Perdu' && etape !== 'Non qualifie')){
+    ctx.etapeAffichee = etape;
+    return;
+  }
+  const demander = etape === 'Perdu' ? askRaisonPerte : askRaisonNq;
+  const ancienneRaison = changer && ctx.raisonChoisie ? ctx.raisonChoisie : null;
+  demander(p.nom, function(raison){
+    if(DETAIL_CTX !== ctx) return;
+    ctx.raisonChoisie = { etape: etape, raison: raison };
+    ctx.etapeAffichee = etape;
+    sel.insertAdjacentHTML('afterend', pipeRaisonChoisieHtml(etape, raison));
+    markDetailDirty();
+  }, function(){
+    if(DETAIL_CTX !== ctx) return;
+    if(ancienneRaison){ // « changer » puis Annuler : on garde la raison d'avant
+      ctx.raisonChoisie = ancienneRaison;
+      sel.insertAdjacentHTML('afterend', pipeRaisonChoisieHtml(ancienneRaison.etape, ancienneRaison.raison));
+      return;
+    }
+    sel.value = precedente;
+    ctx.etapeAffichee = precedente;
+  });
+}
+// Meme principe dans la fiche Clients & Prospects (19/11/2026) : choisir
+// « Client perdu » ou « Non qualifie » ouvre tout de suite la fenetre des
+// raisons, qui remplit la case « Raison » correspondante de la fiche.
+// « Annuler » : le statut revient a celui d'avant.
+function clientStatutChoisi(sel){
+  const ctx = DETAIL_CTX;
+  if(!sel || !ctx || ctx.entity !== 'clients') return;
+  const cl = ctx.record;
+  const statut = sel.value;
+  const precedent = ctx.statutAffiche !== undefined ? ctx.statutAffiche : cl.statut;
+  const caseRaison = statut === 'Non qualifie' ? el('detail-edit-raisonNq') : (statut === 'Client perdu' ? el('detail-edit-raisonPerte') : null);
+  if(!caseRaison || statut === cl.statut){ ctx.statutAffiche = statut; return; }
+  const demander = statut === 'Client perdu' ? askRaisonPerte : askRaisonNq;
+  demander(cl.nom, function(raison){
+    if(DETAIL_CTX !== ctx) return;
+    caseRaison.value = raison;
+    ctx.statutAffiche = statut;
+    markDetailDirty();
+  }, function(){
+    if(DETAIL_CTX !== ctx) return;
+    sel.value = precedent;
+    ctx.statutAffiche = precedent;
+  });
+}
 // Avant d'enregistrer la fiche : lit l'etape et le produit choisis. Pour
 // « Perdu » / « Non qualifie », la raison est demandee ; « Annuler » = rien n'est enregistre.
 function pipeAvantEnregistrement(ctx, continuer){
@@ -2341,6 +2408,11 @@ function pipeAvantEnregistrement(ctx, continuer){
   };
   const nouvelle = ctx.pending.etape;
   if(nouvelle !== p.etape && (nouvelle === 'Perdu' || nouvelle === 'Non qualifie')){
+    // Raison deja choisie au moment du choix de l'etape : rien a redemander.
+    if(ctx.raisonChoisie && ctx.raisonChoisie.etape === nouvelle){
+      ctx.pending.raison = ctx.raisonChoisie.raison;
+      return continuer();
+    }
     const demander = nouvelle === 'Perdu' ? askRaisonPerte : askRaisonNq;
     return demander(p.nom, function(raison){ ctx.pending.raison = raison; continuer(); }, function(){});
   }
@@ -2949,7 +3021,7 @@ function viewClientDetail(id){
         {label:'Client actif',selected:cl.statut==='Client actif'},
         {label:'Client perdu',selected:cl.statut==='Client perdu'},
         {label:'Non qualifie',selected:cl.statut==='Non qualifie'}
-      ], 'select'],
+      ], 'select', 'clientStatutChoisi(this)'],
       // Raison : prise en compte seulement si le statut est "Non qualifie".
       ['Raison (si Non qualifie)', 'raisonNq', [{label:'—', selected:!raisonNqOf(cl)}].concat(RAISONS_NQ.map(function(r){ return {label:r, selected:raisonNqOf(cl)===r}; })), 'select'],
       // Raison : prise en compte seulement si le statut est "Client perdu".
@@ -7125,7 +7197,9 @@ function detailInputHtml(f){
   const inputId = 'detail-edit-' + f[1];
   const surChange = ' oninput="markDetailDirty()" onchange="markDetailDirty()"';
   if(type === 'select' && Array.isArray(f[2])){
-    return '<select class="form-select" id="' + inputId + '"' + surChange + '>' + f[2].map(function(o){ return '<option' + (o.value !== undefined ? ' value="' + String(o.value).replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"' : '') + (o.selected?' selected':'') + '>' + o.label + '</option>'; }).join('') + '</select>';
+    // f[4] (facultatif) : action lancee des que l'on change la valeur (ex. raison du « Perdu »).
+    const surChangeListe = f[4] ? ' oninput="markDetailDirty()" onchange="markDetailDirty();' + f[4] + '"' : surChange;
+    return '<select class="form-select" id="' + inputId + '"' + surChangeListe + '>' + f[2].map(function(o){ return '<option' + (o.value !== undefined ? ' value="' + String(o.value).replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"' : '') + (o.selected?' selected':'') + '>' + o.label + '</option>'; }).join('') + '</select>';
   }
   if(type === 'date'){
     return '<input type="date" class="form-input" id="' + inputId + '"' + surChange + ' value="' + (/^\d{4}-\d{2}-\d{2}$/.test(f[2]||'') ? f[2] : '') + '"/>';
@@ -8139,6 +8213,11 @@ function showSyncWarning(){
 // just a timing issue. This banner makes that window visible instead of
 // invisible, so the user knows to wait before reloading. ──
 let PENDING_WRITES = 0;
+// (19/11/2026) Numero qui augmente a chaque enregistrement. Une actualisation
+// automatique partie AVANT un enregistrement rapporterait l'ancienne version
+// de la fiche et effacerait le changement a l'ecran (« il faut enregistrer
+// deux fois ») : sa reponse est alors ignoree (voir loadAllDataFromDbRaw).
+var WRITE_GEN = 0;
 
 function showPendingIndicator(){
   let banner = document.getElementById('pending-write-banner');
@@ -8157,6 +8236,7 @@ function showPendingIndicator(){
 
 function trackPendingWrite(promise){
   PENDING_WRITES++;
+  WRITE_GEN++;
   showPendingIndicator();
   return promise.then(function(result){
     PENDING_WRITES = Math.max(0, PENDING_WRITES - 1);
@@ -8217,7 +8297,13 @@ function dbInsert(entity, row){
   return trackPendingWrite(attempt());
 }
 function dbUpdate(entity, id, patch){
-  return trackPendingWrite(apiPut('/api/data', { entity: entity, id: id, patch: patch }).then(function(result){
+  // (19/11/2026) Comme dbInsert : si le serveur ne repond pas ou renvoie une
+  // erreur serveur (demarrage a froid, coupure), nouvel essai apres 3 s.
+  // Un refus de droits (403...) n'est pas reessaye.
+  function essai(){ return apiPut('/api/data', { entity: entity, id: id, patch: patch }); }
+  function apres3s(){ return new Promise(function(ok){ setTimeout(ok, 3000); }).then(essai); }
+  const envoi = essai().then(function(r){ return (!r.ok && r.status >= 500) ? apres3s() : r; }, apres3s);
+  return trackPendingWrite(envoi.then(function(result){
     if(!result.ok){
       SYNC_FAILURES++;
       console.error('DB UPDATE FAILED for ' + entity + ' #' + id + ':', result.data && result.data.error);
@@ -8459,8 +8545,8 @@ function applyBulkData(data){
 // same concurrency limits, so some would land late or get throttled,
 // leaving the UI with a partial, inconsistent snapshot. One request means
 // one consistent snapshot, every time.
-function loadAllDataFromDb(){
-  return loadAllDataFromDbRaw().then(function(){
+function loadAllDataFromDb(opts){
+  return loadAllDataFromDbRaw(opts).then(function(){
     DATA_LOAD_FAILS = 0;
     DATA_LOADED_ONCE = true;
     hideLoadErrorBanner();
@@ -8476,8 +8562,17 @@ function loadAllDataFromDb(){
   });
 }
 
-function loadAllDataFromDbRaw(){
+// Actualisation automatique devenue perimee : un enregistrement a ete lance
+// pendant le chargement, ou une fiche a ete ouverte entre-temps. On garde
+// alors les donnees de l'ecran ; la prochaine actualisation prendra le relais.
+function actualisationPerimee(opts){
+  if(!opts || !opts.auto) return false;
+  try { if(PENDING_WRITES > 0 || WRITE_GEN !== opts.gen) return true; } catch(e){}
+  return !!document.querySelector('.modal-overlay.open');
+}
+function loadAllDataFromDbRaw(opts){
   return apiGet('/api/bulk-load').then(function(result){
+    if(actualisationPerimee(opts)) return;
     if(result.ok && result.data && result.data.data){
       applyBulkData(result.data.data);
       if(result.data.errors && Object.keys(result.data.errors).length > 0){
@@ -8492,6 +8587,7 @@ function loadAllDataFromDbRaw(){
     console.error('bulk-load failed, falling back to per-table loading');
     return loadAllDataFromDbLegacy();
   }, function(){
+    if(actualisationPerimee(opts)) return;
     console.error('bulk-load network error, falling back to per-table loading');
     return loadAllDataFromDbLegacy();
   });
