@@ -38,7 +38,7 @@ module.exports = async function handler(req, res) {
       const RECOVERY_EMAIL = (process.env.RECOVERY_EMAIL || '').trim();
       if (!RECOVERY_EMAIL) return res.status(500).json({ error: 'Adresse de recuperation non configuree. Contactez le Super Admin.' });
 
-      const rows = await sql`SELECT * FROM users WHERE email = ${email}`;
+      const rows = await sql`SELECT * FROM users WHERE lower(email) = lower(${String(email).trim()})`;
       if (rows.length === 0) return res.status(404).json({ error: 'not_found' });
       const user = rows[0];
       if (!user.actif) return res.status(403).json({ error: 'inactive' });
@@ -101,7 +101,7 @@ module.exports = async function handler(req, res) {
       const { email, code, newPassword } = req.body;
       if (!email || !code || !newPassword) return res.status(400).json({ error: 'Parametres manquants' });
 
-      const rows = await sql`SELECT * FROM users WHERE email = ${email}`;
+      const rows = await sql`SELECT * FROM users WHERE lower(email) = lower(${String(email).trim()})`;
       if (rows.length === 0) return res.status(404).json({ error: 'not_found' });
       const user = rows[0];
 

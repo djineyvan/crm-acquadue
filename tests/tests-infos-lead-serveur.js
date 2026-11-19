@@ -65,7 +65,7 @@ async function call(h, o, tok) { const res = mkRes(); const headers = Object.ass
 
   section('4. Operation « une seule fois » retiree (19/11) ; Pub V1/V2/V3 remplie d\'apres l\'annonce');
   await call(H['init-db'], {});
-  const tok = (await call(H.login, { method: 'POST', body: { email: 'yvan@acquadue.ne', password: 'Admin@2026' } })).body.token;
+  const tok = (await call(H.login, { method: 'POST', body: { email: 'admin@acquadue.ne', password: 'Admin@2026' } })).body.token;
   check('connexion Super Admin', !!tok);
   check('nom d\'annonce -> pub', M.pubDepuisAnnonce('V1 14-11-2026') === 'V1' && M.pubDepuisAnnonce('V3 14-11-2026') === 'V3' && M.pubDepuisAnnonce('v2 12-11-2026') === 'V2', [M.pubDepuisAnnonce('V1 14-11-2026'), M.pubDepuisAnnonce('V3 14-11-2026')]);
   check('autres ecritures reconnues (« Video 2 », « vidéo-3 », « Pub V1 »)', M.pubDepuisAnnonce('Video 2') === 'V2' && M.pubDepuisAnnonce('vidéo-3 famille') === 'V3' && M.pubDepuisAnnonce('Pub V1 Niamey') === 'V1');

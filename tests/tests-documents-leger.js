@@ -28,7 +28,7 @@ async function call(h, o, tok) { const res = mkRes(); const headers = {}; if (to
 
 (async function () {
   await call(H.init, {});
-  const tok = (await call(H.login, { method: 'POST', body: { email: 'yvan@acquadue.ne', password: 'Admin@2026' } })).body.token;
+  const tok = (await call(H.login, { method: 'POST', body: { email: 'admin@acquadue.ne', password: 'Admin@2026' } })).body.token;
   // un "gros" fichier de 3 Mo et un document ancien sans contenu
   const big = 'data:application/pdf;base64,' + 'A'.repeat(3 * 1024 * 1024);
   let r = await call(H.data, { method: 'POST', body: { entity: 'documents', row: { id: 1001, nom: 'Contrat.pdf', categorie: 'Clients', taille: '3 Mo', date_doc: '12/11/2026', par_qui: 'Yvan', data: big, mime_type: 'application/pdf' } } }, tok);

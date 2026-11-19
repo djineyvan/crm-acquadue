@@ -55,7 +55,7 @@ const BLOC = 'Lead recu via Meta (Facebook) le 17/11/2026.\nCampagne : Purificat
 
   section('2. Deplacement des fiches existantes (une seule fois)');
   await call(H['init-db'], {});
-  const tok = (await call(H.login, { method: 'POST', body: { email: 'yvan@acquadue.ne', password: 'Admin@2026' } })).body.token;
+  const tok = (await call(H.login, { method: 'POST', body: { email: 'admin@acquadue.ne', password: 'Admin@2026' } })).body.token;
   check('connexion Super Admin', !!tok);
   // La base de test etait vide au 1er passage : on rejoue comme en production.
   await sqlRaw`DELETE FROM audit_log WHERE action = 'Origine des leads deplacee'`;

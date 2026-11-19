@@ -322,7 +322,7 @@ const ROLE_LABELS = {
 // Tous les autres membres d'equipe doivent etre crees par le Super Admin via
 // "Utilisateurs & Acces" ou directement dans chaque module Equipe.
 let USERS = [
-  { id:1, nom:"Yvan Leunkeu Djine", email:"yvan@acquadue.ne", pass:"", role:"superadmin", departement:"Direction", ini:"YL", col:"av-red", actif:true, ville:"Niamey", tentatives:0, verrouille:false, doitChangerPass:false, dernierLogin:null, sessions:[] },
+  { id:1, nom:"Yvan Leunkeu Djine", email:"", pass:"", role:"superadmin", departement:"Direction", ini:"YL", col:"av-red", actif:true, ville:"Niamey", tentatives:0, verrouille:false, doitChangerPass:false, dernierLogin:null, sessions:[] },
 ];
 
 // ── AUDIT LOG ────────────────────────────────────────────────────────────────
@@ -1907,14 +1907,33 @@ function renderPipeBoard(){
 
 // Petites lignes ajoutees sur chaque carte du Pipeline : date de reception,
 // cases d'appel cochees, resultat de l'appel, livraison et changement de filtre.
+// Nombre de jours avant le rappel demande (negatif = en retard), ou null.
+// Plus d'alerte une fois l'affaire terminee (Gagne, Perdu, Non qualifie).
+function pipeJoursAvantRappel(p){
+  if(!p || !/^\d{4}-\d{2}-\d{2}$/.test(p.rappelDate || '')) return null;
+  if(typeof isPipelineClosed === 'function' && isPipelineClosed(p.etape)) return null;
+  const pr = p.rappelDate.split('-');
+  const d = new Date(parseInt(pr[0]), parseInt(pr[1]) - 1, parseInt(pr[2]));
+  const now = new Date(); const auj = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((d - auj) / 86400000);
+}
 function pipeCardSuiviHtml(p){
-  let h = '<div class="pipeline-card-sub">📥 Recu le ' + pipeDateRecuTexte(p) + (p.quartier ? ' • ' + pipeEsc(p.quartier) : '') + (p.pub ? ' • Pub ' + pipeEsc(p.pub) : '') + '</div>';
+  const clDbl = (typeof findLinkedClient === 'function') ? findLinkedClient(p) : null;
+  const dbl = clDbl ? doublonMetaTexte(clDbl) : '';
+  let h = (dbl ? '<div class="pipeline-card-sub" style="color:var(--gold);font-weight:700">' + dbl + '</div>' : '') + '<div class="pipeline-card-sub">📥 Recu le ' + pipeDateRecuTexte(p) + (p.quartier ? ' • ' + pipeEsc(p.quartier) : '') + (p.pub ? ' • Pub ' + pipeEsc(p.pub) : '') + '</div>';
   const cases = [];
   if(p.appele) cases.push('☎️ Appele');
   if(p.rappelSoir) cases.push('🌙 Rappel soir');
   if(p.relanceJ2) cases.push('🔁 J+2');
   if(cases.length || p.resultatAppel){
     h += '<div class="pipeline-card-sub">' + cases.join(' ') + (p.resultatAppel ? (cases.length ? ' • ' : '') + '<strong>' + pipeEsc(p.resultatAppel) + '</strong>' : '') + '</div>';
+  }
+  // Jour de rappel (19/11/2026) : orange le jour J, rouge s'il est depasse.
+  const jr = pipeJoursAvantRappel(p);
+  if(jr !== null){
+    const coul = jr < 0 ? 'var(--red)' : (jr === 0 ? 'var(--gold)' : 'var(--blue)');
+    const txt = jr < 0 ? '📞 Rappel en retard (' + formatDateFr(p.rappelDate) + ')' : (jr === 0 ? '📞 A rappeler aujourd\'hui' : '📅 Rappel le ' + formatDateFr(p.rappelDate));
+    h += '<div class="pipeline-card-sub" style="color:' + coul + ';font-weight:700">' + txt + (p.rappelCause ? ' <span style="font-weight:400">— ' + pipeEsc(p.rappelCause) + '</span>' : '') + '</div>';
   }
   if(p.dateLivraison){
     const j = pipeJoursAvantFiltre(p);
@@ -1939,6 +1958,8 @@ function pipeSuiviBlocHtml(p){
       '<tr><td>Rappel soir</td><td>' + oui(p.rappelSoir) + '</td></tr>' +
       '<tr><td>Relance J+2</td><td>' + oui(p.relanceJ2) + '</td></tr>' +
       '<tr><td>Resultat de l\'appel</td><td>' + (pipeEsc(p.resultatAppel) || '-') + '</td></tr>' +
+      '<tr><td>Jour de rappel</td><td>' + (p.rappelDate ? formatDateFr(p.rappelDate) : '-') + '</td></tr>' +
+      '<tr><td>Cause du rappel</td><td>' + (pipeEsc(p.rappelCause) || '-') + '</td></tr>' +
       '<tr><td>Date de livraison</td><td>' + formatDateFr(p.dateLivraison) + '</td></tr>' +
       '<tr><td>Montant (FCFA)</td><td>' + (p.montant ? fcfa(p.montant) : '-') + '</td></tr>' +
       '<tr><td>Changer le filtre le</td><td>' + filtreTxt + '</td></tr></table>';
@@ -1950,6 +1971,9 @@ function pipeSuiviBlocHtml(p){
   return '<div style="display:grid;grid-template-columns:130px 1fr;gap:7px 10px;align-items:center;font-size:12px">' +
     '<span>Appels</span><div>' + cb('appele','☎️ Appele',p.appele) + cb('rappelSoir','🌙 Rappel soir',p.rappelSoir) + cb('relanceJ2','🔁 Relance J+2',p.relanceJ2) + '</div>' +
     '<span>Resultat de l\'appel</span><select ' + inp + ' onchange="savePipeSuivi('+id+',\'resultatAppel\',this.value)">' + opts(PIPE_RESULTATS_APPEL, p.resultatAppel) + '</select>' +
+    // Jour de rappel demande par le client, avec la cause juste en dessous (19/11/2026).
+    '<span>📅 Jour de rappel</span><input type="date" ' + inp + ' value="' + pipeEsc(p.rappelDate) + '" onchange="savePipeSuivi('+id+',\'rappelDate\',this.value)">' +
+    '<span>Cause du rappel</span><input type="text" ' + inp + ' value="' + pipeEsc(p.rappelCause) + '" placeholder="Ex : rappeler apres la paie, voir avec son mari…" onchange="savePipeSuivi('+id+',\'rappelCause\',this.value)">' +
     '<span>Quartier / Commune</span><input type="text" ' + inp + ' value="' + pipeEsc(p.quartier) + '" placeholder="Ex : Plateau, Koira Kano…" onchange="savePipeSuivi('+id+',\'quartier\',this.value)">' +
     '<span>Pub</span><select ' + inp + ' onchange="savePipeSuivi('+id+',\'pub\',this.value)">' + opts(PIPE_PUBS, p.pub) + '</select>' +
     '<span>Date de livraison</span><input type="date" ' + inp + ' value="' + pipeEsc(p.dateLivraison) + '" onchange="savePipeSuivi('+id+',\'dateLivraison\',this.value)">' +
@@ -1959,9 +1983,10 @@ function pipeSuiviBlocHtml(p){
 }
 
 const PIPE_SUIVI_COLS = { quartier:'quartier', pub:'pub', appele:'appele', rappelSoir:'rappel_soir', relanceJ2:'relance_j2',
-  resultatAppel:'resultat_appel', dateLivraison:'date_livraison', montant:'montant' };
+  resultatAppel:'resultat_appel', dateLivraison:'date_livraison', montant:'montant', rappelDate:'rappel_date', rappelCause:'rappel_cause' };
 const PIPE_SUIVI_LABELS = { quartier:'Quartier', pub:'Pub', appele:'Appele', rappelSoir:'Rappel soir', relanceJ2:'Relance J+2',
-  resultatAppel:'Resultat de l\'appel', dateLivraison:'Date de livraison', montant:'Montant' };
+  resultatAppel:'Resultat de l\'appel', dateLivraison:'Date de livraison', montant:'Montant',
+  rappelDate:'Jour de rappel', rappelCause:'Cause du rappel' };
 function savePipeSuivi(id, champ, valeur){
   const p = PIPELINE.find(function(x){ return String(x.id) === String(id); });
   if(!p || !PIPE_SUIVI_COLS[champ]) return;
@@ -1969,7 +1994,8 @@ function savePipeSuivi(id, champ, valeur){
   let v = valeur;
   if(champ === 'appele' || champ === 'rappelSoir' || champ === 'relanceJ2') v = !!valeur;
   else if(champ === 'montant'){ const n = parseInt(String(valeur).replace(/[^0-9]/g,''), 10); v = isNaN(n) ? null : n; }
-  else if(champ === 'dateLivraison'){ v = /^\d{4}-\d{2}-\d{2}$/.test(valeur || '') ? valeur : ''; }
+  else if(champ === 'dateLivraison' || champ === 'rappelDate'){ v = /^\d{4}-\d{2}-\d{2}$/.test(valeur || '') ? valeur : ''; }
+  else if(champ === 'rappelCause'){ v = String(valeur || '').trim().slice(0, 300); }
   else if(champ === 'resultatAppel'){ v = PIPE_RESULTATS_APPEL.indexOf(valeur) >= 0 ? valeur : ''; }
   else if(champ === 'pub'){ v = PIPE_PUBS.indexOf(valeur) >= 0 ? valeur : ''; }
   else v = String(valeur || '').trim().slice(0, 120);
@@ -1979,7 +2005,7 @@ function savePipeSuivi(id, champ, valeur){
   const patch = { last_modified_by:p.lastModifiedBy, last_modified_at:p.lastModifiedAt };
   patch[PIPE_SUIVI_COLS[champ]] = v;
   if(typeof dbUpdate === 'function') dbUpdate('pipeline', p.id, patch);
-  const affiche = v === true ? 'Oui' : (v === false ? 'Non' : (champ === 'dateLivraison' ? formatDateFr(v) : (v === null || v === '' ? '(vide)' : v)));
+  const affiche = v === true ? 'Oui' : (v === false ? 'Non' : ((champ === 'dateLivraison' || champ === 'rappelDate') ? formatDateFr(v) : (v === null || v === '' ? '(vide)' : v)));
   logAction('Pipeline — suivi d\'appel', p.nom + ' : ' + PIPE_SUIVI_LABELS[champ] + ' → ' + affiche, 'blue');
   const f = el('pipe-suivi-filtre');
   if(f){ const iso = pipeChangerFiltreISO(p); f.innerHTML = iso ? formatDateFr(iso) : '<span class="td-muted">(apres la date de livraison)</span>'; }
@@ -2033,6 +2059,11 @@ function viewPipeCard(id){
   // 18/11/2026 (demande d'Yvan) : les boutons « Faire avancer », « Marquer
   // perdu », « Non qualifie » et « Changer d'etape » sont retires. Tout se
   // fait avec la liste deroulante de la ligne « Etape du pipeline ».
+  // Lead Meta deja connu (19/11/2026) : nombre de formulaires remplis.
+  if(clLinked && nbFormulairesMeta(clLinked) >= 2){
+    const iPub = rows.findIndex(function(r){ return r[0] === 'Pub Meta'; });
+    rows.splice(iPub >= 0 ? iPub : rows.length, 0, ['Lead deja connu', '<strong style="color:var(--gold)">' + doublonMetaTexte(clLinked) + '</strong>']);
+  }
   let pipeActions = '';
   // Suppression definitive — reservee au Super Admin, disponible quelle que
   // soit l'etape (y compris Gagne/Perdu, pour pouvoir nettoyer les fiches
@@ -2052,7 +2083,7 @@ function viewPipeCard(id){
     entity: 'pipeline',
     dept: 'Commercial',
     owner: p.asg,
-    rowKeys: { 'Nom du prospect':'nom', 'Ville':'ville', 'Telephone':'tel', 'Valeur estimee':'val',
+    rowKeys: { 'Nom du prospect':'nom', 'Type':'type', 'Ville':'ville', 'Telephone':'tel', 'Valeur estimee':'val',
                'Date estimee de signature':'dateEstimee', 'Notes':'notes', 'Etape du pipeline':'etape',
                'Produit lie':['sku','qte'], 'Entrepot concerne':'entrepot' },
     // Etape, produit et entrepot : lus a part, appliques a l'enregistrement
@@ -2061,7 +2092,9 @@ function viewPipeCard(id){
     beforeSave: pipeAvantEnregistrement,
     afterSave: pipeApresEnregistrement,
     fields: [
-      ['Nom', 'nom', p.nom]].concat((isSuperAdmin() || canModifyProspectInfo()) ? [
+      ['Nom', 'nom', p.nom],
+      // B2C (particulier) ou B2B (entreprise) — 19/11/2026, repercute sur la fiche client.
+      ['Type', 'type', [{label:'B2C', selected:String(p.type||'B2C').indexOf('B2B') !== 0}, {label:'B2B', selected:String(p.type||'').indexOf('B2B') === 0}], 'select']].concat((isSuperAdmin() || canModifyProspectInfo()) ? [
       ['Etape du pipeline', 'etape', PIPELINE_STAGES.map(function(st){ return { label: st + (st===p.etape ? ' (actuelle)' : ''), value: st, selected: st===p.etape }; }), 'select']] : []).concat([
       ['Produit lie', 'sku', pipeProduitOptions(p.sku), 'select'],
       ['Quantite', 'qte', p.qte || 1],
@@ -2789,10 +2822,28 @@ function leadNomEtId(nom, id){
   return (nom ? leadEsc(nom) : '') + (id ? ' <span class="td-muted">(ID ' + leadEsc(id) + ')</span>' : '');
 }
 function estLeadMeta(cl){ return !!(cl && (cl.source === 'Meta Ads' || cl.leadVia || cl.leadCampagne || cl.leadAnnonceId)); }
+// Lead Meta deja connu (19/11/2026) : quand une personne deja dans le CRM
+// (meme telephone ou meme email) remplit un nouveau formulaire, aucune fiche
+// n'est creee ; ses reponses sont ajoutees sous une ligne
+// « [Nouveau formulaire Meta — recu le …] ». On compte ces lignes.
+function nbFormulairesMeta(cl){
+  if(!cl) return 0;
+  const t = String(cl.origineLead || '');
+  const reps = (t.match(/\[Nouveau formulaire Meta/g) || []).length;
+  return (estLeadMeta(cl) || reps) ? 1 + reps : 0;
+}
+function doublonMetaTexte(cl){
+  const n = nbFormulairesMeta(cl);
+  if(n < 2) return '';
+  const dates = String(cl.origineLead || '').match(/\[Nouveau formulaire Meta[^\]]*recu le (\d{2}\/\d{2}\/\d{4})/g) || [];
+  const der = dates.length ? (/(\d{2}\/\d{2}\/\d{4})/.exec(dates[dates.length-1]) || [])[1] : '';
+  return '🔁 Formulaire Meta rempli ' + n + ' fois' + (der ? ' (dernier le ' + der + ')' : '');
+}
 function leadMetaRows(cl){
   const vide = '<span class="td-muted">-</span>';
   const rows = [];
   if(estLeadMeta(cl)) rows.push(['Lead recu via', cl.leadVia ? leadEsc(cl.leadVia) : 'Meta']);
+  if(nbFormulairesMeta(cl) >= 2) rows.push(['Lead deja connu', '<strong style="color:var(--gold)">' + doublonMetaTexte(cl) + '</strong>']);
   rows.push(['Date de reception du lead', '📥 ' + leadDateTexte(cl)]);
   if(estLeadMeta(cl)){
     rows.push(['Nom de la campagne', cl.leadCampagne ? leadEsc(cl.leadCampagne) : vide]);
@@ -3562,6 +3613,7 @@ function renderUsers(c){
 
   el('users-list').innerHTML = USERS.map(function(u){
     let actions = '';
+    if(isSuperAdmin()) actions += '<button class="btn btn-ghost btn-sm" onclick="changerEmailUtilisateur('+u.id+')">✉️ Email</button>';
     if(isSuperAdmin() && u.id !== CU.id){
       actions += '<button class="btn btn-ghost btn-sm" onclick="openEditUser('+u.id+')">✏️ Modifier</button>';
       actions += '<button class="btn btn-ghost btn-sm" onclick="toggleUserActive('+u.id+')">'+(u.actif?'Desactiver':'Activer')+'</button>';
@@ -3602,6 +3654,31 @@ function renderUsers(c){
 
 // revealPassword() is defined in db-bridge.js (fetches the real password
 // securely via /api/users — the in-memory USERS array never holds it).
+
+// Changer l'email (= identifiant de connexion) d'un compte, y compris le sien
+// (Super Admin, 19/11/2026). Le serveur verifie le format et les doublons.
+function changerEmailUtilisateur(id){
+  if(!isSuperAdmin()) return;
+  const u = USERS.find(function(x){ return String(x.id) === String(id); });
+  if(!u) return;
+  const saisi = prompt('Nouvel email de connexion pour ' + u.nom + ' :\n(email actuel : ' + (u.email || '-') + ')', u.email || '');
+  if(saisi === null) return;
+  const nouvel = String(saisi).trim().toLowerCase();
+  if(!nouvel || nouvel === String(u.email||'').toLowerCase()) return;
+  if(!confirm('Remplacer l\'email de ' + u.nom + ' par « ' + nouvel + ' » ?\n\nA la prochaine connexion, il faudra utiliser cette nouvelle adresse. Le mot de passe ne change pas.')) return;
+  apiPut('/api/users', { id: u.id, action: 'update_email', value: nouvel }).then(function(r){
+    if(!r.ok){
+      const e = r.data && r.data.error;
+      alert(e === 'email_invalide' ? 'Cette adresse email n\'est pas valide.' : (e === 'email_deja_utilise' ? 'Cette adresse est deja utilisee par un autre compte.' : 'Erreur : l\'email n\'a pas ete modifie.'));
+      return;
+    }
+    u.email = r.data.email;
+    if(CU && String(CU.id) === String(u.id)) CU.email = r.data.email;
+    logAction('Email du compte modifie', 'Compte : ' + u.nom, 'gold');
+    go('users');
+    alert('✅ Email de ' + u.nom + ' modifie. Utilisez la nouvelle adresse a la prochaine connexion.');
+  }).catch(function(){ alert('Impossible de contacter le serveur.'); });
+}
 
 let editUserTargetId = null;
 function openEditUser(id){
@@ -5250,6 +5327,7 @@ function syncPipelineToClient(p, oldNom){
   if(p.nom && cl.nom !== p.nom){ cl.nom = p.nom; changed = true; }
   if(p.tel && cl.tel !== p.tel){ cl.tel = p.tel; changed = true; }
   if(p.ville && cl.ville !== p.ville){ cl.ville = p.ville; changed = true; }
+  if(p.type && cl.type !== p.type){ cl.type = p.type; changed = true; }
   // Notes (demande explicite) : le Pipeline n'a pas sa propre colonne notes,
   // il reutilise celle de Clients & Prospects. A la difference de tel/ville,
   // une note vide est un edit volontaire valide (effacer la note), donc pas
@@ -5257,7 +5335,7 @@ function syncPipelineToClient(p, oldNom){
   if(p.notes !== undefined && cl.notes !== p.notes){ cl.notes = p.notes; changed = true; }
   if(changed){
     stampModification(cl);
-    if(typeof dbUpdate === 'function') dbUpdate('clients', cl.id, { nom:cl.nom, tel:cl.tel, ville:cl.ville, notes:cl.notes, last_modified_by:cl.lastModifiedBy, last_modified_at:cl.lastModifiedAt });
+    if(typeof dbUpdate === 'function') dbUpdate('clients', cl.id, { nom:cl.nom, tel:cl.tel, ville:cl.ville, type:cl.type, notes:cl.notes, last_modified_by:cl.lastModifiedBy, last_modified_at:cl.lastModifiedAt });
   }
 }
 
@@ -5479,13 +5557,13 @@ function suiviAppelCsvLignes(period){
   st.filtres.forEach(function(f){ row([f.nom, f.tel, f.quartier, formatDateFr(f.livraison), formatDateFr(f.date), f.retard ? 'Oui' : 'Non', f.asg]); });
   L.push('');
   L.push('--- PIPELINE : DETAIL DU SUIVI D\'APPEL ---');
-  row(['Nom','Telephone','Recu le','Etape','Raison de perte','Pub','Appele','Rappel soir','Relance J+2','Resultat de l\'appel','Quartier','Date de livraison','Montant (FCFA)','Changer le filtre le','Produit','Commercial']);
+  row(['Nom','Telephone','Recu le','Etape','Raison de perte','Pub','Appele','Rappel soir','Relance J+2','Resultat de l\'appel','Jour de rappel','Cause du rappel','Quartier','Date de livraison','Montant (FCFA)','Changer le filtre le','Produit','Commercial']);
   PIPELINE.forEach(function(p){
     const t = pipeDateRecuTexte(p, false);
     if(!(t === '-' ? (!period || period === 'all') : isInPeriod(t, period))) return;
     const cl = p.etape === 'Perdu' ? findLinkedClient(p) : null;
     row([p.nom, p.tel || '', t, p.etape, (cl && cl.raisonPerte) || '', p.pub || '', p.appele ? 'Oui' : 'Non', p.rappelSoir ? 'Oui' : 'Non', p.relanceJ2 ? 'Oui' : 'Non',
-      p.resultatAppel || '', p.quartier || '', p.dateLivraison ? formatDateFr(p.dateLivraison) : '', p.montant || '', pipeChangerFiltreISO(p) ? formatDateFr(pipeChangerFiltreISO(p)) : '',
+      p.resultatAppel || '', p.rappelDate ? formatDateFr(p.rappelDate) : '', p.rappelCause || '', p.quartier || '', p.dateLivraison ? formatDateFr(p.dateLivraison) : '', p.montant || '', pipeChangerFiltreISO(p) ? formatDateFr(pipeChangerFiltreISO(p)) : '',
       p.sku ? ((p.qte||1) + 'x ' + p.sku) : '', p.asg || '']);
   });
   return L;
@@ -7290,7 +7368,7 @@ function syncDetailEditToDb(entity, record, oldNom){
       origine_lead:record.origineLead||'', statut:record.statut, last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
     syncClientToPipeline(record, oldNom);
   } else if(entity === 'pipeline'){
-    dbUpdate('pipeline', record.id, { nom:record.nom, val:record.val, ville:record.ville, tel:record.tel, date_estimee:record.dateEstimee,
+    dbUpdate('pipeline', record.id, { nom:record.nom, type:record.type, val:record.val, ville:record.ville, tel:record.tel, date_estimee:record.dateEstimee,
       last_modified_by:record.lastModifiedBy, last_modified_at:record.lastModifiedAt });
     syncPipelineToClient(record, oldNom);
   } else if(entity === 'tasks'){
@@ -8183,7 +8261,8 @@ function mapPipelineFromDb(r){
     createdAt:r.created_at||null,
     quartier:r.quartier||'', pub:r.pub||'', appele:r.appele===true, rappelSoir:r.rappel_soir===true,
     relanceJ2:r.relance_j2===true, resultatAppel:r.resultat_appel||'', dateLivraison:r.date_livraison||'',
-    montant:(r.montant===null||r.montant===undefined||r.montant==='') ? null : Number(r.montant) };
+    montant:(r.montant===null||r.montant===undefined||r.montant==='') ? null : Number(r.montant),
+    rappelDate:r.rappel_date||'', rappelCause:r.rappel_cause||'' };
 }
 function mapTaskFromDb(r){
   // Un RDV ou une installation est stocke dans la meme table que les taches.

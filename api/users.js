@@ -166,10 +166,27 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ success: true, count: deptUsers.length });
       }
 
+      // Changer l'email (identifiant de connexion) d'un compte — Super Admin,
+      // y compris pour son propre compte (19/11/2026). L'adresse n'est pas
+      // ecrite dans le Journal (seulement le nom du compte).
+      if (action === 'update_email') {
+        if (!isSA) return deny(res);
+        const nouvel = String(value || '').trim().toLowerCase();
+        if (!/^[^\s@<>"']+@[^\s@<>"']+\.[a-z]{2,}$/.test(nouvel) || nouvel.length > 120) return res.status(400).json({ error: 'email_invalide' });
+        const deja = await sql`SELECT id FROM users WHERE lower(email) = ${nouvel} AND id <> ${id}`;
+        if (deja.length) return res.status(409).json({ error: 'email_deja_utilise' });
+        await sql`UPDATE users SET email = ${nouvel} WHERE id = ${id}`;
+        await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)
+                   VALUES (${me.nom}, ${me.departement}, 'Email du compte modifie', ${'Compte : ' + target.nom}, 'dot-gold', ${me.ini}, ${me.col}, 'web')`;
+        return res.status(200).json({ success: true, email: nouvel });
+      }
+
       if (action === 'update_profile') {
         if (!isSA) return deny(res);
         const { role, departement, ville } = neutraliserTexte(req.body);
         if (VALID_ROLES.indexOf(role) < 0) return res.status(400).json({ error: 'Role invalide' });
+        // Un compte Super Admin garde toujours son role (protection, 19/11/2026).
+        if (target.role === 'superadmin' && role !== 'superadmin') return res.status(400).json({ error: 'role_super_admin_protege' });
         await sql`UPDATE users SET role = ${role}, departement = ${departement}, ville = ${ville} WHERE id = ${id}`;
         await sql`INSERT INTO audit_log (user_nom, dept, action, detail, color, ini, col, ip)
                    VALUES (${me.nom}, ${me.departement}, 'Profil modifie',

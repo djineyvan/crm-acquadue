@@ -23,7 +23,7 @@ var PIPELINE = [];
 
 eval(grab('const PIPE_RESULTATS_APPEL', '// Statuts Clients & Prospects').replace(/^const /gm, 'var '));
 eval(grab('let PIPE_DATE_DU', 'function renderPipe(c){').replace(/^let /gm, 'var '));
-eval(grab('function pipeCardSuiviHtml(p){', 'function viewPipeCard(id){').replace(/^const /gm, 'var '));
+eval(grab('// Nombre de jours avant le rappel demande', 'function viewPipeCard(id){').replace(/^const /gm, 'var '));
 
 console.log('— 1. Date de reception');
 const t = new Date(2026, 10, 17, 9, 5).getTime();

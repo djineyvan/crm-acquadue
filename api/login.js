@@ -51,7 +51,7 @@ module.exports = async function handler(req, res) {
     const { email, password } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: 'Email et mot de passe requis' });
 
-    const rows = await sql`SELECT * FROM users WHERE email = ${email}`;
+    const rows = await sql`SELECT * FROM users WHERE lower(email) = lower(${String(email).trim()})`;
     if (rows.length === 0) return res.status(401).json({ error: 'not_found' });
     const user = rows[0];
 

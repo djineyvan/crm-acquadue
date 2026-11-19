@@ -75,7 +75,7 @@ global.fetch = async function (url, opt) { if (opt && opt.body) { try { ENVOIS.p
   let r = await call(H['init-db'], {});
   check('init-db sans compte existant : autorise et reussit', r.statusCode === 200 && r.body && r.body.success === true, r.body);
   check('compte Super Admin cree', r.body && r.body.seeded === true);
-  const seed = (await sqlRaw`SELECT pass, doit_changer_pass FROM users WHERE email = 'yvan@acquadue.ne'`)[0];
+  const seed = (await sqlRaw`SELECT pass, doit_changer_pass FROM users WHERE email = 'admin@acquadue.ne'`)[0];
   check('mot de passe de depart stocke CHIFFRE (pas en clair)', seed.pass.indexOf('scrypt$') === 0 && seed.pass.indexOf('Admin@2026') < 0);
   check('changement de mot de passe impose pour le compte de depart', seed.doit_changer_pass === true);
 
@@ -87,7 +87,7 @@ global.fetch = async function (url, opt) { if (opt && opt.body) { try { ENVOIS.p
     ['DELETE /api/data',                     H.data,            { method: 'DELETE', body: { entity: 'clients', id: 1 } }],
     ['GET  /api/bulk-load',                  H['bulk-load'],    { method: 'GET' }],
     ['GET  /api/users',                      H.users,           { method: 'GET' }],
-    ['GET  /api/users?reveal=...',           H.users,           { method: 'GET', query: { reveal: 'yvan@acquadue.ne', requestedBy: 'x' } }],
+    ['GET  /api/users?reveal=...',           H.users,           { method: 'GET', query: { reveal: 'admin@acquadue.ne', requestedBy: 'x' } }],
     ['GET  /api/users?sessions=1',           H.users,           { method: 'GET', query: { sessions: '1' } }],
     ['POST /api/users',                      H.users,           { method: 'POST', body: { nom: 'Pirate', email: 'p@x.ne', pass: 'Pirate@2026', role: 'superadmin' } }],
     ['PUT  /api/users (reset_password)',     H.users,           { method: 'PUT', body: { id: 1, action: 'reset_password', value: 'Pirate@2026' } }],
@@ -101,15 +101,15 @@ global.fetch = async function (url, opt) { if (opt && opt.body) { try { ENVOIS.p
     ['POST /api/backup',                     H.backup,          { method: 'POST', body: { type: 'Manuelle' } }],
     ['DELETE /api/backup',                   H.backup,          { method: 'DELETE', body: { id: 1 } }],
     ['GET  /api/export-data',                H['export-data'],  { method: 'GET' }],
-    ['POST /api/reset-data',                 H['reset-data'],   { method: 'POST', body: { email: 'yvan@acquadue.ne', password: 'Admin@2026', confirm: 'RESET' } }],
-    ['POST /api/restore-backup',             H['restore-backup'], { method: 'POST', body: { email: 'yvan@acquadue.ne', password: 'Admin@2026', backupId: 1, confirm: 'RESTORE' } }],
+    ['POST /api/reset-data',                 H['reset-data'],   { method: 'POST', body: { email: 'admin@acquadue.ne', password: 'Admin@2026', confirm: 'RESET' } }],
+    ['POST /api/restore-backup',             H['restore-backup'], { method: 'POST', body: { email: 'admin@acquadue.ne', password: 'Admin@2026', backupId: 1, confirm: 'RESTORE' } }],
     ['GET  /api/init-db (comptes existants)', H['init-db'],     { method: 'GET' }]
   ];
   for (const a of anon) {
     const rr = await call(a[1], a[2]);
     check(a[0] + ' -> 401', rr.statusCode === 401 && rr.body && rr.body.error === 'session_invalide', { code: rr.statusCode, body: rr.body });
   }
-  const noLeak = await call(H.users, { method: 'GET', query: { reveal: 'yvan@acquadue.ne', requestedBy: 'x' } });
+  const noLeak = await call(H.users, { method: 'GET', query: { reveal: 'admin@acquadue.ne', requestedBy: 'x' } });
   check('aucun mot de passe renvoye sans jeton', JSON.stringify(noLeak.body).indexOf('revealedPassword') < 0 && JSON.stringify(noLeak.body).indexOf('scrypt') < 0);
   let bad = await call(H.data, { method: 'GET', query: { entity: 'clients' }, headers: { authorization: 'Bearer abc' } });
   check('jeton bidon refuse', bad.statusCode === 401);
@@ -119,9 +119,9 @@ global.fetch = async function (url, opt) { if (opt && opt.body) { try { ENVOIS.p
   check('/api/version reste public', r.statusCode === 200 && r.body && r.body.version);
 
   section('3. Connexion');
-  r = await login('yvan@acquadue.ne', 'mauvais');
+  r = await login('admin@acquadue.ne', 'mauvais');
   check('mauvais mot de passe -> 401 wrong_password', r.statusCode === 401 && r.body.error === 'wrong_password' && r.body.tentatives === 1, r.body);
-  r = await login('yvan@acquadue.ne', 'Admin@2026');
+  r = await login('admin@acquadue.ne', 'Admin@2026');
   check('bon mot de passe -> 200 avec jeton', r.statusCode === 200 && r.body.success && /^[0-9a-f]{64}$/.test(r.body.token), r.body && Object.keys(r.body));
   const saToken = r.body.token;
   check('reponse sans champ secret (pass, reset_code)', r.body.user.pass === undefined && r.body.user.reset_code === undefined && r.body.user.reset_attempts === undefined);
@@ -133,7 +133,7 @@ global.fetch = async function (url, opt) { if (opt && opt.body) { try { ENVOIS.p
   r = await call(H.users, { method: 'GET' }, saToken);
   check('liste des utilisateurs sans mot de passe ni code', r.statusCode === 200 && r.body.users.length >= 1 &&
     r.body.users.every(function (u) { return u.pass === undefined && u.reset_code === undefined && u.reset_code_expires === undefined; }));
-  r = await call(H.users, { method: 'GET', query: { reveal: 'yvan@acquadue.ne', requestedBy: 'Yvan' } }, saToken);
+  r = await call(H.users, { method: 'GET', query: { reveal: 'admin@acquadue.ne', requestedBy: 'Yvan' } }, saToken);
   check("l'ancienne route 'voir mot de passe' ne renvoie plus rien", r.body.revealedPassword === undefined && JSON.stringify(r.body).indexOf('Admin@2026') < 0);
   r = await call(H.users, { method: 'GET', query: { sessions: '1' } }, saToken);
   check('liste des sessions (Super Admin)', r.statusCode === 200 && r.body.sessions.length >= 1);
@@ -219,7 +219,7 @@ global.fetch = async function (url, opt) { if (opt && opt.body) { try { ENVOIS.p
   }
   r = await call(H.users, { method: 'PUT', body: { id: 1, action: 'change_own_password', currentPass: 'Admin@2026', newPass: 'Pirate@2027' } }, hToken);
   check("ne peut pas changer le mot de passe d'un autre compte", r.statusCode === 403);
-  const stillOk = await login('yvan@acquadue.ne', 'Admin@2026');
+  const stillOk = await login('admin@acquadue.ne', 'Admin@2026');
   check('le mot de passe du Super Admin est intact', stillOk.statusCode === 200);
 
   section('6. Changement de mot de passe personnel');
@@ -249,7 +249,7 @@ global.fetch = async function (url, opt) { if (opt && opt.body) { try { ENVOIS.p
   const mId = (await sqlRaw`SELECT id FROM users WHERE email = 'marie@acquadue.ne'`)[0].id;
   r = await call(H.users, { method: 'PUT', body: { id: mId, action: 'reset_password', value: 'Reset@2027X' } }, nToken);
   check("Admin ne peut PAS reinitialiser un autre departement -> 403", r.statusCode === 403);
-  const saId = (await sqlRaw`SELECT id FROM users WHERE email = 'yvan@acquadue.ne'`)[0].id;
+  const saId = (await sqlRaw`SELECT id FROM users WHERE email = 'admin@acquadue.ne'`)[0].id;
   r = await call(H.users, { method: 'PUT', body: { id: saId, action: 'reset_password', value: 'Reset@2027X' } }, nToken);
   check("Admin ne peut PAS reinitialiser le Super Admin -> 403", r.statusCode === 403);
   r = await call(H.users, { method: 'PUT', body: { id: hId, action: 'reset_password', value: 'Welcome@2026' } }, saToken);
@@ -375,22 +375,22 @@ global.fetch = async function (url, opt) { if (opt && opt.body) { try { ENVOIS.p
   check('apres deconnexion, le jeton ne marche plus', r.statusCode === 401);
 
   section('12. Operations dangereuses (Super Admin + mot de passe + confirmation)');
-  r = await call(H['restore-backup'], { method: 'POST', body: { email: 'yvan@acquadue.ne', password: 'faux', backupId, confirm: 'RESTORE' } }, saToken);
+  r = await call(H['restore-backup'], { method: 'POST', body: { email: 'admin@acquadue.ne', password: 'faux', backupId, confirm: 'RESTORE' } }, saToken);
   check('restauration : mauvais mot de passe -> 401', r.statusCode === 401);
   r = await call(H['restore-backup'], { method: 'POST', body: { email: 'autre@x.ne', password: 'Admin@2026', backupId, confirm: 'RESTORE' } }, saToken);
   check("restauration : email different du compte connecte -> 403", r.statusCode === 403);
-  r = await call(H['restore-backup'], { method: 'POST', body: { email: 'yvan@acquadue.ne', password: 'Admin@2026', backupId } }, saToken);
+  r = await call(H['restore-backup'], { method: 'POST', body: { email: 'admin@acquadue.ne', password: 'Admin@2026', backupId } }, saToken);
   check('restauration : sans confirmation -> 400', r.statusCode === 400);
   await call(H.data, { method: 'DELETE', body: { entity: 'clients', id: 9001 } }, saToken);
-  r = await call(H['restore-backup'], { method: 'POST', body: { email: 'yvan@acquadue.ne', password: 'Admin@2026', backupId, confirm: 'RESTORE' } }, saToken);
+  r = await call(H['restore-backup'], { method: 'POST', body: { email: 'admin@acquadue.ne', password: 'Admin@2026', backupId, confirm: 'RESTORE' } }, saToken);
   check('restauration complete reussie (mot de passe + session)', r.statusCode === 200 && r.body.success, r.body);
   r = await call(H.data, { method: 'GET', query: { entity: 'clients' } }, saToken);
   check('... le client supprime est revenu', r.body.rows.some(function (x) { return Number(x.id) === 9001; }));
-  r = await call(H['reset-data'], { method: 'POST', body: { email: 'yvan@acquadue.ne', password: 'faux', confirm: 'RESET' } }, saToken);
+  r = await call(H['reset-data'], { method: 'POST', body: { email: 'admin@acquadue.ne', password: 'faux', confirm: 'RESET' } }, saToken);
   check('reinitialisation : mauvais mot de passe -> 401', r.statusCode === 401);
-  r = await call(H['reset-data'], { method: 'POST', body: { email: 'yvan@acquadue.ne', password: 'Admin@2026' } }, saToken);
+  r = await call(H['reset-data'], { method: 'POST', body: { email: 'admin@acquadue.ne', password: 'Admin@2026' } }, saToken);
   check('reinitialisation : sans confirmation -> 400', r.statusCode === 400);
-  r = await call(H['reset-data'], { method: 'POST', body: { email: 'yvan@acquadue.ne', password: 'Admin@2026', confirm: 'RESET' } }, saToken);
+  r = await call(H['reset-data'], { method: 'POST', body: { email: 'admin@acquadue.ne', password: 'Admin@2026', confirm: 'RESET' } }, saToken);
   check('reinitialisation complete reussie', r.statusCode === 200 && r.body.success, r.body);
   const usersLeft = await sqlRaw`SELECT COUNT(*) AS n FROM users`;
   check('seul le Super Admin subsiste', Number(usersLeft[0].n) === 1);

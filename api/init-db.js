@@ -44,6 +44,7 @@ const COLUMN_TYPES = {
     // Suivi d'appel (18/11/2026) : repris de la feuille « Suivi des contacts ».
     quartier: 'TEXT', pub: 'TEXT', appele: 'BOOLEAN DEFAULT false', rappel_soir: 'BOOLEAN DEFAULT false',
     relance_j2: 'BOOLEAN DEFAULT false', resultat_appel: 'TEXT', date_livraison: 'TEXT', montant: 'INT',
+    rappel_date: 'TEXT', rappel_cause: 'TEXT', // jour de rappel demande par le client + cause (19/11/2026)
     created_at: 'TIMESTAMP DEFAULT NOW()'
   },
   tasks: {
@@ -374,8 +375,10 @@ module.exports = async function handler(req, res) {
       seeded = true;
       // Mot de passe de depart chiffre ; son changement est impose des la 1re connexion.
       const seedHash = await hashPassword('Admin@2026');
+      // Adresse du 1er compte : reglage Vercel (jamais ecrite dans le code, depot public).
+      const seedEmail = String(process.env.SEED_ADMIN_EMAIL || process.env.RECOVERY_EMAIL || 'admin@acquadue.ne').trim().toLowerCase();
       await sql`INSERT INTO users (nom,email,pass,role,departement,ini,col,ville,doit_changer_pass)
-                 VALUES ('Yvan Leunkeu Djine','yvan@acquadue.ne',${seedHash},'superadmin','Direction','YL','av-red','Niamey',true)
+                 VALUES ('Yvan Leunkeu Djine',${seedEmail},${seedHash},'superadmin','Direction','YL','av-red','Niamey',true)
                  ON CONFLICT (email) DO NOTHING`;
     }
 

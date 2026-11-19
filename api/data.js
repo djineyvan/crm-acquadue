@@ -46,7 +46,7 @@ const ENTITY_MAP = {
 const COLUMNS = {
   clients: ['id','nom','type','ville','zone','tel','email','societe','source','statut','produit','asg','notes','origine_lead','lead_via','lead_recu_le','lead_campagne','lead_ensemble','lead_annonce','lead_annonce_id','lead_formulaire','lead_formulaire_id','date_creation','locked','historique','raison_nq','raison_perte','last_modified_by','last_modified_at'],
   pipeline: ['id','nom','type','val','etape','asg','ville','tel','date_estimee','locked','sku','qte','entrepot','reservation_faite','last_modified_by','last_modified_at',
-             'quartier','pub','appele','rappel_soir','relance_j2','resultat_appel','date_livraison','montant'],
+             'quartier','pub','appele','rappel_soir','relance_j2','resultat_appel','date_livraison','montant','rappel_date','rappel_cause'],
   tasks: ['id','titre','asg','dept','pri','statut','date_limite','desc_tache','locked','rapport','last_modified_by','last_modified_at'],
   comm_perf: ['id','nom','ville','zone','obj','ventes','nb','tx','date_enregistrement','historique_modifs'],
   campagnes: ['id','nom','canal','budget','statut','leads','cout_lead','debut','fin','resp','locked','last_modified_by','last_modified_at'],
@@ -76,7 +76,8 @@ const COLUMNS = {
 // absente, code Postgres 42703), on les ajoute ici puis on reessaie une fois.
 const PIPELINE_SUIVI_COLS = {
   quartier: 'TEXT', pub: 'TEXT', appele: 'BOOLEAN DEFAULT false', rappel_soir: 'BOOLEAN DEFAULT false',
-  relance_j2: 'BOOLEAN DEFAULT false', resultat_appel: 'TEXT', date_livraison: 'TEXT', montant: 'INT'
+  relance_j2: 'BOOLEAN DEFAULT false', resultat_appel: 'TEXT', date_livraison: 'TEXT', montant: 'INT',
+  rappel_date: 'TEXT', rappel_cause: 'TEXT'
 };
 async function ensurePipelineSuiviCols(sql) {
   for (const c of Object.keys(PIPELINE_SUIVI_COLS)) {

@@ -34,7 +34,7 @@ const NOUVELLES = ['quartier', 'pub', 'appele', 'rappel_soir', 'relance_j2', 're
 
 (async function () {
   await call(H['init-db'], {});
-  const tok = (await call(H.login, { method: 'POST', body: { email: 'yvan@acquadue.ne', password: 'Admin@2026' } })).body.token;
+  const tok = (await call(H.login, { method: 'POST', body: { email: 'admin@acquadue.ne', password: 'Admin@2026' } })).body.token;
   check('connexion Super Admin', !!tok);
 
   section('1. Colonnes creees par /api/init-db');

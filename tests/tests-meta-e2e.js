@@ -110,7 +110,7 @@ async function postParsed(rawText, sig) {
 
 (async function main() {
   await call(H['init-db'], {});
-  const lg = await login('yvan@acquadue.ne', 'Admin@2026');
+  const lg = await login('admin@acquadue.ne', 'Admin@2026');
   const tok = lg.body.token;
   await sqlRaw`INSERT INTO users (nom,email,pass,role,departement,ini,col,ville,actif) VALUES ('Harouna','h@x.ne','x','collaborateur','Commercial','H','av-blue','Niamey',true)`;
 

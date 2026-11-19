@@ -34,7 +34,7 @@ const existe = async function (table, col, id) { return (await sqlRaw.query('SEL
 
 (async function () {
   await call(H['init-db'], {});
-  const saTok = (await call(H.login, { method: 'POST', body: { email: 'yvan@acquadue.ne', password: 'Admin@2026' } })).body.token;
+  const saTok = (await call(H.login, { method: 'POST', body: { email: 'admin@acquadue.ne', password: 'Admin@2026' } })).body.token;
   check('connexion Super Admin', !!saTok);
   const toks = {};
   for (const [nom, role] of [['AdminT', 'admin'], ['RespT', 'responsable'], ['CollabT', 'collaborateur']]) {

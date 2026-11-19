@@ -53,7 +53,7 @@ global.fetch = async function (url) {
   // On cree d'abord la base SANS la colonne, comme en production avant cette version.
   await call(H.init, {});
   await sqlRaw`ALTER TABLE clients DROP COLUMN IF EXISTS raison_nq`;
-  const tok = (await call(H.login, { method: 'POST', body: { email: 'yvan@acquadue.ne', password: 'Admin@2026' } })).body.token;
+  const tok = (await call(H.login, { method: 'POST', body: { email: 'admin@acquadue.ne', password: 'Admin@2026' } })).body.token;
   await sqlRaw`INSERT INTO users (nom,email,pass,role,departement,ini,col,ville,actif) VALUES ('Harouna','h@x.ne','x','collaborateur','Commercial','H','av-blue','Niamey',true)`;
   for (const k of Object.keys(PEOPLE)) await post(payload(k));
   let r = await call(H.version, { query: { meta: 'status' } }, tok);

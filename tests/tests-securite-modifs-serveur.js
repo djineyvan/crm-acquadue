@@ -30,7 +30,7 @@ const val = async function (table, col, idCol, id) { const r = await sqlRaw.quer
 
 (async function () {
   await call(H['init-db'], {});
-  const saTok = (await call(H.login, { method: 'POST', body: { email: 'yvan@acquadue.ne', password: 'Admin@2026' } })).body.token;
+  const saTok = (await call(H.login, { method: 'POST', body: { email: 'admin@acquadue.ne', password: 'Admin@2026' } })).body.token;
   check('connexion Super Admin', !!saTok);
   const toks = {};
   for (const [nom, role] of [['Awa', 'collaborateur'], ['Moussa', 'collaborateur'], ['RespT', 'responsable'], ['AdminT', 'admin']]) {
