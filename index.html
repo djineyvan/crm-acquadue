@@ -1363,7 +1363,7 @@ function clientsPourListe(recherche){
 }
 function clientOptionsHtml(liste){
   const esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); };
-  return '<option value="">— Nouveau client —</option>' + liste.map(function(c){
+  return '<option value="">— Choisir un client —</option>' + liste.map(function(c){
     return '<option value="' + esc(c.nom) + '">' + esc(c.nom) + (c.tel ? ' — ' + esc(c.tel) : '') + '</option>';
   }).join('');
 }
@@ -1374,30 +1374,112 @@ function filtrerClientSelect(selectId, textId, recherche){
   const liste = clientsPourListe(recherche);
   sel.innerHTML = clientOptionsHtml(liste);
   const info = el(selectId + '-info');
-  if(String(recherche||'').trim()){
+  const r = String(recherche||'').trim();
+  if(r){
     if(liste.length === 1){ sel.value = liste[0].nom; }
     else if(liste.some(function(c){ return c.nom === avant; })){ sel.value = avant; }
     else { sel.value = ''; }
-    if(info) info.textContent = liste.length ? liste.length + ' client(s) trouve(s)' + (liste.length === 1 ? ' — selectionne' : ' — choisissez dans la liste') : 'Aucun client trouve : il sera cree comme nouveau client';
+    if(info){
+      if(liste.length) info.textContent = liste.length + ' client(s) trouve(s)' + (liste.length === 1 ? ' — selectionne' : ' — choisissez dans la liste');
+      else info.innerHTML = 'Aucun client trouve. <a href="#" style="color:var(--red);font-weight:600" onclick="creerDepuisRecherche(\'' + selectId + '\',\'' + textId + '\');return false">➕ Creer « ' + r.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,'&#39;') + ' » comme nouveau client</a>';
+    }
   } else {
     sel.value = avant;
     if(info) info.textContent = '';
   }
   toggleNewClientField(selectId, textId);
-  // Aucun client trouve : on propose le texte tape comme nom du nouveau client.
-  const txt = el(textId);
-  if(txt && !sel.value && String(recherche||'').trim() && !liste.length) txt.value = String(recherche).trim();
 }
 
+// ── CHOIX DU CLIENT : DEJA ENREGISTRE OU NOUVEAU (19/11/2026) ───────────────
+// Deux boutons en haut : « 👤 Client deja enregistre » (liste avec recherche)
+// et « ➕ Nouveau client » (nom, telephone, ville, adresse / quartier, type).
+// La case textId garde toujours le NOM retenu : c'est elle que lisent
+// saveDevisBuilder() et saveFactureBuilder().
 function fieldClientPicker(selectId, textId){
+  const btn = function(mode, label){ return '<button type="button" class="btn btn-sm btn-ghost" id="'+selectId+'-mode-'+mode+'" onclick="setClientPickerMode(\''+selectId+'\',\''+textId+'\',\''+mode+'\')">'+label+'</button>'; };
+  const villes = (typeof VILLES_NIGER !== 'undefined' ? VILLES_NIGER : ['Niamey']).map(function(v){ return '<option>'+v+'</option>'; }).join('');
   return '<div class="form-group"><label class="form-label">Client</label>' +
-    '<input class="form-input" id="'+selectId+'-search" placeholder="🔍 Rechercher un client (nom ou telephone)…" autocomplete="off" style="margin-bottom:6px" oninput="filtrerClientSelect(\''+selectId+'\',\''+textId+'\', this.value)">' +
-    '<div id="'+selectId+'-info" class="td-muted" style="font-size:11px;margin:-2px 0 6px"></div>' +
-    '<select class="form-select" id="'+selectId+'" onchange="toggleNewClientField(\''+selectId+'\',\''+textId+'\')" style="margin-bottom:6px">' +
-    clientOptionsHtml(clientsPourListe('')) +
-    '</select>' +
-    '<input class="form-input" id="'+textId+'" placeholder="Nom du nouveau client"/>' +
+    '<div style="display:flex;gap:6px;margin-bottom:8px">' + btn('existant','👤 Client deja enregistre') + btn('nouveau','➕ Nouveau client') + '</div>' +
+    '<div id="'+selectId+'-bloc-existant">' +
+      '<input class="form-input" id="'+selectId+'-search" placeholder="🔍 Tapez le nom ou le telephone du client…" autocomplete="off" style="margin-bottom:6px" oninput="filtrerClientSelect(\''+selectId+'\',\''+textId+'\', this.value)">' +
+      '<div id="'+selectId+'-info" class="td-muted" style="font-size:11px;margin:-2px 0 6px"></div>' +
+      '<select class="form-select" id="'+selectId+'" onchange="toggleNewClientField(\''+selectId+'\',\''+textId+'\')" style="margin-bottom:6px">' +
+      clientOptionsHtml(clientsPourListe('')) +
+      '</select>' +
+    '</div>' +
+    '<div id="'+selectId+'-bloc-nouveau" style="display:none;padding:10px;border:1px solid var(--border);border-radius:var(--r2);background:var(--card2)">' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+        '<div><label class="form-label">Nom du client *</label><input class="form-input" id="'+textId+'" placeholder="Ex : Amadou Mahamane"/></div>' +
+        '<div><label class="form-label">Telephone</label><input class="form-input" id="'+textId+'-tel" placeholder="+227 XX XX XX XX"/></div>' +
+        '<div><label class="form-label">Ville</label><select class="form-select" id="'+textId+'-ville">'+villes+'</select></div>' +
+        '<div><label class="form-label">Adresse / Quartier</label><input class="form-input" id="'+textId+'-zone" placeholder="Ex : Plateau, rue ..."/></div>' +
+        '<div><label class="form-label">Type de client</label><select class="form-select" id="'+textId+'-type"><option>B2C</option><option>B2B</option></select></div>' +
+      '</div>' +
+      '<div class="td-muted" style="font-size:11px;margin-top:6px">La fiche du client sera creee dans Clients & Prospects avec ces informations.</div>' +
+    '</div>' +
     '</div>';
+}
+function clientPickerMode(selectId){
+  const b = el(selectId + '-bloc-nouveau');
+  return (b && b.style.display !== 'none') ? 'nouveau' : 'existant';
+}
+function setClientPickerMode(selectId, textId, mode){
+  const ex = el(selectId + '-bloc-existant'), nv = el(selectId + '-bloc-nouveau');
+  const bEx = el(selectId + '-mode-existant'), bNv = el(selectId + '-mode-nouveau');
+  const nouveau = mode === 'nouveau';
+  if(ex) ex.style.display = nouveau ? 'none' : 'block';
+  if(nv) nv.style.display = nouveau ? 'block' : 'none';
+  if(bEx) bEx.className = 'btn btn-sm ' + (nouveau ? 'btn-ghost' : 'btn-red');
+  if(bNv) bNv.className = 'btn btn-sm ' + (nouveau ? 'btn-red' : 'btn-ghost');
+  const txt = el(textId);
+  if(nouveau){
+    if(txt){ txt.value = ''; txt.style.display = 'block'; }
+    ['-tel','-zone'].forEach(function(s){ const x = el(textId + s); if(x) x.value = ''; });
+    const t = el(textId + '-type'); if(t) t.value = 'B2C';
+    const v = el(textId + '-ville'); if(v && CU && CU.ville && VILLES_NIGER.indexOf(CU.ville) >= 0) v.value = CU.ville;
+  } else {
+    toggleNewClientField(selectId, textId);
+  }
+}
+// « Aucun client trouve » -> on passe en « Nouveau client » avec ce qui a ete tape
+// (le nom, ou le numero si on a tape des chiffres).
+function creerDepuisRecherche(selectId, textId){
+  const r = String((el(selectId + '-search') || {}).value || '').trim();
+  setClientPickerMode(selectId, textId, 'nouveau');
+  const chiffres = r.replace(/[^0-9+ ]/g,'').trim();
+  if(r && chiffres.replace(/[^0-9]/g,'').length >= 6 && chiffres.length >= r.length - 1){ if(el(textId + '-tel')) el(textId + '-tel').value = r; }
+  else if(el(textId)) el(textId).value = r;
+  const focus = el(textId); if(focus && focus.focus) focus.focus();
+}
+// Lit le client choisi. Renvoie null (avec un message) s'il manque quelque chose.
+function lireClientPicker(selectId, textId){
+  if(clientPickerMode(selectId) === 'nouveau'){
+    const nom = String((el(textId) || {}).value || '').trim();
+    if(!nom){ alert('Entrez le nom du nouveau client.'); return null; }
+    return { nouveau:true, nom:nom, tel:String((el(textId+'-tel')||{}).value||'').trim(),
+      ville:(el(textId+'-ville')||{}).value || '', zone:String((el(textId+'-zone')||{}).value||'').trim(),
+      type:(el(textId+'-type')||{}).value || 'B2C' };
+  }
+  const sel = el(selectId);
+  const nom = sel ? String(sel.value||'').trim() : '';
+  if(!nom){ alert('Choisissez un client dans la liste (tapez son nom pour le trouver), ou cliquez sur « ➕ Nouveau client ».'); return null; }
+  return { nouveau:false, nom:nom };
+}
+// Ouverture d'un devis / d'une facture : client connu -> « deja enregistre »,
+// nom inconnu (ancien document) -> « nouveau » avec le nom pre-rempli, rien -> « deja enregistre ».
+function preparerClientPicker(selectId, textId, nomClient){
+  const s = el(selectId + '-search'); if(s) s.value = '';
+  const info = el(selectId + '-info'); if(info) info.textContent = '';
+  const sel = el(selectId); if(sel) sel.innerHTML = clientOptionsHtml(clientsPourListe(''));
+  const nom = String(nomClient||'').trim();
+  const connu = nom ? CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === nom.toLowerCase(); }) : null;
+  if(nom && !connu){
+    setClientPickerMode(selectId, textId, 'nouveau');
+    if(el(textId)) el(textId).value = nom;
+  } else {
+    if(sel) sel.value = connu ? connu.nom : '';
+    setClientPickerMode(selectId, textId, 'existant');
+  }
 }
 
 function fillClientSelect(id){
@@ -1415,17 +1497,13 @@ function fillClientSelect(id){
   if(current) sel.value = current;
 }
 
+// En mode « deja enregistre », la case du nom reprend le client choisi.
 function toggleNewClientField(selectId, textId){
   const sel = el(selectId);
   const txt = el(textId);
   if(!sel || !txt) return;
-  if(sel.value){
-    txt.value = sel.value;
-    txt.style.display = 'none';
-  } else {
-    txt.value = '';
-    txt.style.display = 'block';
-  }
+  if(clientPickerMode(selectId) === 'nouveau') return;
+  txt.value = sel.value || '';
 }
 
 function openModal(id){
@@ -1928,15 +2006,12 @@ function viewPipeCard(id){
     ['Telephone', p.tel || '-'],
     ['Date de reception', '📥 ' + pipeDateRecuTexte(p, true)],
     ['Valeur estimee', '<strong style="color:var(--red)">' + fcfa(p.val) + '</strong>'],
-    // Etape : liste deroulante directement sur la ligne (18/11/2026). Choisir
-    // une etape l'applique (confirmation ; raison demandee pour Perdu et Non qualifie).
-    ['Etape du pipeline', ((isSuperAdmin() || canModifyProspectInfo())
-      ? '<select class="form-select" id="pipe-etape-direct" style="max-width:260px" onchange="setPipelineStage(' + p.id + ', this.value)">' +
-          PIPELINE_STAGES.map(function(st){ return '<option value="'+st+'"'+(st===p.etape?' selected':'')+'>'+st+(st===p.etape?' (actuelle)':'')+'</option>'; }).join('') +
-        '</select>'
-      : statusTag(p.etape)) +
-      (p.etape === 'Non qualifie' ? raisonNqBadge(clLinked || findLinkedClient(p)) : '') +
-      (p.etape === 'Perdu' ? raisonPerteBadge(clLinked || findLinkedClient(p)) : '')],
+    // Etape (19/11/2026) : liste deroulante dans la fiche, mais l'etape n'est
+    // appliquee QUE lorsqu'on clique sur « 💾 Enregistrer » (voir pipeAvantEnregistrement).
+    ['Etape du pipeline', statusTag(p.etape)]].concat(
+      (p.etape === 'Non qualifie' || p.etape === 'Perdu')
+        ? [['Raison', (p.etape === 'Non qualifie' ? raisonNqBadge(clLinked || findLinkedClient(p)) : raisonPerteBadge(clLinked || findLinkedClient(p))) || '<span class="td-muted">-</span>']]
+        : []).concat([
     ['Commercial assigne', p.asg],
     ['Date estimee de signature', /^\d{4}-\d{2}-\d{2}$/.test(p.dateEstimee||'') ? formatDateFr(p.dateEstimee) : (p.dateEstimee || '-')],
     ['Produit lie', (produit ? produit.nom : p.sku || '-') + (p.qte ? ' x' + p.qte : '')],
@@ -1948,7 +2023,7 @@ function viewPipeCard(id){
     ['Contenu du formulaire', origineLeadHtml(clLinked ? clLinked.origineLead : '')],
     ['Notes', p.notes ? p.notes.replace(/\n/g,'<br/>') : '<span class="td-muted">-</span>'],
     ['Statut de verrouillage', p.locked ? lockBadge() : '<span class="td-muted">Modifiable</span>']
-  ];
+  ]);
 
   // Faire avancer / Marquer perdu : autorise au Super Admin, OU a tout role
   // ayant la permission sensible "Modifier informations prospect" — une
@@ -1978,9 +2053,20 @@ function viewPipeCard(id){
     dept: 'Commercial',
     owner: p.asg,
     rowKeys: { 'Nom du prospect':'nom', 'Ville':'ville', 'Telephone':'tel', 'Valeur estimee':'val',
-               'Date estimee de signature':'dateEstimee', 'Notes':'notes' },
+               'Date estimee de signature':'dateEstimee', 'Notes':'notes', 'Etape du pipeline':'etape',
+               'Produit lie':['sku','qte'], 'Entrepot concerne':'entrepot' },
+    // Etape, produit et entrepot : lus a part, appliques a l'enregistrement
+    // (stock reserve, fiche client liee) par pipeAvantEnregistrement / pipeApresEnregistrement.
+    skipFields: ['etape','sku','qte','entrepot'],
+    beforeSave: pipeAvantEnregistrement,
+    afterSave: pipeApresEnregistrement,
     fields: [
-      ['Nom', 'nom', p.nom],
+      ['Nom', 'nom', p.nom]].concat((isSuperAdmin() || canModifyProspectInfo()) ? [
+      ['Etape du pipeline', 'etape', PIPELINE_STAGES.map(function(st){ return { label: st + (st===p.etape ? ' (actuelle)' : ''), value: st, selected: st===p.etape }; }), 'select']] : []).concat([
+      ['Produit lie', 'sku', pipeProduitOptions(p.sku), 'select'],
+      ['Quantite', 'qte', p.qte || 1],
+      ['Entrepot', 'entrepot', [{label:'—', value:'', selected:!p.entrepot}].concat(ENTREPOTS.map(function(e){ return {label:e.nom, value:e.nom, selected:e.nom===p.entrepot}; }))
+        .concat(p.entrepot && !ENTREPOTS.some(function(e){ return e.nom === p.entrepot; }) ? [{label:p.entrepot, value:p.entrepot, selected:true}] : []), 'select'],
       ['Telephone', 'tel', p.tel || ''],
       ['Valeur (FCFA)', 'val', p.val],
       ['Ville', 'ville', p.ville],
@@ -1989,7 +2075,7 @@ function viewPipeCard(id){
       ['Date estimee', 'dateEstimee', (p.dateEstimee === '—' ? '' : (p.dateEstimee || '')),
         (!p.dateEstimee || p.dateEstimee === '—' || /^\d{4}-\d{2}-\d{2}$/.test(p.dateEstimee)) ? 'date' : 'text'],
       ['Notes', 'notes', p.notes || '', 'textarea']
-    ],
+    ]),
     onSave: function(){ go('pipe'); }
   });
   // Bloc « Suivi d'appel » sur toute la largeur, juste sous les informations
@@ -2146,6 +2232,100 @@ function setPipelineStage(id, newEtape){
   const ok = applyPipelineStage(p, newEtape);
   if(!ok) alert('⚠️ Opportunite passee en "Gagne" mais le stock disponible est insuffisant pour reserver automatiquement. Verifiez le module Stock.');
   closeModal('modal-detail');
+  go('pipe');
+}
+
+// ── FICHE PIPELINE : PRODUIT ET ETAPE A L'ENREGISTREMENT (19/11/2026) ──────
+// Demande d'Yvan : choisir le produit qui interesse le prospect directement
+// dans la fiche, et ne changer l'etape QUE lorsqu'on clique sur « 💾 Enregistrer ».
+function pipeProduitOptions(skuActuel){
+  const opts = [{ label:'— Aucun produit —', value:'', selected:!skuActuel }];
+  PRODUITS.forEach(function(pr){ opts.push({ label: pr.nom + ' (' + pr.sku + ')', value: pr.sku, selected: pr.sku === skuActuel }); });
+  if(skuActuel && !PRODUITS.some(function(pr){ return pr.sku === skuActuel; })) opts.push({ label: skuActuel, value: skuActuel, selected: true });
+  return opts;
+}
+// « 2x AQD-01 » -> { sku:'AQD-01', qte:2 } ; un seul produit connu du catalogue, sinon null.
+function produitUniqueDepuisLabel(label){
+  const t = String(label||'').trim();
+  if(!t || t === '-' || t.indexOf(',') >= 0) return null;
+  const m = /^(\d+)\s*x\s*(.+)$/i.exec(t);
+  const sku = (m ? m[2] : t).trim(), qte = m ? Math.max(1, parseInt(m[1], 10)) : 1;
+  return PRODUITS.some(function(pr){ return pr.sku === sku; }) ? { sku:sku, qte:qte } : null;
+}
+// Change le produit (et la quantite / l'entrepot) d'une opportunite, partout :
+// stock reserve (si l'opportunite est « Gagne »), valeur estimee, fiche client liee.
+function setPipelineProduit(p, sku, qte, entrepot, oldNom){
+  sku = String(sku||''); qte = Math.max(1, parseInt(qte, 10) || 1);
+  entrepot = (entrepot === undefined || entrepot === null) ? (p.entrepot || '') : String(entrepot);
+  if(sku && !entrepot && ENTREPOTS.length) entrepot = ENTREPOTS[0].nom;
+  if((p.sku||'') === sku && (p.qte||1) === qte && (p.entrepot||'') === entrepot) return false;
+  const ancien = { sku:p.sku||'', qte:p.qte||1 };
+  const prixDe = function(k){ const pr = PRODUITS.find(function(x){ return x.sku === k; }); return pr ? (pr.prix_vente||0) : 0; };
+  // Ancienne reservation liberee, nouvelle posee si l'opportunite est gagnee.
+  if(p.reservationFaite){
+    const row = (typeof getStockRow === 'function') ? getStockRow(p.sku, p.entrepot) : null;
+    if(row){ row.reserve = Math.max(0, (row.reserve||0) - (p.qte||0)); if(typeof syncStockRow==='function') syncStockRow(row); }
+    p.reservationFaite = false;
+  }
+  p.sku = sku; p.qte = qte; p.entrepot = entrepot;
+  let stockOk = true;
+  if(p.etape === 'Gagne' && sku){
+    stockOk = triggerPipelineWon(p) !== false;
+    const row = (typeof getStockRow === 'function') ? getStockRow(p.sku, p.entrepot) : null;
+    if(row && typeof syncStockRow==='function') syncStockRow(row);
+    if(!stockOk) alert('⚠️ Produit change, mais le stock disponible est insuffisant pour le reserver. Verifiez le module Stock.');
+  }
+  // Valeur estimee : suit le prix du produit si elle n'avait pas ete choisie a la main.
+  const valAuto = !p.val || p.val === 30000 || p.val === prixDe(ancien.sku) * ancien.qte;
+  if(sku && valAuto && prixDe(sku)) p.val = prixDe(sku) * qte;
+  stampModification(p);
+  if(typeof dbUpdate === 'function') dbUpdate('pipeline', p.id, { sku:p.sku, qte:p.qte, entrepot:p.entrepot, val:p.val,
+    reservation_faite:p.reservationFaite, last_modified_by:p.lastModifiedBy, last_modified_at:p.lastModifiedAt });
+  // Fiche Clients & Prospects liee : « Produit d'interet ».
+  const cl = findLinkedClient(p, oldNom);
+  const label = sku ? (qte + 'x ' + sku) : '-';
+  if(cl && cl.produit !== label){
+    cl.produit = label;
+    stampModification(cl);
+    if(typeof dbUpdate === 'function') dbUpdate('clients', cl.id, { produit:cl.produit, last_modified_by:cl.lastModifiedBy, last_modified_at:cl.lastModifiedAt });
+  }
+  const nomPr = (PRODUITS.find(function(x){ return x.sku === sku; }) || {}).nom || sku;
+  logAction('Pipeline — produit modifie', p.nom + ' : ' + (sku ? qte + ' x ' + nomPr : 'aucun produit'), 'blue');
+  return true;
+}
+// Avant d'enregistrer la fiche : lit l'etape et le produit choisis. Pour
+// « Perdu » / « Non qualifie », la raison est demandee ; « Annuler » = rien n'est enregistre.
+function pipeAvantEnregistrement(ctx, continuer){
+  const p = ctx.record;
+  const v = function(id){ const x = el(id); return x ? x.value : undefined; };
+  const etape = v('detail-edit-etape');
+  ctx.pending = {
+    etape: (etape !== undefined && PIPELINE_STAGES.indexOf(etape) >= 0) ? etape : p.etape,
+    sku: v('detail-edit-sku') !== undefined ? v('detail-edit-sku') : (p.sku||''),
+    qte: v('detail-edit-qte') !== undefined ? (parseInt(v('detail-edit-qte'), 10) || 1) : (p.qte||1),
+    entrepot: v('detail-edit-entrepot') !== undefined ? v('detail-edit-entrepot') : (p.entrepot||''),
+    raison: ''
+  };
+  const nouvelle = ctx.pending.etape;
+  if(nouvelle !== p.etape && (nouvelle === 'Perdu' || nouvelle === 'Non qualifie')){
+    const demander = nouvelle === 'Perdu' ? askRaisonPerte : askRaisonNq;
+    return demander(p.nom, function(raison){ ctx.pending.raison = raison; continuer(); }, function(){});
+  }
+  continuer();
+}
+// Apres l'enregistrement des cases : produit d'abord (pour qu'un « Gagne »
+// reserve le bon produit), puis l'etape.
+function pipeApresEnregistrement(p, oldNom, ctx){
+  const pd = ctx && ctx.pending;
+  if(!pd) return;
+  setPipelineProduit(p, pd.sku, pd.qte, pd.entrepot, oldNom);
+  if(pd.etape !== p.etape){
+    const ok = applyPipelineStage(p, pd.etape);
+    if(pd.etape === 'Perdu') setClientRaisonPerte(findLinkedClient(p), pd.raison);
+    else if(pd.etape === 'Non qualifie') setClientRaisonNq(findLinkedClient(p), pd.raison);
+    if(!ok) alert('⚠️ Opportunite passee en "Gagne" mais le stock disponible est insuffisant pour reserver automatiquement. Verifiez le module Stock.');
+  }
+  if(typeof updateAllBadges === 'function') updateAllBadges();
   go('pipe');
 }
 
@@ -2623,6 +2803,31 @@ function leadMetaRows(cl){
   rows.push(['Contenu du formulaire', origineLeadHtml(cl.origineLead)]);
   return rows;
 }
+// « Produit d'interet » de la fiche client (19/11/2026) : liste des produits
+// du catalogue. Un ancien texte (plusieurs produits, ou produit inconnu) reste
+// propose tel quel, pour ne jamais l'effacer par erreur.
+function produitLisible(label){
+  const t = String(label||'').trim();
+  if(!t || t === '-') return '<span class="td-muted">-</span>';
+  return t.split(',').map(function(part){
+    const m = /^\s*(\d+)\s*x\s*(.+?)\s*$/i.exec(part);
+    const sku = m ? m[2] : part.trim();
+    const pr = PRODUITS.find(function(x){ return x.sku === sku; });
+    return String(pr ? pr.nom + ' (' + sku + ')' : sku).replace(/</g,'&lt;') + (m && parseInt(m[1],10) > 1 ? ' x' + m[1] : '');
+  }).join(', ');
+}
+function clientProduitOptions(label){
+  const actuel = String(label||'').trim();
+  const pu = produitUniqueDepuisLabel(actuel);
+  const opts = [];
+  if(actuel && actuel !== '-' && !pu) opts.push({ label: actuel + ' (actuel)', value: actuel, selected: true });
+  opts.push({ label:'— Aucun produit —', value:'-', selected: !actuel || actuel === '-' });
+  PRODUITS.forEach(function(pr){
+    const qte = (pu && pu.sku === pr.sku) ? pu.qte : 1;
+    opts.push({ label: pr.nom + ' (' + pr.sku + ')' + (qte > 1 ? ' x' + qte : ''), value: qte + 'x ' + pr.sku, selected: !!(pu && pu.sku === pr.sku) });
+  });
+  return opts;
+}
 function viewClientDetail(id){
   const cl = CLIENTS.find(function(x){return String(x.id)===String(id);});
   if(!cl) return;
@@ -2636,7 +2841,7 @@ function viewClientDetail(id){
     ['Societe', cl.societe || '-'],
     ['Source du prospect', cl.source || '-']
   ].concat(leadMetaRows(cl)).concat([
-    ['Produit d\'interet', cl.produit],
+    ['Produit d\'interet', produitLisible(cl.produit)],
     ['Commercial assigne', cl.asg],
     ['Notes', cl.notes ? cl.notes.replace(/\n/g,'<br/>') : '<span class="td-muted">-</span>'],
     ['Statut', statusTag(cl.statut) + raisonNqBadge(cl) + raisonPerteBadge(cl)],
@@ -2671,17 +2876,18 @@ function viewClientDetail(id){
         {label:'Salon professionnel',selected:cl.source==='Salon professionnel'},
         {label:'Devis/Facturation',selected:cl.source==='Devis/Facturation'}
       ], 'select'],
-      ['Produit', 'produit', cl.produit],
+      ['Produit', 'produit', clientProduitOptions(cl.produit), 'select'],
       // Liste : equipe Commerciale + Super Admin + le commercial actuel de la fiche
       // (toujours present, sinon l'enregistrement effacerait le nom assigne).
-      ['Commercial assigne', 'asg', (function(){
+      // Changer le commercial : Super Admin seulement (le serveur le verifie aussi, 19/11/2026).
+      isSuperAdmin() ? ['Commercial assigne', 'asg', (function(){
         const noms = [];
         if(cl.asg) noms.push(cl.asg);
         USERS.filter(function(u){ return u.departement === 'Commercial' || u.role === 'superadmin'; })
           .forEach(function(u){ if(u.nom && noms.indexOf(u.nom) < 0) noms.push(u.nom); });
         if(CU && CU.nom && noms.indexOf(CU.nom) < 0) noms.push(CU.nom);
         return noms.map(function(n){ return {label:n, selected:n===cl.asg}; });
-      })(), 'select'],
+      })(), 'select'] : ['Commercial assigne', 'asg', cl.asg || '-', 'readonly'],
       ['Contenu du formulaire', 'origineLead', cl.origineLead || '', 'textarea'],
       ['Notes', 'notes', cl.notes || '', 'textarea'],
       ['Statut', 'statut', [
@@ -3018,6 +3224,7 @@ function renderRapports(c){
   // Doublons et ROI uniquement pour Direction et Commercial
   if(voitTout || dept === 'Commercial'){
     h += '<div class="card" style="margin-bottom:12px"><div class="card-title">🔍 Doublons potentiels — Clients &amp; Prospects + Pipeline</div><div class="td-muted" style="font-size:12px;margin-bottom:6px">Memes noms ou memes numeros de telephone enregistres plus d\'une fois.</div><div id="rpt-doublons"></div></div>';
+    h += '<div class="card" style="margin-bottom:12px"><div class="card-title">📞 Suivi d\'appel, ventes par pub et filtres — '+periodLabel(RAPPORT_PERIOD)+'</div><div class="td-muted" style="font-size:12px;margin-bottom:8px">Contacts du Pipeline recus sur la periode. Joignabilite = contacts qui ont repondu, parmi ceux qui ont ete appeles.</div><div id="rpt-suivi"></div></div>';
     h += '<div class="card" style="margin-bottom:12px"><div class="card-title">🚫 Raisons des non qualifies — par mois (toutes publicites et sources)</div><div class="td-muted" style="font-size:12px;margin-bottom:6px">Fiches actuellement au statut « Non qualifie », classees selon le mois ou le contact est arrive dans le CRM.</div><div id="rpt-nq"></div></div>';
   }
   if(voitTout || dept === 'Commercial'){
@@ -3078,6 +3285,9 @@ function renderRapports(c){
 
   // --- Doublons ---
   if(el('rpt-doublons')) el('rpt-doublons').innerHTML = duplicateContactsReportHtml();
+
+  // --- Suivi d'appel, ventes par pub, raisons de perte, filtres (19/11/2026) ---
+  if(el('rpt-suivi')) el('rpt-suivi').innerHTML = suiviAppelRapportHtml(RAPPORT_PERIOD);
 
   // --- Raisons des non qualifies (13/11/2026) ---
   if(el('rpt-nq')) el('rpt-nq').innerHTML = nonQualifiesParMoisHtml();
@@ -3271,9 +3481,9 @@ function exportReportCSV(){
   });
   lines.push('');
   lines.push('--- CLIENTS ---');
-  lines.push(['Nom','Type','Ville','Statut','Produit','Commercial','Date'].map(csvEscape).join(','));
+  lines.push(['Nom','Type','Ville','Statut','Raison (perdu / non qualifie)','Produit','Commercial','Date'].map(csvEscape).join(','));
   CLIENTS.forEach(function(cl){
-    lines.push([cl.nom, cl.type, cl.ville, cl.statut, cl.produit, cl.asg, cl.date].map(csvEscape).join(','));
+    lines.push([cl.nom, cl.type, cl.ville, cl.statut, raisonPerteOf(cl) || (cl.statut === 'Non qualifie' ? (cl.raisonNq || '') : ''), cl.produit, cl.asg, cl.date].map(csvEscape).join(','));
   });
   // Raisons des non qualifies par mois (13/11/2026)
   const nqm = nonQualifiesParMois();
@@ -3284,6 +3494,9 @@ function exportReportCSV(){
     lines.push([l.label].concat(nqm.colonnes.map(function(r){ return l[r]; })).concat([l.n]).map(csvEscape).join(','));
   });
   lines.push(['TOTAL'].concat(nqm.colonnes.map(function(r){ return nqm.total[r]; })).concat([nqm.total.n]).map(csvEscape).join(','));
+  // Suivi d'appel, ventes par pub, raisons de perte, filtres (19/11/2026)
+  lines.push('');
+  suiviAppelCsvLignes(RAPPORT_PERIOD).forEach(function(l){ lines.push(l); });
   // BOM for correct accented-character display when opened in Excel
   downloadTextFile('rapport-acquadue-' + new Date().toISOString().slice(0,10) + '.csv', '\uFEFF' + lines.join('\n'), 'text/csv;charset=utf-8');
 }
@@ -4974,7 +5187,7 @@ function prixApresRemise(produit, qte, prixBase){
 // name already exists, update its produit/statut/date; otherwise create a new
 // client record automatically. This keeps "Clients & Prospects" in sync with
 // every sale, without requiring the user to manage two separate forms.
-function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType, ville, source, tel){
+function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType, ville, source, tel, zone){
   if(!nomClient) return;
   let cl = CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === nomClient.trim().toLowerCase(); });
   if(!cl && tel) cl = CLIENTS.find(function(c){ return c.tel && c.tel.trim() === tel.trim(); });
@@ -4986,15 +5199,16 @@ function ensureClientExists(nomClient, produitLabel, statutSouhaite, clientType,
     if(statutSouhaite) cl.statut = statutSouhaite;
     if(ville) cl.ville = ville;
     if(tel && !cl.tel) cl.tel = tel; // fill in a missing phone number, never overwrite one already on file
+    if(zone && !cl.zone) cl.zone = zone; // meme regle pour l'adresse / le quartier
     if(cl.statut !== 'Non qualifie' && cl.raisonNq) setClientRaisonNq(cl, '');
     stampModification(cl);
     if(typeof dbUpdate === 'function'){
-      dbUpdate('clients', cl.id, { produit: cl.produit, statut: cl.statut, ville: cl.ville, tel: cl.tel, last_modified_by: cl.lastModifiedBy, last_modified_at: cl.lastModifiedAt });
+      dbUpdate('clients', cl.id, { produit: cl.produit, statut: cl.statut, ville: cl.ville, tel: cl.tel, zone: cl.zone || '', last_modified_by: cl.lastModifiedBy, last_modified_at: cl.lastModifiedAt });
     }
   } else {
     const sourceLabel = source || 'Devis/Facturation';
     cl = {
-      id: Date.now(), nom: nomClient, type: clientType || 'B2C', ville: ville || (CU ? CU.ville : 'Niamey'), zone: '',
+      id: Date.now(), nom: nomClient, type: clientType || 'B2C', ville: ville || (CU ? CU.ville : 'Niamey'), zone: zone || '',
       tel: tel || '', email: '', societe: '', source: sourceLabel, statut: statutSouhaite || 'Client actif',
       produit: produitLabel || '-', asg: CU ? CU.nom : '-', notes: '', date: todayStr, locked: false, historique: []
     };
@@ -5139,6 +5353,144 @@ function nonQualifiesParMoisHtml(){
   return h;
 }
 
+// ── RAPPORT « SUIVI D'APPEL, VENTES PAR PUB, FILTRES » (19/11/2026) ────────
+// Calcule a partir des fiches du Pipeline recues sur la periode choisie :
+//  - joignabilite : parmi les contacts appeles (case « Appele » ou resultat
+//    indique), ceux qui ont repondu (Interesse, Livraison prevue, Pas
+//    interesse, Hors Niamey). « Pas de reponse » et « Vocal envoye » = non joints ;
+//  - ventes par pub (V1, V2, V3, Autre, Non renseignee) ;
+//  - raisons de perte ;
+//  - filtres a changer ce mois-ci (date de livraison + 90 jours), quelle que soit la periode.
+const PIPE_RESULTATS_JOINTS = ['Interesse','Livraison prevue','Pas interesse','Hors Niamey'];
+function pipeEstAppele(p){ return !!(p && (p.appele || p.resultatAppel)); }
+function pipeEstJoint(p){ return !!(p && PIPE_RESULTATS_JOINTS.indexOf(p.resultatAppel) >= 0); }
+function pipeEstVendu(p){ return !!(p && (p.etape === 'Gagne' || p.resultatAppel === 'Livraison prevue' || /^\d{4}-\d{2}-\d{2}$/.test(p.dateLivraison || '') || (p.montant > 0))); }
+function pourcent(n, d){ return d ? Math.round(n * 100 / d) : 0; }
+function suiviAppelStats(period){
+  const liste = PIPELINE.filter(function(p){
+    if(!p) return false;
+    const t = pipeDateRecuTexte(p, false);
+    return t === '-' ? (!period || period === 'all') : isInPeriod(t, period);
+  });
+  const st = { recus: liste.length, appeles:0, joints:0, nonJoints:0, rappelSoir:0, relanceJ2:0, resultats:{}, pubs:{}, pertes:{}, perdus:0, filtres:[] };
+  PIPE_RESULTATS_APPEL.forEach(function(r){ st.resultats[r] = 0; });
+  st.resultats['Sans resultat'] = 0;
+  PIPE_PUBS.concat(['Non renseignee']).forEach(function(k){ st.pubs[k] = { pub:k, contacts:0, appeles:0, joints:0, interesses:0, ventes:0, montant:0 }; });
+  RAISONS_PERTE.concat(['Sans raison']).forEach(function(r){ st.pertes[r] = 0; });
+  liste.forEach(function(p){
+    const appele = pipeEstAppele(p), joint = pipeEstJoint(p), vendu = pipeEstVendu(p);
+    if(appele){ st.appeles++; if(joint) st.joints++; else st.nonJoints++; }
+    if(p.rappelSoir) st.rappelSoir++;
+    if(p.relanceJ2) st.relanceJ2++;
+    st.resultats[PIPE_RESULTATS_APPEL.indexOf(p.resultatAppel) >= 0 ? p.resultatAppel : 'Sans resultat']++;
+    const k = PIPE_PUBS.indexOf(p.pub) >= 0 ? p.pub : 'Non renseignee';
+    const g = st.pubs[k];
+    g.contacts++; if(appele) g.appeles++; if(joint) g.joints++;
+    if(p.resultatAppel === 'Interesse' || p.resultatAppel === 'Livraison prevue') g.interesses++;
+    if(vendu){ g.ventes++; g.montant += (parseInt(p.montant, 10) || 0); }
+    if(p.etape === 'Perdu'){
+      st.perdus++;
+      const cl = findLinkedClient(p);
+      const r = cl && RAISONS_PERTE.indexOf(cl.raisonPerte) >= 0 ? cl.raisonPerte : 'Sans raison';
+      st.pertes[r]++;
+    }
+  });
+  // Filtres a changer : ce mois-ci, plus ceux deja en retard.
+  const now = new Date();
+  const debutMois = pipeIsoLocal(new Date(now.getFullYear(), now.getMonth(), 1));
+  const finMois = pipeIsoLocal(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  const aujourdhui = pipeIsoLocal(now);
+  PIPELINE.forEach(function(p){
+    const iso = pipeChangerFiltreISO(p);
+    if(!iso || iso > finMois) return;
+    if(iso < debutMois && iso >= aujourdhui) return;
+    st.filtres.push({ nom:p.nom, tel:p.tel || '', quartier:p.quartier || '', asg:p.asg || '', livraison:p.dateLivraison, date:iso, retard: iso < aujourdhui });
+  });
+  st.filtres.sort(function(a,b){ return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+  return st;
+}
+function suiviAppelRapportHtml(period){
+  const st = suiviAppelStats(period);
+  if(!st.recus && !st.filtres.length) return '<div class="td-muted" style="padding:10px">Aucun contact recu sur cette periode.</div>';
+  const kpi = function(lbl, val, sous, coul){ return '<div style="background:var(--' + coul + '-light);border-radius:8px;padding:10px;text-align:center"><div class="kpi-lbl" style="color:var(--' + coul + ')">' + lbl + '</div><div style="font-size:18px;font-weight:800;color:var(--' + coul + ')">' + val + '</div><div class="td-muted">' + sous + '</div></div>'; };
+  let h = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">' +
+    kpi('CONTACTS RECUS', st.recus, 'sur la periode', 'blue') +
+    kpi('APPELES', st.appeles, pourcent(st.appeles, st.recus) + ' % des contacts', 'gold') +
+    kpi('JOIGNABILITE', pourcent(st.joints, st.appeles) + ' %', st.joints + ' joint(s) sur ' + st.appeles + ' appele(s)', 'green') +
+    kpi('PERDUS', st.perdus, pourcent(st.perdus, st.recus) + ' % des contacts', 'red') +
+    '</div>';
+  // Resultats de l'appel
+  h += '<div style="font-weight:700;font-size:12px;margin:6px 0">Resultat des appels</div><div style="overflow-x:auto"><table><thead><tr>';
+  Object.keys(st.resultats).forEach(function(r){ h += '<th style="text-align:center">' + r + '</th>'; });
+  h += '</tr></thead><tbody><tr>';
+  Object.keys(st.resultats).forEach(function(r){ h += '<td style="text-align:center">' + st.resultats[r] + '</td>'; });
+  h += '</tr></tbody></table></div><div class="td-muted" style="font-size:11px;margin:4px 0 10px">Rappel du soir fait : ' + st.rappelSoir + ' · Relance J+2 faite : ' + st.relanceJ2 + '</div>';
+  // Ventes par pub
+  h += '<div style="font-weight:700;font-size:12px;margin:6px 0">Ventes par pub</div><div style="overflow-x:auto"><table><thead><tr><th>Pub</th><th style="text-align:center">Contacts</th><th style="text-align:center">Joints</th><th style="text-align:center">Joignabilite</th><th style="text-align:center">Interesses</th><th style="text-align:center">Ventes</th><th style="text-align:center">Conversion</th><th style="text-align:right">Montant</th></tr></thead><tbody>';
+  Object.keys(st.pubs).forEach(function(k){
+    const g = st.pubs[k];
+    if(!g.contacts) return;
+    h += '<tr><td><b>' + k + '</b></td><td style="text-align:center">' + g.contacts + '</td><td style="text-align:center">' + g.joints + '</td><td style="text-align:center">' + pourcent(g.joints, g.appeles) + ' %</td><td style="text-align:center">' + g.interesses + '</td><td style="text-align:center;font-weight:700">' + g.ventes + '</td><td style="text-align:center">' + pourcent(g.ventes, g.contacts) + ' %</td><td style="text-align:right;font-weight:700;color:var(--red)">' + fcfa(g.montant) + '</td></tr>';
+  });
+  h += '</tbody></table></div>';
+  // Raisons de perte
+  h += '<div style="font-weight:700;font-size:12px;margin:12px 0 6px">Raisons de perte</div>';
+  if(!st.perdus) h += '<div class="td-muted" style="font-size:12px">Aucun contact « Perdu » sur cette periode.</div>';
+  else {
+    h += '<div style="overflow-x:auto"><table><thead><tr>';
+    Object.keys(st.pertes).forEach(function(r){ h += '<th style="text-align:center">' + r + '</th>'; });
+    h += '</tr></thead><tbody><tr>';
+    Object.keys(st.pertes).forEach(function(r){ h += '<td style="text-align:center">' + st.pertes[r] + ' <span class="td-muted">(' + pourcent(st.pertes[r], st.perdus) + ' %)</span></td>'; });
+    h += '</tr></tbody></table></div>';
+  }
+  // Filtres a changer
+  h += '<div style="font-weight:700;font-size:12px;margin:12px 0 6px">🔧 Filtres a changer ce mois-ci (' + st.filtres.length + ')</div>';
+  if(!st.filtres.length) h += '<div class="td-muted" style="font-size:12px">Aucun filtre a changer ce mois-ci.</div>';
+  else {
+    h += '<div style="overflow-x:auto"><table><thead><tr><th>Client</th><th>Telephone</th><th>Quartier</th><th>Livre le</th><th>Changer le filtre le</th><th>Commercial</th></tr></thead><tbody>';
+    st.filtres.forEach(function(f){
+      h += '<tr><td class="td-bold">' + pipeEsc(f.nom) + '</td><td>' + pipeEsc(f.tel) + '</td><td>' + pipeEsc(f.quartier) + '</td><td>' + formatDateFr(f.livraison) + '</td><td style="font-weight:700;color:var(--' + (f.retard ? 'red' : 'gold') + ')">' + formatDateFr(f.date) + (f.retard ? ' (en retard)' : '') + '</td><td>' + pipeEsc(f.asg) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+  return h;
+}
+// Lignes CSV de ce rapport (export « 📋 CSV » de Rapports).
+function suiviAppelCsvLignes(period){
+  const st = suiviAppelStats(period);
+  const L = []; const row = function(a){ L.push(a.map(csvEscape).join(',')); };
+  L.push('--- SUIVI D\'APPEL (' + periodLabel(period) + ') ---');
+  row(['Contacts recus','Appeles','Joints','Non joints','Taux de joignabilite (%)','Rappel soir faits','Relance J+2 faites','Perdus']);
+  row([st.recus, st.appeles, st.joints, st.nonJoints, pourcent(st.joints, st.appeles), st.rappelSoir, st.relanceJ2, st.perdus]);
+  L.push('');
+  row(['Resultat de l\'appel','Nombre']);
+  Object.keys(st.resultats).forEach(function(r){ row([r, st.resultats[r]]); });
+  L.push('');
+  L.push('--- VENTES PAR PUB ---');
+  row(['Pub','Contacts','Appeles','Joints','Joignabilite (%)','Interesses','Ventes','Conversion (%)','Montant (FCFA)']);
+  Object.keys(st.pubs).forEach(function(k){ const g = st.pubs[k]; if(g.contacts) row([k, g.contacts, g.appeles, g.joints, pourcent(g.joints, g.appeles), g.interesses, g.ventes, pourcent(g.ventes, g.contacts), g.montant]); });
+  L.push('');
+  L.push('--- RAISONS DE PERTE ---');
+  row(['Raison','Nombre','Part (%)']);
+  Object.keys(st.pertes).forEach(function(r){ row([r, st.pertes[r], pourcent(st.pertes[r], st.perdus)]); });
+  L.push('');
+  L.push('--- FILTRES A CHANGER CE MOIS-CI ---');
+  row(['Client','Telephone','Quartier','Livre le','Changer le filtre le','En retard','Commercial']);
+  st.filtres.forEach(function(f){ row([f.nom, f.tel, f.quartier, formatDateFr(f.livraison), formatDateFr(f.date), f.retard ? 'Oui' : 'Non', f.asg]); });
+  L.push('');
+  L.push('--- PIPELINE : DETAIL DU SUIVI D\'APPEL ---');
+  row(['Nom','Telephone','Recu le','Etape','Raison de perte','Pub','Appele','Rappel soir','Relance J+2','Resultat de l\'appel','Quartier','Date de livraison','Montant (FCFA)','Changer le filtre le','Produit','Commercial']);
+  PIPELINE.forEach(function(p){
+    const t = pipeDateRecuTexte(p, false);
+    if(!(t === '-' ? (!period || period === 'all') : isInPeriod(t, period))) return;
+    const cl = p.etape === 'Perdu' ? findLinkedClient(p) : null;
+    row([p.nom, p.tel || '', t, p.etape, (cl && cl.raisonPerte) || '', p.pub || '', p.appele ? 'Oui' : 'Non', p.rappelSoir ? 'Oui' : 'Non', p.relanceJ2 ? 'Oui' : 'Non',
+      p.resultatAppel || '', p.quartier || '', p.dateLivraison ? formatDateFr(p.dateLivraison) : '', p.montant || '', pipeChangerFiltreISO(p) ? formatDateFr(pipeChangerFiltreISO(p)) : '',
+      p.sku ? ((p.qte||1) + 'x ' + p.sku) : '', p.asg || '']);
+  });
+  return L;
+}
+
 function duplicateContactsReportHtml(){
   const all = CLIENTS.map(function(c){ return { nom:c.nom, tel:c.tel, source:'Client/Prospect', ville:c.ville }; })
     .concat(PIPELINE.map(function(p){ return { nom:p.nom, tel:p.tel, source:'Pipeline', ville:p.ville }; }));
@@ -5210,6 +5562,8 @@ function syncClientToPipeline(cl, oldNom){
       etape: clientStatutToPipelineEtape(cl.statut), asg: cl.asg, ville: cl.ville,
       tel: cl.tel || '', dateEstimee: '—', locked: false, sku: '', qte: 1, entrepot: '', reservationFaite: false
     };
+    const puNouveau = produitUniqueDepuisLabel(cl.produit);
+    if(puNouveau){ p.sku = puNouveau.sku; p.qte = puNouveau.qte; p.entrepot = ENTREPOTS.length ? ENTREPOTS[0].nom : ''; }
     PIPELINE.push(p);
     logAction('Prospect ajoute au pipeline (depuis Clients & Prospects)', cl.nom, 'blue');
     if(typeof dbInsert === 'function') dbInsert('pipeline', { id:p.id, nom:p.nom, type:p.type, val:p.val, etape:p.etape, asg:p.asg,
@@ -5230,7 +5584,9 @@ function syncClientToPipeline(cl, oldNom){
   if(changed){
     stampModification(p);
     if(typeof dbUpdate === 'function') dbUpdate('pipeline', p.id, { nom:p.nom, ville:p.ville, tel:p.tel, type:p.type, etape:p.etape, asg:p.asg, last_modified_by:p.lastModifiedBy, last_modified_at:p.lastModifiedAt });
-  }
+  }  // Produit d'interet (19/11/2026) : un seul produit du catalogue -> repris dans le Pipeline.
+  const pu = produitUniqueDepuisLabel(cl.produit);
+  if(pu && (p.sku !== pu.sku || (p.qte||1) !== pu.qte)) setPipelineProduit(p, pu.sku, pu.qte, p.entrepot, oldNom);
 }
 
 function lignesTotalMontant(lignes){
@@ -5475,11 +5831,7 @@ function openDevisBuilder(devisId){
 
   if(el('db-client-select-search')){ el('db-client-select-search').value = ''; if(el('db-client-select-info')) el('db-client-select-info').textContent = ''; }
   openModal('modal-devis-builder'); // refreshes db-client-select options first
-
-  const matchingClient = existing ? CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === existing.client.trim().toLowerCase(); }) : null;
-  el('db-client-select').value = matchingClient ? matchingClient.nom : '';
-  el('db-client').value = existing ? existing.client : '';
-  el('db-client').style.display = matchingClient ? 'none' : 'block';
+  preparerClientPicker('db-client-select', 'db-client', existing ? existing.client : '');
   el('db-validite').value = existing ? existing.validite : '30 jours';
   renderDevisBuilderLignes();
   el('modal-devis-title').textContent = existing ? 'Modifier le Devis — ' + existing.id : 'Nouveau Devis';
@@ -5576,9 +5928,11 @@ function removeDevisBuilderLigne(idx){
 }
 
 function saveDevisBuilder(){
-  const client = el('db-client').value.trim();
-  if(!client){ alert('Entrez un nom de client'); return; }
+  const choix = lireClientPicker('db-client-select', 'db-client');
+  if(!choix) return;
+  const client = choix.nom;
   if(DEVIS_BUILDER_LIGNES.length === 0){ alert('Ajoutez au moins un produit'); return; }
+  if(choix.nouveau && warnIfDuplicateContact(choix.nom, choix.tel)) return;
 
   // Geste commercial : un collaborateur peut le PROPOSER, mais il reste "en
   // attente" jusqu'a validation par un superieur (Responsable/Admin/Super
@@ -5595,6 +5949,7 @@ function saveDevisBuilder(){
     d.gesteStatut = gesteStatut;
     stampModification(d);
     logAction('Devis modifie', d.id + ' — ' + client + (gesteStatut==='en_attente' ? ' — ⚠️ geste commercial en attente de validation' : ''), 'gold');
+    if(choix.nouveau) ensureClientExists(client, lignesLabel(DEVIS_BUILDER_LIGNES), 'Offre envoyee', choix.type, choix.ville, 'Devis/Facturation', choix.tel, choix.zone);
   } else {
     const id = "DEV-2026-" + Math.floor(Math.random()*900+100);
     DEVIS.unshift({
@@ -5603,7 +5958,8 @@ function saveDevisBuilder(){
       gesteStatut: gesteStatut, creePar: CU.nom
     });
     logAction('Devis cree', id + ' — ' + client + (gesteStatut==='en_attente' ? ' — ⚠️ geste commercial en attente de validation' : ''), 'blue');
-    ensureClientExists(client, lignesLabel(DEVIS_BUILDER_LIGNES), 'Offre envoyee');
+    if(choix.nouveau) ensureClientExists(client, lignesLabel(DEVIS_BUILDER_LIGNES), 'Offre envoyee', choix.type, choix.ville, 'Devis/Facturation', choix.tel, choix.zone);
+    else ensureClientExists(client, lignesLabel(DEVIS_BUILDER_LIGNES), 'Offre envoyee');
   }
   closeModal('modal-devis-builder');
   go('facturation');
@@ -5624,11 +5980,7 @@ function openFactureBuilder(factureId, fromDevisId){
 
   if(el('fb-client-select-search')){ el('fb-client-select-search').value = ''; if(el('fb-client-select-info')) el('fb-client-select-info').textContent = ''; }
   openModal('modal-facture-builder'); // refreshes fb-client-select options first
-
-  const matchingClient = clientName ? CLIENTS.find(function(c){ return c.nom.trim().toLowerCase() === clientName.trim().toLowerCase(); }) : null;
-  el('fb-client-select').value = matchingClient ? matchingClient.nom : '';
-  el('fb-client').value = clientName;
-  el('fb-client').style.display = matchingClient ? 'none' : 'block';
+  preparerClientPicker('fb-client-select', 'fb-client', clientName);
 
   if(existingFact){
     FACTURE_BUILDER_LIGNES = JSON.parse(JSON.stringify(existingFact.lignes));
@@ -5733,9 +6085,11 @@ function removeFactureBuilderLigne(idx){
 }
 
 function saveFactureBuilder(){
-  const client = el('fb-client').value.trim();
-  if(!client){ alert('Entrez un nom de client'); return; }
+  const choix = lireClientPicker('fb-client-select', 'fb-client');
+  if(!choix) return;
+  const client = choix.nom;
   if(FACTURE_BUILDER_LIGNES.length === 0){ alert('Ajoutez au moins un produit'); return; }
+  if(choix.nouveau && warnIfDuplicateContact(choix.nom, choix.tel)) return;
 
   const contientGeste = FACTURE_BUILDER_LIGNES.some(function(l){ return l.geste; });
   const gesteStatut = contientGeste ? (isResponsableOrAbove() ? 'valide' : 'en_attente') : null;
@@ -5749,6 +6103,7 @@ function saveFactureBuilder(){
     f.gesteStatut = gesteStatut;
     stampModification(f);
     logAction('Facture modifiee', f.id + ' — ' + client + (gesteStatut==='en_attente' ? ' — ⚠️ geste commercial en attente de validation' : ''), 'gold');
+    if(choix.nouveau) ensureClientExists(client, lignesLabel(FACTURE_BUILDER_LIGNES), 'Client actif', choix.type, choix.ville, 'Devis/Facturation', choix.tel, choix.zone);
   } else {
     const id = "FACT-2026-" + Math.floor(Math.random()*9000+1000);
     const newFact = {
@@ -5782,7 +6137,8 @@ function saveFactureBuilder(){
     }
     FACTURES.unshift(newFact);
     logAction('Facture generee', id + ' — ' + client + (FACTURE_BUILDER_DEVIS_ORIGINE ? ' (depuis devis ' + FACTURE_BUILDER_DEVIS_ORIGINE + ')' : '') + (gesteStatut==='en_attente' ? ' — ⚠️ geste commercial en attente de validation' : ''), 'green');
-    ensureClientExists(client, lignesLabel(FACTURE_BUILDER_LIGNES), 'Client actif', el('fb-client-type') ? el('fb-client-type').value : 'B2C');
+    if(choix.nouveau) ensureClientExists(client, lignesLabel(FACTURE_BUILDER_LIGNES), 'Client actif', choix.type, choix.ville, 'Devis/Facturation', choix.tel, choix.zone);
+    else ensureClientExists(client, lignesLabel(FACTURE_BUILDER_LIGNES), 'Client actif');
 
     // Fix: mark the source devis as "Facture" so it stops appearing as
     // pending/actionable in the Devis list once it has been invoiced.
@@ -6561,7 +6917,7 @@ function buildModals2(){
   const factureBuilderBody =
     '<h3 id="modal-facture-title" style="font-family:Syne,sans-serif;font-size:14px;margin-bottom:12px">Nouvelle Facture</h3>' +
     fieldClientPicker('fb-client-select','fb-client') +
-    fieldRow(fieldSelect('fb-client-type','Type de client (nouveau client)',['B2C','B2B']), fieldSelect('fb-mode','Mode de paiement',['Especes','Virement','Cheque','Mobile Money','Carte bancaire'])) +
+    fieldSelect('fb-mode','Mode de paiement',['Especes','Virement','Cheque','Mobile Money','Carte bancaire']) +
     fieldDate('fb-renouvellement','Date de renouvellement (optionnel — produits/abonnements a racheter)') +
     '<div class="form-label" style="margin-top:10px">Produits</div>' +
     '<div id="facture-builder-lignes"></div>';
@@ -6685,7 +7041,7 @@ function detailInputHtml(f){
   const inputId = 'detail-edit-' + f[1];
   const surChange = ' oninput="markDetailDirty()" onchange="markDetailDirty()"';
   if(type === 'select' && Array.isArray(f[2])){
-    return '<select class="form-select" id="' + inputId + '"' + surChange + '>' + f[2].map(function(o){ return '<option' + (o.selected?' selected':'') + '>' + o.label + '</option>'; }).join('') + '</select>';
+    return '<select class="form-select" id="' + inputId + '"' + surChange + '>' + f[2].map(function(o){ return '<option' + (o.value !== undefined ? ' value="' + String(o.value).replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '"' : '') + (o.selected?' selected':'') + '>' + o.label + '</option>'; }).join('') + '</select>';
   }
   if(type === 'date'){
     return '<input type="date" class="form-input" id="' + inputId + '"' + surChange + ' value="' + (/^\d{4}-\d{2}-\d{2}$/.test(f[2]||'') ? f[2] : '') + '"/>';
@@ -6856,6 +7212,16 @@ function switchToEditMode(){
 
 function saveDetailEdit(){
   if(!DETAIL_CTX) return;
+  const ctx = DETAIL_CTX;
+  // Verification avant enregistrement (ex. Pipeline : raison du « Perdu »).
+  // Elle appelle continuer() quand tout est pret ; sinon rien n'est enregistre.
+  if(typeof ctx.editConfig === 'object' && ctx.editConfig && typeof ctx.editConfig.beforeSave === 'function' && !ctx._verifie){
+    return ctx.editConfig.beforeSave(ctx, function continuer(){
+      if(DETAIL_CTX !== ctx) return;
+      ctx._verifie = true;
+      saveDetailEdit();
+    });
+  }
   const record = DETAIL_CTX.record;
   const fields = DETAIL_CTX.fields;
   const skip = DETAIL_CTX.skipFields || [];
@@ -6884,6 +7250,7 @@ function saveDetailEdit(){
   if(typeof DETAIL_CTX.onSave === 'function') DETAIL_CTX.onSave(record);
 
   syncDetailEditToDb(DETAIL_CTX.entity, record, oldNom);
+  if(ctx.editConfig && typeof ctx.editConfig.afterSave === 'function') ctx.editConfig.afterSave(record, oldNom, ctx);
 
   logAction('Modification', DETAIL_CTX.title + ' modifie par ' + CU.nom, 'gold');
   DETAIL_CTX = null;

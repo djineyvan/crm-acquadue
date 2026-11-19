@@ -103,6 +103,59 @@ async function queryAvecSuivi(sql, entityKey, query, values) {
   }
 }
 
+// ── SECURITE, NIVEAU 2 (19/11/2026) : le serveur verifie les modifications ──
+// sensibles, au lieu de faire seulement confiance a l'ecran.
+//  - Produits (catalogue, prix) : Super Admin, ou role avec « modifier_stock » ;
+//    le prix d'achat demande en plus « modifier_prix_achat ».
+//  - Fiche client ou opportunite du Pipeline d'un AUTRE commercial : il faut
+//    la permission « modifier_client » ou « modifier_prospect » du role.
+//  - Changer le commercial assigne (asg) d'une fiche : Super Admin seulement
+//    (le changement est ignore, le reste de la modification passe).
+// Valeurs par defaut si la table des permissions n'a pas de ligne pour le role
+// (memes valeurs que l'ecran).
+const PERMS_PAR_DEFAUT = {
+  collaborateur: { modifier_stock:false, modifier_prix_achat:false, modifier_client:true, modifier_prospect:true },
+  responsable:   { modifier_stock:false, modifier_prix_achat:false, modifier_client:true, modifier_prospect:true },
+  admin:         { modifier_stock:false, modifier_prix_achat:true,  modifier_client:true, modifier_prospect:true }
+};
+async function permsDuRole(sql, role) {
+  try {
+    const r = await sql.query('SELECT * FROM sensitive_perms WHERE role = $1', [role]);
+    if (r.length) return r[0];
+  } catch (e) { /* table absente : valeurs par defaut */ }
+  return PERMS_PAR_DEFAUT[role] || {};
+}
+function memeValeur(a, b) {
+  if (a === null || a === undefined) a = '';
+  if (b === null || b === undefined) b = '';
+  if (typeof a === 'number' || typeof b === 'number') return Number(a) === Number(b);
+  return String(a) === String(b);
+}
+// Renvoie { refus: 'code' } ou { ignorer: ['colonne', ...] } (colonnes retirees du patch).
+async function verifierModification(sql, me, entityKey, methode, id, patch) {
+  if (!me || me.role === 'superadmin') return {};
+  if (entityKey === 'produits') {
+    const perms = await permsDuRole(sql, me.role);
+    if (perms.modifier_stock !== true) return { refus: 'modification_produits_non_autorisee' };
+    if (methode === 'PUT' && Object.prototype.hasOwnProperty.call(patch, 'prix_achat') && perms.modifier_prix_achat !== true) {
+      const cur = await sql.query('SELECT prix_achat FROM produits WHERE sku = $1', [id]);
+      if (cur.length && !memeValeur(cur[0].prix_achat, patch.prix_achat)) return { refus: 'modification_prix_achat_non_autorisee' };
+    }
+    return {};
+  }
+  if ((entityKey === 'clients' || entityKey === 'pipeline') && methode === 'PUT') {
+    const cur = await sql.query('SELECT asg FROM ' + entityKey + ' WHERE id = $1', [id]);
+    if (!cur.length) return {};
+    const proprietaire = String(cur[0].asg || '');
+    if (proprietaire !== String(me.nom || '')) {
+      const perms = await permsDuRole(sql, me.role);
+      if (perms.modifier_client !== true && perms.modifier_prospect !== true) return { refus: 'fiche_d_un_autre_commercial' };
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'asg') && !memeValeur(patch.asg, proprietaire)) return { ignorer: ['asg'] };
+  }
+  return {};
+}
+
 module.exports = async function handler(req, res) {
   // Securite : plus d'en-tete CORS ouvert (Access-Control-Allow-Origin: *).
   if (req.method === 'OPTIONS') return res.status(204).end();
@@ -144,6 +197,8 @@ module.exports = async function handler(req, res) {
 
     if (req.method === 'POST') {
       const row = req.body.row || {};
+      const verifPost = await verifierModification(sql, me, entityKey, 'POST', row[meta.idCol], row);
+      if (verifPost.refus) return res.status(403).json({ error: verifPost.refus });
       const cols = Object.keys(row).filter(function(k){ return allowedCols.indexOf(k) >= 0; });
       if (cols.length === 0) return res.status(400).json({ error: 'Aucune colonne valide fournie' });
 
@@ -183,10 +238,14 @@ module.exports = async function handler(req, res) {
 
     if (req.method === 'PUT') {
       const id = req.body.id;
-      const patch = req.body.patch || {};
+      const patch = Object.assign({}, req.body.patch || {});
       if (id === undefined || id === null) return res.status(400).json({ error: 'id manquant' });
+      const verif = await verifierModification(sql, me, entityKey, 'PUT', id, patch);
+      if (verif.refus) return res.status(403).json({ error: verif.refus });
+      (verif.ignorer || []).forEach(function (c) { delete patch[c]; });
 
       const cols = Object.keys(patch).filter(function(k){ return allowedCols.indexOf(k) >= 0; });
+      if (cols.length === 0 && verif.ignorer && verif.ignorer.length) return res.status(200).json({ success: true, ignore: verif.ignorer });
       if (cols.length === 0) return res.status(400).json({ error: 'Aucune colonne valide a mettre a jour' });
 
       const setClause = cols.map(function(c, i){ return c + ' = $' + (i+1); }).join(', ');
@@ -198,7 +257,7 @@ module.exports = async function handler(req, res) {
       const query = 'UPDATE ' + meta.table + ' SET ' + setClause + ' WHERE ' + meta.idCol + ' = $' + (values.length) + ' RETURNING *';
       const result = await queryAvecSuivi(sql, entityKey, query, values);
       if (result.length === 0) return res.status(404).json({ error: 'Enregistrement introuvable' });
-      return res.status(200).json({ success: true, row: result[0] });
+      return res.status(200).json(verif.ignorer && verif.ignorer.length ? { success: true, row: result[0], ignore: verif.ignorer } : { success: true, row: result[0] });
     }
 
     if (req.method === 'DELETE') {

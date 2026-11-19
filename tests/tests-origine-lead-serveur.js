@@ -5,6 +5,7 @@
 //    ligne dans le Journal d'audit.
 //  - /api/data enregistre et relit origine_lead.
 // Base PostgreSQL de test en memoire (PGlite). Aucune donnee reelle n'est touchee.
+// (19/11/2026 : partie 2 adaptee, l'operation unique a ete retiree.)
 // Usage : node tests/tests-origine-lead-serveur.js
 const { PGlite } = require('@electric-sql/pglite');
 const REPO = '/tmp/crm-acquadue';
@@ -63,26 +64,18 @@ const BLOC = 'Lead recu via Meta (Facebook) le 17/11/2026.\nCampagne : Purificat
   await sqlRaw`INSERT INTO clients (id, nom, notes) VALUES (3, 'Bio', 'Client du salon, rappeler')`;
   await sqlRaw`INSERT INTO clients (id, nom, notes) VALUES (4, 'Awa', 'Vu sur Facebook')`;
   await sqlRaw`INSERT INTO clients (id, nom, notes, origine_lead) VALUES (5, 'Dado', ${'[Nouveau formulaire Meta]\n' + BLOC}, 'Salon 2026')`;
+  // 19/11/2026 : l'operation « une seule fois » a ete retiree apres verification
+  // en production (Journal d'audit : 53 fiches, 0 a verifier). init-db ne touche plus aux notes.
   let r = await call(H['init-db'], {}, tok);
-  check('init-db repond 200 et compte 3 fiches deplacees', r.statusCode === 200 && r.body.origine_deplacee && r.body.origine_deplacee.fiches === 3, r.body.origine_deplacee || r.body);
+  check('init-db repond 200 et ne deplace plus rien (operation retiree)', r.statusCode === 200 && r.body.origine_deplacee === undefined, r.body);
   const c = {}; (await sqlRaw`SELECT id, notes, origine_lead FROM clients`).forEach(function (x) { c[x.id] = x; });
-  check('lead Meta : notes vides, origine remplie', c[1].notes === '' && c[1].origine_lead === BLOC, c[1]);
-  check('note de l\'equipe gardee dans les notes', c[2].notes === 'Rappeler samedi' && c[2].origine_lead === BLOC, c[2]);
-  check('fiche sans bloc Meta : intacte', c[3].notes === 'Client du salon, rappeler' && !c[3].origine_lead, c[3]);
-  check('« Vu sur Facebook » (ecrit par l\'equipe) : laisse dans les notes', c[4].notes === 'Vu sur Facebook', c[4]);
-  check('origine deja remplie : completee, pas ecrasee', /^Salon 2026\n\n\[Nouveau formulaire Meta\]/.test(c[5].origine_lead) && c[5].notes === '', c[5]);
-  const sv = await sqlRaw`SELECT id, notes FROM sauvegarde_notes_origine ORDER BY id`;
-  check('copie de secours des anciennes notes (3 fiches)', sv.length === 3 && sv[0].notes === BLOC, sv.map(function (x) { return x.id; }));
-  const j = await sqlRaw`SELECT detail FROM audit_log WHERE action = 'Origine des leads deplacee'`;
-  check('ligne dans le Journal d\'audit, avec le compte rendu', j.length === 1 && /^3 fiche\(s\)/.test(j[0].detail) && /1 gardent aussi des notes/.test(j[0].detail) && /1 autre\(s\) fiche\(s\) parlent encore de Meta/.test(j[0].detail), j);
-  await sqlRaw`UPDATE clients SET notes = ${BLOC} WHERE id = 3`;
-  r = await call(H['init-db'], {}, tok);
-  check('2e passage : ne refait rien', r.body.origine_deplacee === null && (await sqlRaw`SELECT notes FROM clients WHERE id = 3`)[0].notes === BLOC, r.body.origine_deplacee);
-  check('toujours une seule ligne dans le Journal', (await sqlRaw`SELECT 1 FROM audit_log WHERE action = 'Origine des leads deplacee'`).length === 1);
+  check('les notes restent telles quelles', c[1].notes === BLOC && c[2].notes === BLOC + '\n\nRappeler samedi' && c[5].origine_lead === 'Salon 2026', [c[1], c[2], c[5]]);
+  check('aucune nouvelle ligne dans le Journal', (await sqlRaw`SELECT 1 FROM audit_log WHERE action = 'Origine des leads deplacee'`).length === 0);
 
   section('3. Lecture et modification par l\'application');
   r = await call(H.data, { method: 'PUT', body: { entity: 'clients', id: 3, patch: { origine_lead: 'Salon <b>Niamey</b>', notes: '' } } }, tok);
   check('modifier l\'origine (texte neutralise)', r.statusCode === 200 && r.body.row.origine_lead === 'Salon ‹b›Niamey‹/b›' && r.body.row.notes === '', r.body);
+  await sqlRaw`UPDATE clients SET origine_lead = ${BLOC} WHERE id = 1`;
   r = await call(H.data, { method: 'GET', query: { entity: 'clients' } }, tok);
   check('origine_lead relue avec les fiches', (r.body.rows || []).some(function (x) { return x.id == 1 && x.origine_lead === BLOC; }));
   await sqlRaw.query('ALTER TABLE clients DROP COLUMN origine_lead');

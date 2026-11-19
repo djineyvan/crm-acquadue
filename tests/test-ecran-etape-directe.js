@@ -111,6 +111,6 @@ ok(typeof perdusHorsNiamey === 'undefined' && typeof migratePerdusHorsNiamey ===
 ok(src.indexOf('Perdus hors Niamey') < 0, 'bouton « ↪ Perdus hors Niamey » retire du Pipeline');
 
 // 6. Presence dans la page
-ok(/id="pipe-etape-direct"/.test(src) && /onchange="setPipelineStage\(/.test(src), 'fiche d\'une opportunite : liste des etapes (appliquee des le choix)');
+ok(/\['Etape du pipeline', 'etape', PIPELINE_STAGES\.map\(/.test(src) && /beforeSave: pipeAvantEnregistrement/.test(src), 'fiche d\'une opportunite : liste des etapes (appliquee a l\'enregistrement, 19/11)');
 
 console.log('\n' + pass + ' reussis, ' + fail + ' en echec'); process.exit(fail ? 1 : 0);

@@ -42,7 +42,7 @@ ok(!/Faire avancer a l/.test(fiche), '« Faire avancer a l\'etape suivante » re
 ok(!/✗ Marquer perdu/.test(fiche), '« Marquer perdu » retire');
 ok(!/onclick="markPipelineUnqualified\(/.test(fiche) && !/⊘ Non qualifie<\/button>/.test(fiche), '« Non qualifie » retire');
 ok(!/✓ Changer d\\'etape/.test(fiche) && !/Changer d'etape<\/button>/.test(fiche), '« Changer d\'etape » retire');
-ok(/\['Etape du pipeline', \(\(isSuperAdmin\(\) \|\| canModifyProspectInfo\(\)\)\s*\? '<select class="form-select" id="pipe-etape-direct"[^']*onchange="setPipelineStage\(/.test(fiche), 'la liste deroulante est sur la ligne « Etape du pipeline » et s\'applique des le choix');
+ok(/\['Etape du pipeline', 'etape', PIPELINE_STAGES\.map\(/.test(fiche) && !/onchange="setPipelineStage\(/.test(fiche), 'la liste des etapes est une case de la fiche (19/11 : appliquee seulement a l\'enregistrement)');
 ok(/deletePipeline\(/.test(fiche), '« Supprimer » (Super Admin) garde');
 
 console.log('— 2. Choisir « Perdu » : fenetre des raisons de perte');
