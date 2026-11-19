@@ -64,5 +64,8 @@ console.log('— 4. Branchements');
 ok(/id="rpt-suivi"/.test(src) && /el\('rpt-suivi'\)\.innerHTML = suiviAppelRapportHtml\(RAPPORT_PERIOD\)/.test(src), 'carte dans Rapports, suit la periode choisie');
 ok(/suiviAppelCsvLignes\(RAPPORT_PERIOD\)\.forEach/.test(src), 'ajoute a l\'export CSV');
 ok(/'Raison \(perdu \/ non qualifie\)'/.test(src), 'CSV clients : colonne de la raison');
+const pdf = grab('function exportReportPDF(){', '// ── UTILISATEURS & ACCES');
+ok(/suiviAppelRapportHtml\(RAPPORT_PERIOD\)/.test(pdf) && /nonQualifiesParMoisHtml\(\)/.test(pdf), 'rapport PDF : carte du suivi d\'appel et raisons des non qualifies (19/11)');
+ok(/:root\{--red:#C8102E;[^}]*--blue-light:/.test(pdf), 'rapport PDF : les couleurs de la carte sont definies');
 
 console.log('\n' + pass + ' reussis, ' + fail + ' en echec'); process.exit(fail ? 1 : 0);

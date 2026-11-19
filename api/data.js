@@ -144,6 +144,35 @@ async function verifierModification(sql, me, entityKey, methode, id, patch) {
     }
     return {};
   }
+  // ── Niveau 3 (19/11/2026) : taches, factures, devis, depenses, conges ──
+  const VALIDEURS = ['admin', 'responsable'];   // + superadmin (deja passe plus haut)
+  if (methode === 'PUT' && entityKey === 'depenses') {
+    // Une depense enregistree ne se modifie que par le Super Admin (comme a l'ecran).
+    return { refus: 'modification_depense_reservee_super_admin' };
+  }
+  if (methode === 'PUT' && entityKey === 'tasks') {
+    const cur = await sql.query('SELECT asg FROM tasks WHERE id = $1', [id]);
+    if (cur.length && String(cur[0].asg || '') !== String(me.nom || '') && VALIDEURS.indexOf(me.role) < 0) return { refus: 'tache_d_un_autre_membre' };
+    return {};
+  }
+  if (methode === 'PUT' && entityKey === 'rh_conges' && Object.prototype.hasOwnProperty.call(patch, 'statut')) {
+    if (VALIDEURS.indexOf(me.role) < 0) return { refus: 'validation_conge_non_autorisee' };
+    return {};
+  }
+  if (methode === 'PUT' && (entityKey === 'factures' || entityKey === 'devis')) {
+    const cur = await sql.query('SELECT statut, geste_statut, cree_par FROM ' + entityKey + ' WHERE id = $1', [id]);
+    if (!cur.length) return {};
+    // Valider un geste commercial : Responsable, Admin ou Super Admin.
+    if (Object.prototype.hasOwnProperty.call(patch, 'geste_statut') && patch.geste_statut === 'valide' && cur[0].geste_statut !== 'valide' && VALIDEURS.indexOf(me.role) < 0) {
+      return { refus: 'validation_geste_non_autorisee' };
+    }
+    // Changer le statut d'une facture (ex. « Payee ») : Super Admin ou la personne qui l'a creee.
+    if (entityKey === 'factures' && Object.prototype.hasOwnProperty.call(patch, 'statut') && !memeValeur(patch.statut, cur[0].statut) &&
+        String(cur[0].cree_par || '') !== String(me.nom || '')) {
+      return { refus: 'statut_facture_non_autorise' };
+    }
+    return {};
+  }
   if ((entityKey === 'clients' || entityKey === 'pipeline') && methode === 'PUT') {
     const cur = await sql.query('SELECT asg FROM ' + entityKey + ' WHERE id = $1', [id]);
     if (!cur.length) return {};

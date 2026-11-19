@@ -3573,6 +3573,9 @@ function exportReportPDF(){
     '.kpi-val{font-size:18px;font-weight:800;color:#C8102E}' +
     '.kpi-lbl{font-size:10px;color:#6b7e90;text-transform:uppercase}' +
     '@media print{body{padding:0}}' +
+    // Couleurs utilisees par les cartes reprises de l'ecran (19/11/2026)
+    ':root{--red:#C8102E;--red-light:#fdecef;--green:#1a7f37;--green-light:#e8f5ec;--gold:#b7791f;--gold-light:#fdf4e3;--blue:#1d5fbf;--blue-light:#e8f0fb;--border:#e0e8f0}' +
+    '.td-muted{color:#6b7e90}.td-bold{font-weight:700}' +
     '</style></head><body>' +
     '<h1>Rapport Commercial & Marketing — Acqua Due by Lorenzetti</h1>' +
     '<div style="color:#6b7e90;font-size:11px">Genere le ' + new Date().toLocaleDateString('fr-FR') + ' a ' + new Date().toLocaleTimeString('fr-FR') + '</div>' +
@@ -3586,6 +3589,9 @@ function exportReportPDF(){
     '<h2>Campagnes Marketing</h2><table><thead><tr><th>Campagne</th><th>Canal</th><th>Budget</th><th>Leads</th><th>Statut</th></tr></thead><tbody>' +
     CAMPAGNES.map(function(cp){ return '<tr><td>'+cp.nom+'</td><td>'+cp.canal+'</td><td>'+fcfa(cp.budget)+'</td><td>'+cp.leads+'</td><td>'+cp.statut+'</td></tr>'; }).join('') +
     '</tbody></table>' +
+    // Suivi d'appel, ventes par pub, raisons de perte, filtres (19/11/2026)
+    '<h2>Suivi d\'appel, ventes par pub et filtres — ' + periodLabel(RAPPORT_PERIOD) + '</h2>' + suiviAppelRapportHtml(RAPPORT_PERIOD) +
+    '<h2>Raisons des non qualifies — par mois</h2>' + nonQualifiesParMoisHtml() +
     '<h2>Clients & Prospects</h2><table><thead><tr><th>Nom</th><th>Type</th><th>Ville</th><th>Statut</th><th>Produit</th></tr></thead><tbody>' +
     CLIENTS.map(function(cl){ return '<tr><td>'+cl.nom+'</td><td>'+cl.type+'</td><td>'+cl.ville+'</td><td>'+cl.statut+'</td><td>'+cl.produit+'</td></tr>'; }).join('') +
     '</tbody></table>' +
