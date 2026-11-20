@@ -91,6 +91,12 @@ global.fetch = async function (url) {
   check('aucun secret dans la reponse', !/secret-app-test|page-token-test|mot-secret-test/.test(JSON.stringify(r.body)));
   r = await call(H.version, { query: { meta: 'status' } });
   check('bilan toujours refuse sans connexion (401)', r.statusCode === 401);
+  // Raison « Injoignable » (20/11/2026)
+  await sqlRaw`UPDATE clients SET raison_nq='Injoignable' WHERE nom='Lead A7'`;
+  r = await call(H.version, { query: { meta: 'status' } }, tok);
+  const bi = (r.body.bilan_publicites || []).find(function (x) { return x.annonce === 'Video famille 30s'; });
+  check('raison « Injoignable » comptee dans le bilan par publicite', bi && bi.nq_injoignable === 1 && bi.non_qualifies === 4, bi);
+  await sqlRaw`UPDATE clients SET raison_nq=NULL WHERE nom='Lead A7'`;
 
   section('3. Securite');
   r = await call(H.data, { method: 'PUT', body: { entity: 'clients', id: await id('Lead A1'), patch: { raison_nq: 'x', colonne_inventee: 'y' } } });

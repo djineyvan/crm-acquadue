@@ -398,7 +398,7 @@ const CLIENT_STATUTS = ["Nouveau prospect","Contacte","Offre envoyee","En negoci
 // sur la fiche Clients & Prospects (colonne raison_nq), seule source utilisee
 // par le Pipeline et par le bilan Meta par publicite. Quand la fiche quitte
 // "Non qualifie", la raison est effacee (elle ne vaut que pour ce statut).
-const RAISONS_NQ = ["Faux numero","Hors zone","Pas interesse","Simple curieux","Autre"];
+const RAISONS_NQ = ["Faux numero","Injoignable","Hors zone","Pas interesse","Simple curieux","Autre"];
 var RAISON_NQ_CB = null;
 function raisonNqOf(cl){ return (cl && cl.statut === 'Non qualifie' && cl.raisonNq) ? cl.raisonNq : ''; }
 function raisonNqBadge(cl){
@@ -447,7 +447,7 @@ var RAISON_NQ_ANNULE = null; // appele si on ferme la fenetre sans valider
 // Meme principe que la raison du « Non qualifie » : enregistree sur la fiche
 // Clients & Prospects (colonne raison_perte), effacee quand la fiche quitte
 // « Perdu » / « Client perdu ».
-const RAISONS_PERTE = ["Pas interesse","Hors zone","Pas pret","Autre"];
+const RAISONS_PERTE = ["Pas interesse","Injoignable","Hors zone","Pas pret","Autre"];
 function estPerdu(cl){ return !!cl && (cl.statut === 'Client perdu' || cl.statut === 'Perdu'); }
 function raisonPerteOf(cl){ return (estPerdu(cl) && cl.raisonPerte) ? cl.raisonPerte : ''; }
 function raisonPerteBadge(cl){
@@ -6642,7 +6642,7 @@ function loadMetaStatus(){
 function nqDetailMeta(b){
   const total = b.non_qualifies || 0;
   if(!total) return '';
-  const parts = [['nq_faux_numero','faux numero'],['nq_hors_zone','hors zone'],['nq_pas_interesse','pas interesse'],['nq_curieux','curieux'],['nq_autre','autre']];
+  const parts = [['nq_faux_numero','faux numero'],['nq_injoignable','injoignable'],['nq_hors_zone','hors zone'],['nq_pas_interesse','pas interesse'],['nq_curieux','curieux'],['nq_autre','autre']];
   let connus = 0;
   const txt = parts.filter(function(x){ return b[x[0]] > 0; }).map(function(x){ connus += b[x[0]]; return b[x[0]] + ' ' + x[1]; });
   if(total - connus > 0) txt.push((total - connus) + ' sans raison');

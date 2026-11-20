@@ -31,7 +31,7 @@ ok(nov.n === 3 && nov['Hors zone'] === 2 && nov['Faux numero'] === 1, 'novembre 
 const oct = d.lignes[1];
 ok(oct.n === 2 && oct['Sans raison'] === 1 && oct['Pas interesse'] === 1, 'octobre : 1 sans raison + 1 pas interesse', oct);
 ok(d.lignes[2]['Simple curieux'] === 1, 'fiche sans date : rangee dans « Date inconnue »');
-ok(d.colonnes.join('|') === 'Faux numero|Hors zone|Pas interesse|Simple curieux|Autre|Sans raison', 'colonnes = les 5 raisons + « Sans raison »', d.colonnes);
+ok(d.colonnes.join('|') === 'Faux numero|Injoignable|Hors zone|Pas interesse|Simple curieux|Autre|Sans raison', 'colonnes = les 6 raisons + « Sans raison »', d.colonnes);
 ok(d.total['Hors zone'] === 2 && d.total['Sans raison'] === 1, 'totaux par raison justes', d.total);
 
 console.log('— 2. Affichage');

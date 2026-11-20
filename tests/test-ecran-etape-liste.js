@@ -47,7 +47,7 @@ ok(/deletePipeline\(/.test(fiche), '« Supprimer » (Super Admin) garde');
 
 console.log('— 2. Choisir « Perdu » : fenetre des raisons de perte');
 reset(); setPipelineStage(1, 'Perdu');
-ok(!!DOM['modal-raison-nq'] && /Perdu/.test(DOM.dernierHtml) && /Pas interesse/.test(DOM.dernierHtml) && /Hors zone/.test(DOM.dernierHtml) && /Pas pret/.test(DOM.dernierHtml) && /Autre/.test(DOM.dernierHtml), 'fenetre avec Pas interesse, Hors zone, Pas pret, Autre');
+ok(!!DOM['modal-raison-nq'] && /Perdu/.test(DOM.dernierHtml) && /Pas interesse/.test(DOM.dernierHtml) && /Hors zone/.test(DOM.dernierHtml) && /Pas pret/.test(DOM.dernierHtml) && /Injoignable/.test(DOM.dernierHtml) && /Autre/.test(DOM.dernierHtml), 'fenetre avec Pas interesse, Injoignable, Hors zone, Pas pret, Autre');
 ok(P().etape === 'Contacte' && confirms.length === 0, 'rien ne change avant d\'avoir choisi (pas de 2e confirmation)');
 choisir('Pas pret');
 ok(P().etape === 'Perdu' && C().statut === 'Client perdu', 'apres le choix : Perdu (fiche client « Client perdu »)');
@@ -61,7 +61,7 @@ closeRaisonNq();
 
 console.log('— 3. Choisir « Non qualifie » : fenetre des raisons (comme avant)');
 reset(); setPipelineStage(1, 'Non qualifie');
-ok(/non qualifie/.test(DOM.dernierHtml) && /Faux numero/.test(DOM.dernierHtml) && /Simple curieux/.test(DOM.dernierHtml), 'fenetre des raisons du « Non qualifie »');
+ok(/non qualifie/.test(DOM.dernierHtml) && /Faux numero/.test(DOM.dernierHtml) && /Simple curieux/.test(DOM.dernierHtml) && /Injoignable/.test(DOM.dernierHtml), 'fenetre des raisons du « Non qualifie » (avec Injoignable)');
 choisir('Faux numero');
 ok(P().etape === 'Non qualifie' && C().raisonNq === 'Faux numero', 'Non qualifie + raison enregistree');
 

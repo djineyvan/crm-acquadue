@@ -106,6 +106,8 @@ const b = { non_qualifies: 6, nq_faux_numero: 3, nq_hors_zone: 1, nq_pas_interes
 const t = nqDetailMeta(b);
 ok(/3 faux numero/.test(t) && /1 hors zone/.test(t) && /1 curieux/.test(t) && /1 sans raison/.test(t) && !/pas interesse/.test(t), 'bilan Meta : detail des raisons par pub', t);
 ok(nqDetailMeta({ non_qualifies: 0 }) === '', 'bilan Meta : rien quand aucun non qualifie');
+ok(/2 injoignable/.test(nqDetailMeta({ non_qualifies: 3, nq_injoignable: 2, nq_faux_numero: 1 })) && !/sans raison/.test(nqDetailMeta({ non_qualifies: 3, nq_injoignable: 2, nq_faux_numero: 1 })), 'bilan Meta : raison « Injoignable » comptee (20/11/2026)');
+ok(RAISONS_NQ.indexOf('Injoignable') >= 0, 'raison « Injoignable » proposee pour le Non qualifie');
 ok(/nqDetailMeta\(b\)/.test(src), 'bilan Meta : detail branche dans le tableau');
 
 // 7. Bouton ponctuel retire
