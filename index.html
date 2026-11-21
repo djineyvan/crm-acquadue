@@ -13,6 +13,7 @@
   --green:#16a34a;--green-light:#dcfce7;
   --gold:#d97706;--gold-light:#fef3c7;
   --purple:#7c3aed;--purple-light:#ede9fe;
+  --orange:#ea580c;--orange-light:#ffedd5;
   --bg:#f5f7fa;--surface:#fff;--card:#fff;--card2:#f0f4f8;
   --border:#e0e8f0;--border2:#c8d8e8;
   --text:#1a2535;--muted:#6b7e90;--muted2:#4a5e70;
@@ -102,6 +103,7 @@ tr:last-child td{border-bottom:none}
 .tag-green{background:var(--green-light);color:var(--green)}
 .tag-gold{background:var(--gold-light);color:var(--gold)}
 .tag-purple{background:var(--purple-light);color:var(--purple)}
+.tag-orange{background:var(--orange-light);color:var(--orange)}
 .tag-grey{background:var(--card2);color:var(--muted)}
 .lock-icon{font-size:9px}
 
@@ -125,7 +127,7 @@ tr:last-child td{border-bottom:none}
 .tab{padding:5px 11px;border-radius:var(--r3);cursor:pointer;font-size:11px;font-weight:500;color:var(--muted2);border:none;background:none;font-family:'Inter',sans-serif;transition:all .15s}
 .tab.active{background:#fff;color:var(--red);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 
-.pipeline{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+.pipeline{display:grid;grid-template-columns:repeat(8,1fr);gap:8px}
 .pipeline-col{background:var(--card2);border-radius:var(--r);padding:8px;min-height:120px}
 .pipeline-col-header{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:7px;display:flex;justify-content:space-between}
 .pipeline-card{background:#fff;border:1px solid var(--border);border-radius:var(--r2);padding:9px;margin-bottom:5px;cursor:pointer;transition:all .15s}
@@ -219,7 +221,7 @@ tr:last-child td{border-bottom:none}
   .login-box{width:92vw;max-width:380px;padding:26px 20px}
   /* Le tableau Pipeline (6 colonnes) garde sa largeur de colonne et defile
      horizontalement plutot que d'ecraser chaque colonne illisible. */
-  .pipeline{grid-template-columns:repeat(7,200px);overflow-x:auto;padding-bottom:6px}
+  .pipeline{grid-template-columns:repeat(8,200px);overflow-x:auto;padding-bottom:6px}
   .cal-grid{gap:2px}
   .cal-day{padding:4px;min-height:44px;font-size:9px}
 }
@@ -334,7 +336,9 @@ let AUDIT = [];
 // c'est une etape FINALE : l'opportunite ne compte plus dans le pipeline en
 // cours. Elle est volontairement exclue du taux de conversion (seules les
 // vraies opportunites closes Gagne/Perdu comptent).
-const PIPELINE_STAGES = ["Nouveau prospect","Contacte","Offre envoyee","En negociation","Gagne","Perdu","Non qualifie"];
+// "A relancer" (21/11/2026, demande explicite) : juste apres "Contacte", pour les
+// prospects deja contactes qu'il faut rappeler avant d'envoyer une offre.
+const PIPELINE_STAGES = ["Nouveau prospect","Contacte","A relancer","Offre envoyee","En negociation","Gagne","Perdu","Non qualifie"];
 const PIPELINE_CLOSED_STAGES = ["Gagne","Perdu","Non qualifie"];
 function isPipelineClosed(etape){ return PIPELINE_CLOSED_STAGES.indexOf(etape) >= 0; }
 
@@ -391,7 +395,7 @@ function peutSuivrePipe(p){
   return isSuperAdmin() || p.asg === CU.nom || (typeof canModifyProspectInfo === 'function' && canModifyProspectInfo());
 }
 // Statuts Clients & Prospects, dans le meme ordre que PIPELINE_STAGES.
-const CLIENT_STATUTS = ["Nouveau prospect","Contacte","Offre envoyee","En negociation","Client actif","Client perdu","Non qualifie"];
+const CLIENT_STATUTS = ["Nouveau prospect","Contacte","A relancer","Offre envoyee","En negociation","Client actif","Client perdu","Non qualifie"];
 
 // ── RAISON DU "NON QUALIFIE" (13/11/2026, demande explicite) ────────────────
 // Chaque lead classe "Non qualifie" recoit une raison. Elle est enregistree
@@ -836,7 +840,7 @@ function statusTag(s){
     "Actif":"tag-green","Active":"tag-green","Terminee":"tag-grey","Termine":"tag-green",
     "Publie":"tag-green","Planifie":"tag-blue","En creation":"tag-gold","En cours":"tag-blue",
     "A faire":"tag-gold","Haute":"tag-red","Moyenne":"tag-gold","Basse":"tag-grey",
-    "Nouveau prospect":"tag-grey","Contacte":"tag-blue","En negociation":"tag-gold",
+    "Nouveau prospect":"tag-grey","Contacte":"tag-blue","A relancer":"tag-orange","En negociation":"tag-gold",
     "Gagne":"tag-green","Perdu":"tag-red","Non qualifie":"tag-grey","En attente":"tag-gold","Approuve":"tag-green",
     "Refuse":"tag-red","Present":"tag-green","Absent":"tag-red",
     "Brouillon":"tag-grey","En attente validation":"tag-gold",
@@ -1893,7 +1897,7 @@ function renderPipeBoard(){
       ? data.length + ' contact(s) recu(s) ' + (PIPE_DATE_DU === PIPE_DATE_AU ? 'le ' + formatDateFr(PIPE_DATE_DU) : (PIPE_DATE_DU ? 'du ' + formatDateFr(PIPE_DATE_DU) + ' ' : '') + (PIPE_DATE_AU ? 'au ' + formatDateFr(PIPE_DATE_AU) : 'a aujourd\'hui'))
       : '';
   }
-  const cols = ["muted2","blue","gold","purple","green","red","muted"];
+  const cols = ["muted2","blue","orange","gold","purple","green","red","muted"];
   let board = '';
   PIPELINE_STAGES.forEach(function(stage, i){
     const cards = data.filter(function(p){ return p.etape === stage; });
@@ -3016,6 +3020,7 @@ function viewClientDetail(id){
       ['Statut', 'statut', [
         {label:'Nouveau prospect',selected:cl.statut==='Nouveau prospect'},
         {label:'Contacte',selected:cl.statut==='Contacte'},
+        {label:'A relancer',selected:cl.statut==='A relancer'},
         {label:'Offre envoyee',selected:cl.statut==='Offre envoyee'},
         {label:'En negociation',selected:cl.statut==='En negociation'},
         {label:'Client actif',selected:cl.statut==='Client actif'},

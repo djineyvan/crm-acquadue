@@ -44,11 +44,11 @@ eval(grab("wrapAfter('markPipelineLost', function", '// CAMPAGNES'));
 let pass = 0, fail = 0; function ok(c, m, x) { if (c) { pass++; console.log('✅ ' + m); } else { fail++; console.log('❌ ' + m + (x !== undefined ? '  -> ' + JSON.stringify(x) : '')); } }
 
 // 1. Colonnes
-ok(PIPELINE_STAGES.length === 7 && PIPELINE_STAGES[6] === 'Non qualifie', '7 colonnes, « Non qualifie » en dernier', PIPELINE_STAGES);
-ok(PIPELINE_STAGES.slice(0, 6).join() === 'Nouveau prospect,Contacte,Offre envoyee,En negociation,Gagne,Perdu', 'les 6 colonnes existantes sont inchangees, dans le meme ordre');
+ok(PIPELINE_STAGES.length === 8 && PIPELINE_STAGES[7] === 'Non qualifie', '8 colonnes (avec « A relancer », 21/11), « Non qualifie » en dernier', PIPELINE_STAGES);
+ok(PIPELINE_STAGES.slice(0, 7).join() === 'Nouveau prospect,Contacte,A relancer,Offre envoyee,En negociation,Gagne,Perdu', 'colonnes dans le bon ordre, « A relancer » entre Contacte et Offre envoyee');
 ok(isPipelineClosed('Non qualifie') && isPipelineClosed('Gagne') && isPipelineClosed('Perdu') && !isPipelineClosed('Contacte'), 'Gagne, Perdu et Non qualifie = etapes finales');
 ok(/tag-grey/.test(statusTag('Non qualifie')), 'etiquette grise « Non qualifie » (fiche, tableau de bord)');
-ok(/repeat\(7,1fr\)/.test(src) && /repeat\(7,200px\)/.test(src), 'mise en page : 7 colonnes sur ordinateur et sur telephone');
+ok(/repeat\(8,1fr\)/.test(src) && /repeat\(8,200px\)/.test(src), 'mise en page : 8 colonnes sur ordinateur et sur telephone');
 
 // 2. Affichage du tableau
 PIPELINE = [
@@ -59,7 +59,7 @@ PIPELINE = [
 renderPipeBoard();
 const board = html['pipe-board'].innerHTML;
 const cols = board.split('pipeline-col"').length - 1;
-ok(cols === 7, 'le Pipeline affiche 7 colonnes', cols);
+ok(cols === 8, 'le Pipeline affiche 8 colonnes', cols);
 const nqCol = board.slice(board.indexOf('>Non qualifie<'));
 ok(/Bio/.test(nqCol) && !/Awa/.test(nqCol), 'la fiche « Non qualifie » est dans sa colonne');
 
@@ -99,7 +99,7 @@ ok(PIPELINE[4].etape === 'Gagne', '« Faire avancer » inchange : En negociation
 
 // 6. Correspondance Pipeline <-> Clients & Prospects
 ok(pipelineEtapeToClientStatut('Non qualifie') === 'Non qualifie' && clientStatutToPipelineEtape('Non qualifie') === 'Non qualifie', 'meme mot dans les deux ecrans (aller-retour)');
-ok(CLIENT_STATUTS.length === 7 && CLIENT_STATUTS.indexOf('Non qualifie') === 6, 'liste des statuts Clients & Prospects : « Non qualifie » ajoute');
+ok(CLIENT_STATUTS.length === 8 && CLIENT_STATUTS.indexOf('Non qualifie') === 7, 'liste des statuts Clients & Prospects : « Non qualifie » ajoute');
 ok(CLIENT_STATUTS.every(function (s) { return PIPELINE_STAGES.indexOf(clientStatutToPipelineEtape(s)) >= 0; }), 'chaque statut client correspond a une colonne du Pipeline');
 
 // 7. Autres endroits dans la page

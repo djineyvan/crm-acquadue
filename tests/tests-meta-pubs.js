@@ -119,6 +119,11 @@ global.fetch = async function (url) {
   const b = (r.body.bilan_publicites || []).find(function (x) { return x.annonce === 'Video famille 30s'; });
   check('bilan : 3 leads pour « Video famille 30s »', b && b.leads === 3 && b.campagne === 'Purificateur Novembre', r.body.bilan_publicites);
   check('bilan : 1 client gagne, 1 en discussion, 1 perdu', b && b.clients === 1 && b.en_cours === 1 && b.perdus === 1, b);
+  // « A relancer » (21/11/2026) : compte aussi « en discussion ».
+  await sqlRaw`UPDATE clients SET statut='A relancer' WHERE nom='Eli Noms'`;
+  r = await call(H.version, { query: { meta: 'status' } }, tok);
+  const bR = (r.body.bilan_publicites || []).find(function (x) { return x.annonce === 'Video famille 30s'; });
+  check('bilan : un lead « A relancer » compte « en discussion »', bR && bR.en_cours === 1 && bR.clients === 1 && bR.perdus === 1, bR);
   const b3 = (r.body.bilan_publicites || []).find(function (x) { return x.annonce === 'Annonce AD3'; });
   check('pub sans nom : affichee avec son ID', b3 && b3.leads === 1, r.body.bilan_publicites);
   const rec = (r.body.recents || []).find(function (x) { return x.leadgen_id === 'A1'; });

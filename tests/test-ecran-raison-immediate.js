@@ -14,7 +14,7 @@ const code = grab('function pipeRaisonChoisieHtml(', "// Apres l'enregistrement 
   + grab('function autoRefreshTick(){', 'setInterval(autoRefreshTick');
 
 // --- faux environnement ---
-const PIPELINE_STAGES = ['Nouveau prospect', 'Contacte', 'Offre envoyee', 'En negociation', 'Gagne', 'Perdu', 'Non qualifie'];
+const PIPELINE_STAGES = ['Nouveau prospect', 'Contacte', 'A relancer', 'Offre envoyee', 'En negociation', 'Gagne', 'Perdu', 'Non qualifie'];
 let ELS = {}, DETAIL_CTX = null, demandes = [], dirty = 0;
 function fauxEl(id, value) { const o = { id: id, value: value, apres: '', insertAdjacentHTML(pos, html) { this.apres += html; const m = /id="([^"]+)"/.exec(html); if (m) ELS[m[1]] = { remove() { delete ELS[m[1]]; } }; } }; ELS[id] = o; return o; }
 function el(id) { return ELS[id] || null; }
